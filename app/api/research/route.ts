@@ -208,6 +208,26 @@ export async function POST(req: Request) {
 ${formattedPath.map((path: string) => `- ${path}`).join('\n')}
       `;
 
+      // Extract potential image URLs from sources
+      const imageUrls: string[] = [];
+      result.sources.forEach(source => {
+        // Look for image URLs in source content
+        const imgMatches = source.content?.match(/https?:\/\/\S+\.(jpg|jpeg|png|gif|webp)(\?\S+)?/gi) || [];
+        if (imgMatches.length > 0) {
+          // Add up to 2 images per source
+          imgMatches.slice(0, 2).forEach(img => {
+            if (imageUrls.length < 2) { // Limit to 2 images total
+              imageUrls.push(img);
+            }
+          });
+        }
+      });
+
+      // Format image section if we found any images
+      const imageSection = imageUrls.length > 0
+        ? `\n\n## Visual References\n${imageUrls.map(url => `![Research visual](${url})`).join('\n\n')}\n\n`
+        : '';
+
       // Format top sources for better display
       const formattedTopSources = `
 ## Top Sources
@@ -225,7 +245,7 @@ ${executiveSummary}
 ${keyFindings}
 
 ## Detailed Analysis
-${formattedDetailedAnalysis}${codeExampleSection}${insightsSection}
+${formattedDetailedAnalysis}${codeExampleSection}${insightsSection}${imageSection}
 
 ## Research Methodology
 This deep research was conducted through iterative, autonomous exploration. The engine first created a research plan, then conducted initial investigations, identified knowledge gaps, and performed targeted follow-up research.

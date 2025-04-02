@@ -14,7 +14,11 @@ import {
   CopyIcon,
   CheckIcon,
   GlobeIcon,
-  ArrowRightIcon
+  ArrowRightIcon,
+  DatabaseIcon,
+  RefreshCwIcon,
+  FileTextIcon,
+  ImageIcon
 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
@@ -470,25 +474,34 @@ export default function Home() {
     },
 
     // Custom heading renderer
-    h1: ({ children }: any) => <h1 className="mt-8 mb-4 font-bold text-foreground text-3xl">{children}</h1>,
+    h1: ({ children }: any) => <h1 className="mt-8 mb-4 font-bold text-foreground text-3xl font-serif">{children}</h1>,
     h2: ({ children }: any) => {
       // Special formatting for section headers
       const text = String(children);
-      
+
       // Apply special styling for research sections
       if (
         text.includes('Research Path') ||
         text.includes('Top Sources') ||
         text.includes('Comparative Assessment')
       ) {
+        // Determine which icon to show based on the section
+        let SectionIcon = BookOpenIcon;
+        if (text.includes('Research Path')) SectionIcon = ArrowRightIcon;
+        else if (text.includes('Top Sources')) SectionIcon = GlobeIcon;
+        else if (text.includes('Comparative Assessment')) SectionIcon = RefreshCwIcon;
+
         return (
-          <h2 className="flex items-center mt-10 mb-4 pb-3 border-primary/50 border-b font-bold text-primary text-2xl">
+          <h2 className="flex items-center mt-10 mb-6 pb-3 border-blue-200 dark:border-blue-800/30 border-b font-bold text-blue-700 dark:text-blue-400 text-2xl font-serif">
+            <div className="mr-3 p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-md">
+              <SectionIcon className="w-5 h-5" />
+            </div>
             {text}
           </h2>
         );
       }
-      
-      return <h2 className="mt-6 mb-3 font-bold text-foreground text-2xl">{children}</h2>;
+
+      return <h2 className="mt-8 mb-4 font-bold text-foreground text-2xl font-serif">{children}</h2>;
     },
     h3: ({ children }: any) => {
       // Special formatting for section headers
@@ -502,19 +515,58 @@ export default function Home() {
         text.includes('Key Insights') ||
         text.includes('Confidence Level')
       ) {
+        // Determine which icon to show based on the section
+        let SectionIcon = BookOpenIcon;
+        if (text.includes('Executive Summary')) SectionIcon = BookOpenIcon;
+        else if (text.includes('Key Findings')) SectionIcon = CheckIcon;
+        else if (text.includes('Detailed Analysis')) SectionIcon = SearchIcon;
+        else if (text.includes('Research Methodology')) SectionIcon = BrainIcon;
+        else if (text.includes('Code Examples')) SectionIcon = CopyIcon;
+        else if (text.includes('Key Insights')) SectionIcon = AlertCircleIcon;
+        else if (text.includes('Confidence Level')) SectionIcon = CheckIcon;
+
         return (
-          <h3 className="flex items-center mt-8 mb-4 pb-2 border-primary/20 border-b font-semibold text-primary text-xl">
+          <h3 className="flex items-center mt-8 mb-5 pb-2 border-blue-100 dark:border-blue-900/20 border-b font-semibold text-blue-600 dark:text-blue-400 text-xl font-serif">
+            <div className="mr-2 p-1 bg-blue-50 dark:bg-blue-900/20 rounded-md">
+              <SectionIcon className="w-4 h-4" />
+            </div>
             {text}
           </h3>
         );
       }
-      return <h3 className="mt-6 mb-3 font-semibold text-foreground text-xl">{children}</h3>;
+      return <h3 className="mt-6 mb-4 font-semibold text-foreground text-xl font-serif">{children}</h3>;
     },
 
     // Custom link renderer
     a: ({ node, href, children, ...props }: any) => {
       const isExternal = href?.startsWith('http');
       const domain = isExternal ? extractDomain(href) : '';
+      const isImage = href?.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i);
+
+      // If it's an image link, render the image
+      if (isImage) {
+        return (
+          <div className="my-6 overflow-hidden rounded-lg border border-blue-100 dark:border-blue-900/20 shadow-md">
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block"
+              {...props}
+            >
+              <img
+                src={href}
+                alt={String(children) || "Research image"}
+                className="w-full h-auto object-cover max-h-[400px]"
+                onError={(e) => {
+                  // Hide image on error
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </a>
+          </div>
+        );
+      }
 
       if (isExternal) {
         return (
@@ -522,17 +574,21 @@ export default function Home() {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center font-medium text-blue-500 dark:text-blue-400 hover:underline"
+            className="inline-flex items-center font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline transition-colors"
             {...props}
           >
-            {children}
+            <span className="border-b border-blue-300 dark:border-blue-600 pb-0.5">{children}</span>
             <ExternalLinkIcon className="ml-1 w-3 h-3" />
           </a>
         );
       }
 
       return (
-        <a href={href} className="text-primary hover:underline" {...props}>
+        <a
+          href={href}
+          className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 border-b border-blue-300 dark:border-blue-600 pb-0.5 transition-colors"
+          {...props}
+        >
           {children}
         </a>
       );
@@ -561,56 +617,119 @@ export default function Home() {
 
         return (
           <li className="flex items-start mb-3" {...props}>
-            <div className="flex items-center gap-2 bg-card p-3 border hover:border-primary/50 border-border rounded-lg w-full transition-colors">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 bg-card p-3 border hover:border-blue-400/50 dark:hover:border-blue-500/50 border-border rounded-lg w-full transition-all duration-200 hover:shadow-md group"
+            >
               {faviconUrl && (
-                <img
-                  src={faviconUrl}
-                  alt={domain}
-                  className="flex-shrink-0 rounded-sm w-5 h-5"
-                />
+                <div className="flex-shrink-0 w-8 h-8 rounded-md overflow-hidden bg-blue-100 dark:bg-blue-900/30 p-1.5 flex items-center justify-center">
+                  <img
+                    src={faviconUrl}
+                    alt={domain}
+                    className="w-full h-full object-contain"
+                    onError={(e) => {
+                      // Show domain first letter if favicon fails to load
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                      target.parentElement!.innerHTML = `<span class="text-blue-500 dark:text-blue-400 font-bold text-sm">${domain.charAt(0).toUpperCase()}</span>`;
+                    }}
+                  />
+                </div>
               )}
               <div className="flex-grow min-w-0">
-                <div className="font-medium text-foreground truncate">{title}</div>
-                <div className="text-muted-foreground text-xs truncate">{domain}</div>
+                <div className="font-medium text-foreground truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  {title}
+                </div>
+                <div className="text-muted-foreground text-xs truncate flex items-center gap-1">
+                  <GlobeIcon className="w-3 h-3" />
+                  {domain}
+                </div>
               </div>
               <div className="flex items-center gap-2">
-                <div className="bg-primary/10 px-2 py-0.5 rounded-full text-primary text-xs">
+                <div className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full text-blue-600 dark:text-blue-400 text-xs font-medium">
                   {relevance}
                 </div>
-                <a
-                  href={url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-primary/10 hover:bg-primary/20 p-1.5 rounded-full text-primary transition-colors"
-                >
+                <div className="bg-blue-100 dark:bg-blue-900/30 p-1.5 rounded-full text-blue-600 dark:text-blue-400 transition-colors group-hover:bg-blue-500 group-hover:text-white">
                   <ExternalLinkIcon className="w-3.5 h-3.5" />
-                </a>
+                </div>
               </div>
-            </div>
+            </a>
           </li>
         );
       }
 
       // Check if this is a research path item
       if (childrenStr.includes('Initial:') || childrenStr.includes('Plan ') || childrenStr.includes('Refinement ')) {
+        // Extract the query part
+        const queryMatch = childrenStr.match(/"([^"]+)"/);
+        const query = queryMatch ? queryMatch[1] : '';
+        const prefix = childrenStr.split('"')[0];
+
         return (
-          <li className="mb-2 py-1 pl-4 border-primary/30 hover:border-primary border-l-2 text-muted-foreground transition-colors" {...props}>
-            {children}
+          <li className="mb-3 group" {...props}>
+            <div className="flex items-center py-2 pl-4 border-blue-400/30 dark:border-blue-500/30 hover:border-blue-500 dark:hover:border-blue-400 border-l-2 transition-colors">
+              <div className="mr-2 text-blue-500 dark:text-blue-400">
+                {prefix.includes('Initial') ? (
+                  <SearchIcon className="w-4 h-4" />
+                ) : prefix.includes('Plan') ? (
+                  <BrainIcon className="w-4 h-4" />
+                ) : (
+                  <ArrowRightIcon className="w-4 h-4" />
+                )}
+              </div>
+              <div>
+                <span className="text-muted-foreground font-medium">{prefix}</span>
+                <span className="text-foreground font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">&quot;{query}&quot;</span>
+              </div>
+            </div>
           </li>
         );
       }
 
       // Regular list item
       return (
-        <li className="flex items-start mb-2" {...props}>
-          <span className="mt-1 mr-2 text-primary">•</span>
-          <span>{children}</span>
+        <li className="flex items-start mb-3" {...props}>
+          <span className="mt-1 mr-2 text-blue-500 dark:text-blue-400">
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="mt-1.5">
+              <circle cx="4" cy="4" r="4" fill="currentColor" />
+            </svg>
+          </span>
+          <span className="text-card-foreground">{children}</span>
         </li>
       );
     },
 
     // Custom paragraph renderer
     p: ({ node, children, ...props }: any) => {
+      // Check if paragraph contains an image URL
+      const childrenStr = String(children);
+      const imageUrlMatch = childrenStr.match(/https?:\/\/\S+\.(jpg|jpeg|png|gif|webp)(\?\S+)?/i);
+
+      if (imageUrlMatch) {
+        const imageUrl = imageUrlMatch[0];
+        // Replace the image URL with actual image
+        return (
+          <div className="my-6">
+            <p className="mb-4 text-card-foreground leading-relaxed" {...props}>
+              {childrenStr.replace(imageUrl, '')}
+            </p>
+            <div className="overflow-hidden rounded-lg border border-border shadow-md">
+              <img
+                src={imageUrl}
+                alt="Research visual"
+                className="w-full h-auto object-cover max-h-[400px]"
+                onError={(e) => {
+                  // Hide image on error
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            </div>
+          </div>
+        );
+      }
+
       return <p className="mb-4 text-card-foreground leading-relaxed" {...props}>{children}</p>;
     }
   };
@@ -774,24 +893,33 @@ export default function Home() {
                     </div>
 
                     <div className="gap-3 grid grid-cols-3 mt-2">
-                      <div className="bg-muted/30 p-3 border border-border rounded-lg">
-                        <div className="mb-1 text-muted-foreground text-xs">Sources</div>
-                        <div className="font-mono font-medium text-foreground">{researchStats.sourcesCount.toLocaleString()}</div>
+                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                          <GlobeIcon className="mr-1 w-3 h-3" />
+                          Sources
+                        </div>
+                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.sourcesCount.toLocaleString()}</div>
                       </div>
-                      <div className="bg-muted/30 p-3 border border-border rounded-lg">
-                        <div className="mb-1 text-muted-foreground text-xs">Domains</div>
-                        <div className="font-mono font-medium text-foreground">{researchStats.domainsCount}</div>
+                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                          <DatabaseIcon className="mr-1 w-3 h-3" />
+                          Domains
+                        </div>
+                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.domainsCount}</div>
                       </div>
-                      <div className="bg-muted/30 p-3 border border-border rounded-lg">
-                        <div className="mb-1 text-muted-foreground text-xs">Data Size</div>
-                        <div className="font-mono font-medium text-foreground">{researchStats.dataSize}</div>
+                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                          <FileTextIcon className="mr-1 w-3 h-3" />
+                          Data Size
+                        </div>
+                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.dataSize}</div>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-muted/30 p-4 border border-border rounded-lg">
-                    <h4 className="flex items-center mb-3 font-medium text-muted-foreground text-sm">
-                      <GlobeIcon className="mr-1.5 w-3.5 h-3.5 text-primary" />
+                    <h4 className="flex items-center mb-3 font-medium text-blue-600 dark:text-blue-400 text-sm">
+                      <GlobeIcon className="mr-1.5 w-3.5 h-3.5" />
                       Active Research Sources:
                     </h4>
                     <div className="space-y-2 pr-1 max-h-[120px] overflow-y-auto scrollbar-thin">
@@ -802,37 +930,63 @@ export default function Home() {
                           animate={{ opacity: 1, x: 0 }}
                           exit={{ opacity: 0, x: 10 }}
                           transition={{ duration: 0.3 }}
-                          className="flex items-center gap-2 text-sm"
+                          className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
                         >
-                          <img
-                            src={getFaviconUrl(url)}
-                            alt={url}
-                            className="w-4 h-4"
-                          />
-                          <span className="text-foreground">{url}</span>
-                          <ArrowRightIcon className="w-3 h-3 text-primary animate-pulse" />
+                          <div className="flex-shrink-0 w-6 h-6 rounded-md overflow-hidden bg-blue-100 dark:bg-blue-900/30 p-1 flex items-center justify-center">
+                            <img
+                              src={getFaviconUrl(url)}
+                              alt={url}
+                              className="w-full h-full object-contain"
+                              onError={(e) => {
+                                // Show domain first letter if favicon fails to load
+                                const target = e.target as HTMLImageElement;
+                                target.style.display = 'none';
+                                target.parentElement!.innerHTML = `<span class="text-blue-500 dark:text-blue-400 font-bold text-xs">${url.charAt(0).toUpperCase()}</span>`;
+                              }}
+                            />
+                          </div>
+                          <span className="text-foreground text-sm flex-1 truncate">{url}</span>
+                          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                            <ArrowRightIcon className="w-3 h-3 text-blue-500 dark:text-blue-400 animate-pulse" />
+                          </div>
                         </motion.div>
                       ))}
                     </div>
                   </div>
 
                   <div className="space-y-2">
-                    <h4 className="font-medium text-muted-foreground text-sm">Research Progress:</h4>
-                    <div className="space-y-1.5">
-                      {researchStats.completedSteps.map((step, index) => (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0, y: 5 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.2, delay: index * 0.05 }}
-                          className="flex items-center gap-2 text-xs"
-                        >
-                          <div className="flex justify-center items-center bg-primary/20 rounded-full w-4 h-4">
-                            <CheckIcon className="w-2.5 h-2.5 text-primary" />
-                          </div>
-                          <span className="text-muted-foreground">{step}</span>
-                        </motion.div>
-                      ))}
+                    <h4 className="flex items-center font-medium text-blue-600 dark:text-blue-400 text-sm">
+                      <CheckIcon className="mr-1.5 w-3.5 h-3.5" />
+                      Research Progress:
+                    </h4>
+                    <div className="space-y-2 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
+                      {researchStats.completedSteps.map((step, index) => {
+                        // Determine which icon to show based on the step content
+                        let StepIcon = CheckIcon;
+                        if (step.includes('plan')) StepIcon = BrainIcon;
+                        else if (step.includes('sources')) StepIcon = GlobeIcon;
+                        else if (step.includes('Crawled')) StepIcon = SearchIcon;
+                        else if (step.includes('Analyzed')) StepIcon = BookOpenIcon;
+                        else if (step.includes('Refined')) StepIcon = ArrowRightIcon;
+                        else if (step.includes('Collected')) StepIcon = DatabaseIcon;
+                        else if (step.includes('Synthesizing')) StepIcon = RefreshCwIcon;
+                        else if (step.includes('Generating')) StepIcon = FileTextIcon;
+
+                        return (
+                          <motion.div
+                            key={index}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: index * 0.05 }}
+                            className="flex items-center gap-2 text-sm"
+                          >
+                            <div className="flex justify-center items-center bg-blue-100 dark:bg-blue-800/30 text-blue-600 dark:text-blue-400 rounded-full w-5 h-5">
+                              <StepIcon className="w-3 h-3" />
+                            </div>
+                            <span className="text-foreground">{step}</span>
+                          </motion.div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -867,11 +1021,29 @@ export default function Home() {
                 transition={{ duration: 0.5 }}
                 className="bg-card shadow-xl p-8 border border-border rounded-xl"
               >
-                <h3 className="flex items-center mb-6 pb-4 border-b border-border font-semibold text-card-foreground text-2xl">
-                  <BookOpenIcon className="mr-3 w-6 h-6 text-primary" />
-                  Research Results
-                </h3>
-                <div className="dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium dark:prose-a:text-blue-400 prose-a:text-blue-500 prose">
+                <div className="flex items-center justify-between mb-6 pb-4 border-b border-blue-100 dark:border-blue-900/20">
+                  <h3 className="flex items-center font-serif font-semibold text-card-foreground text-2xl">
+                    <div className="mr-3 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+                      <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    Research Results
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (report) {
+                          navigator.clipboard.writeText(report);
+                          // You could add a toast notification here
+                        }
+                      }}
+                      className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-800/40 px-3 py-1.5 rounded-full text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
+                    >
+                      <CopyIcon className="w-3.5 h-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                </div>
+                <div className="dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium dark:prose-a:text-blue-400 prose-a:text-blue-500 prose prose-blue">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeRaw]}
