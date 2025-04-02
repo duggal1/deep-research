@@ -1,3 +1,4 @@
+
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @next/next/no-img-element */
 'use client';
@@ -27,6 +28,8 @@ import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { motion, AnimatePresence } from 'framer-motion';
+import { AuroraText } from '@/components/magicui/aurora-text';
+import Image from 'next/image';
 
 const ThemeSwitcher = dynamic(
   () => import('@/components/theme-switcher').then(mod => mod.ThemeSwitcher),
@@ -443,7 +446,7 @@ export default function Home() {
 
       // Inline code
       return (
-        <code className="bg-muted px-1.5 py-0.5 rounded font-mono text-sm" {...props}>
+        <code className="bg-muted px-1.5 py-0.5 rounded font-serif text-sm" {...props}>
           {children}
         </code>
       );
@@ -768,17 +771,25 @@ export default function Home() {
 
   return (
     <div className="bg-background min-h-screen font-serif">
-      <nav className="top-0 z-50 sticky bg-background/80 backdrop-blur-lg border-b border-border">
-        <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <BookOpenIcon className="w-6 h-6 text-primary" />
-              <h1 className="font-bold text-foreground text-2xl">DeepResearch</h1>
-            </div>
-            <ThemeSwitcher />
-          </div>
-        </div>
-      </nav>
+     <nav className="top-0 z-50 sticky bg-background/80 backdrop-blur-lg border-b border-border">
+  <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+    <div className="flex justify-between items-center h-16">
+    <div className="flex items-center "> {/* Adjusted spacing */}
+  <Image
+    src="/blaze.png"
+    width={90}
+    height={90}
+    priority
+    alt="blaze"
+  />
+  <h1 className="font-bold text-foreground text-3xl">Blaze</h1> {/* Removed extra padding */}
+</div>
+
+      <ThemeSwitcher />
+    </div>
+  </div>
+</nav>
+
 
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
         <div className="space-y-8 mx-auto max-w-3xl">
@@ -788,11 +799,12 @@ export default function Home() {
             transition={{ duration: 0.5 }}
             className="space-y-4"
           >
-            <h2 className="font-serif font-black text-gray-900 dark:text-white">
-              Deep Web Research Engine
-            </h2>
-            <p className="text-muted-foreground text-lg text-center">
-              Powered by autonomous web exploration and advanced AI reasoning
+         <h1 className=" flex justify-center items-center text-4xl font-serif font-bold tracking-tighter md:text-5xl lg:text-7xl">
+         <AuroraText>Deep Research Engine</AuroraText>
+    </h1>
+
+            <p className="text-muted-foreground text-base text-center">
+            An agent that processes over 4,000 sources across 20+ domains, using reasoning to synthesize vast amounts of online information and complete multi-step research tasks for you.
             </p>
           </motion.div>
 
@@ -873,10 +885,12 @@ export default function Home() {
                 <div className="flex justify-between items-center">
                   <div className="flex items-center gap-2">
                     <Loader2Icon className="w-5 h-5 text-primary animate-spin" />
-                    <h3 className="font-semibold text-card-foreground text-xl">Researching...</h3>
+                    <h3 className="font-semibold text-card-foreground text-xl">
+                    <AuroraText>Researching...</AuroraText>
+                    </h3>
                   </div>
-                  <div className="font-mono text-muted-foreground text-sm">
-                    {countdown > 0 ? `~${countdown}s remaining` : 'Almost done...'}
+                  <div className=" text-muted-foreground text-sm font-serif">
+                    {countdown > 0 ? `~${countdown}s remaining` : '✨Almost done...'}
                   </div>
                 </div>
 
@@ -894,31 +908,31 @@ export default function Home() {
 
                     <div className="gap-3 grid grid-cols-3 mt-2">
                       <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                      <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
                           <GlobeIcon className="mr-1 w-3 h-3" />
                           Sources
                         </div>
-                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.sourcesCount.toLocaleString()}</div>
+                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.sourcesCount.toLocaleString()}</div>
                       </div>
-                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                      <div className="bg-blue-100 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
                           <DatabaseIcon className="mr-1 w-3 h-3" />
                           Domains
                         </div>
-                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.domainsCount}</div>
+                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.domainsCount}</div>
                       </div>
                       <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center mb-1 text-blue-600 dark:text-blue-400 text-xs font-medium">
+                      <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
                           <FileTextIcon className="mr-1 w-3 h-3" />
                           Data Size
                         </div>
-                        <div className="font-mono font-medium text-foreground text-lg">{researchStats.dataSize}</div>
+                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.dataSize}</div>
                       </div>
                     </div>
                   </div>
 
                   <div className="bg-muted/30 p-4 border border-border rounded-lg">
-                    <h4 className="flex items-center mb-3 font-medium text-blue-600 dark:text-blue-400 text-sm">
+                    <h4 className="flex items-center  font-serif mb-3 font-medium text-gray-900 dark:text-blue-700 text-sm">
                       <GlobeIcon className="mr-1.5 w-3.5 h-3.5" />
                       Active Research Sources:
                     </h4>
@@ -955,7 +969,7 @@ export default function Home() {
                   </div>
 
                   <div className="space-y-2">
-                    <h4 className="flex items-center font-medium text-blue-600 dark:text-blue-400 text-sm">
+                    <h4 className="flex items-center font-medium text-gray-900 dark:text-blue-700 text-sm">
                       <CheckIcon className="mr-1.5 w-3.5 h-3.5" />
                       Research Progress:
                     </h4>
