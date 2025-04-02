@@ -875,24 +875,7 @@ export default function Home() {
 
   return (
     <div className="bg-background min-h-screen font-serif">
-     <nav className="top-0 z-50 sticky bg-background/80 backdrop-blur-lg border-b border-border">
-  <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-    <div className="flex justify-between items-center h-16">
-    <div className="flex items-center "> {/* Adjusted spacing */}
-  <Image
-    src="/blaze.png"
-    width={90}
-    height={90}
-    priority
-    alt="blaze"
-  />
-  <h1 className="font-bold text-foreground text-3xl">Blaze</h1> {/* Removed extra padding */}
-</div>
-
-      <ThemeSwitcher />
-    </div>
-  </div>
-</nav>
+    
 
 
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
