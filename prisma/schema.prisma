@@ -1,0 +1,100 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model based on the auth callback implementation
+model User {
+  id        String   @id
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  projects    Project[]
+  researches  Research[]
+  collections Collection[]
+}
+
+// Project model for user projects
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  researches  Research[]
+  collections Collection[]
+
+  @@index([userId])
+}
+
+// Research model for storing research data
+model Research {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?  @db.Text
+  userId    String
+  projectId String?
+  status    String   @default("pending") // pending, completed, failed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  collections Collection[]
+  sources     Source[]
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+// Source model for research sources
+model Source {
+  id         String   @id @default(cuid())
+  url        String
+  title      String?
+  content    String?  @db.Text
+  researchId String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  research Research @relation(fields: [researchId], references: [id], onDelete: Cascade)
+
+  @@index([researchId])
+}
+
+// Collection model for organizing researches
+model Collection {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  projectId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  researches Research[]
+
+  @@index([userId])
+  @@index([projectId])
+}

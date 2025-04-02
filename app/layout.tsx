@@ -2,6 +2,7 @@
 import { ThemeProvider } from '@/components/theme-provider';
 import './globals.css';
 import type { Metadata } from 'next';
+import Providers from '@/components/auth/providers';
 
 
 export const metadata: Metadata = {
@@ -23,7 +24,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+                   <Providers>
+
+                  
           {children}
+          </Providers>
         </ThemeProvider>
       </body>
     </html>
