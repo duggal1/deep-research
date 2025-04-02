@@ -1544,21 +1544,52 @@ export class ResearchEngine {
       
       // Process the response to fix table formatting
       let text = result.response.text();
-      
-      // Fix table formatting issues
-      text = text.replace(/\|\s*---+\s*\|/g, '| --- |');
-      text = text.replace(/\|[-\s|]+\n/g, '| --- | --- | --- |\n');
-      
+
+      // Comprehensive table formatting fix
+      // First, detect table sections
+      const tablePattern = /\|[\s\S]+?\|[\s\S]+?\|/g;
+      const tables = text.match(tablePattern);
+
+      if (tables) {
+        tables.forEach((tableSection: string) => {
+          // Get the original table
+          const originalTable = tableSection;
+
+          // Fix the header separator row
+          let fixedTable = tableSection.replace(/\|\s*[-:]+\s*\|/g, '| --- |');
+          fixedTable = fixedTable.replace(/\|[-:\s|]+\n/g, '| --- | --- | --- |\n');
+
+          // Ensure all rows have the same number of columns
+          const headerRow = fixedTable.split('\n')[0];
+          const columnCount = (headerRow.match(/\|/g) || []).length - 1;
+
+          // Create a properly formatted separator row
+          const separatorRow = '|' + ' --- |'.repeat(columnCount);
+
+          // Replace the second row with our properly formatted separator
+          const tableRows = fixedTable.split('\n');
+          if (tableRows.length > 1) {
+            tableRows[1] = separatorRow;
+            fixedTable = tableRows.join('\n');
+          }
+
+          // Replace the original table with the fixed one
+          text = text.replace(originalTable, fixedTable);
+        });
+      }
+
       // Fix comparative assessment section formatting
       text = text.replace(
         /(COMPARATIVE ASSESSMENT[\s\S]*?)(\n\n|$)/g,
         '## Comparative Assessment\n\n$1\n\n'
       );
-      
-      // Fix broken markdown tables
-      const tableRegex = /\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|/g;
-      text = text.replace(tableRegex, (match: string, col1: string, col2: string, col3: string) => {
-        return `| ${col1.trim()} | ${col2.trim()} | ${col3.trim()} |`;
+
+      // Make all domain references clickable
+      const domainPattern = /\b(?:www\.)?([\w-]+\.[\w.-]+)\b(?!\]|\))/g;
+      text = text.replace(domainPattern, (match: string, domain: string) => {
+        // Ensure the domain has www. if it started with it
+        const fullDomain = match.startsWith('www.') ? match : domain;
+        return `[${fullDomain}](https://${fullDomain})`;
       });
       
       // Remove excessive dashes that break markdown formatting
