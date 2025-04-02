@@ -61,7 +61,7 @@ export function MainNavbar() {
                   <li key={idx}>
                     <Link
                       href={item.link}
-                      className="group block relative hover:shadow-md text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                      className="hidden lg:block hover:bg-blue-600 dark:hover:bg-blue-700 rounded-lg text-gray-900 dark:text-gray-100 hover:text-gray-100 dark:hover:text-white px-4 py-2 text-sm"
                       onMouseEnter={() => setActiveItem(idx)}
                       onMouseLeave={() => setActiveItem(null)}
                     >
@@ -77,9 +77,9 @@ export function MainNavbar() {
          
             <div className="flex items-center gap-3">
               {isSignedIn ? (
-                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white">
+                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white hover:shadow-md hover:shadow-blue-600">
                   <span>Dashboard</span>
-                  <ZapIcon className="ml-1 size-2.5 fill-orange-500 text-orange-500" />
+               
                 </Button>
               ) : (
                 <>
@@ -89,13 +89,13 @@ export function MainNavbar() {
                   >
                     Login
                   </button>
-                  <button
+                  <Button
                     onClick={handleGetStarted}
-                    className=" lg:block bg-gradient-to-r from-violet-700 hover:from-violet-800 to-violet-600 hover:to-violet-600 shadow-sm hover:shadow-md rounded-lg text-white px-4 py-2 text-sm flex items-center gap-1.5"
+                   className="bg-black dark:bg-white hover:shadow-lg hover:shadow-amber-500"
                   >
                     Get Started
                     <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </>
               )}
                  <ThemeSwitcher />
