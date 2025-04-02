@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ResearchEngine } from '@/lib/research';
 import { ResearchError } from '@/lib/types';
+import { addLog, clearLogs } from './progress/route';
 
 const researchEngine = new ResearchEngine();
 
@@ -11,7 +12,7 @@ export const maxDuration = 300; // Increase max duration to 5 minutes
 export async function POST(req: Request) {
   try {
     const { query } = await req.json();
-    
+
     if (!query?.trim()) {
       return NextResponse.json({
         error: {
@@ -21,10 +22,24 @@ export async function POST(req: Request) {
       }, { status: 400 });
     }
 
+    // Clear previous logs
+    clearLogs();
+
+    // Add initial log
+    addLog(`Starting deep research on: "${query}"`);
+    addLog(`Starting deep research process for: "${query}"`);
     console.log(`Starting deep research on: "${query}"`);
-    
+
     try {
+      // Add log for research plan creation
+      addLog(`[1/7] Creating research plan for: "${query}"`);
+      addLog(`Analyzing research query: ${query}`);
+      addLog(`Creating structured research plan`);
+
       const result = await researchEngine.research(query);
+
+      // Add completion log
+      addLog(`Research completed for: "${query}"`);
       console.log(`Research completed for: "${query}"`);
 
       // Check if result uses legacy format (has analysis property)
@@ -138,12 +153,54 @@ export async function POST(req: Request) {
           };
         });
 
-      // Include code examples if available
-      const codeExampleSection = result.codeExamples && result.codeExamples.length > 0
-        ? `\n\n## Code Examples\n${result.codeExamples.map(ex => 
-            `### ${ex.title}\n\`\`\`${ex.language}\n${ex.code}\n\`\`\``
-          ).join('\n\n')}`
-        : '';
+      // Include code examples if available or if query is about programming
+      let codeExampleSection = '';
+
+      // Check if we have code examples from the result
+      if (result.codeExamples && result.codeExamples.length > 0) {
+        codeExampleSection = `\n\n## Code Examples\n${result.codeExamples.map(ex =>
+          `### ${ex.title}\n\`\`\`${ex.language}\n${ex.code}\n\`\`\``
+        ).join('\n\n')}`;
+      }
+      // If query is about programming but no code examples were provided, generate some
+      else if (/javascript|typescript|react|node|python|java|c\+\+|ruby|go|rust|php|html|css|sql|code|programming|framework|library|api|function|class|component/i.test(query)) {
+        addLog(`Generating code examples for programming-related query`);
+
+        // Determine the likely language based on the query
+        let language = 'javascript'; // Default
+        if (/python|django|flask/i.test(query)) language = 'python';
+        else if (/java|spring/i.test(query)) language = 'java';
+        else if (/c\+\+|cpp/i.test(query)) language = 'cpp';
+        else if (/ruby|rails/i.test(query)) language = 'ruby';
+        else if (/go|golang/i.test(query)) language = 'go';
+        else if (/rust/i.test(query)) language = 'rust';
+        else if (/php|laravel/i.test(query)) language = 'php';
+        else if (/sql|database|query/i.test(query)) language = 'sql';
+        else if (/html|css/i.test(query)) language = 'html';
+        else if (/typescript|ts/i.test(query)) language = 'typescript';
+        else if (/react|next\.?js/i.test(query)) language = 'jsx';
+
+        // Generate a code example prompt for the AI
+        const codePrompt = `
+          Generate a practical code example for: "${query}"
+          Use ${language} and follow best practices.
+          The example should be concise but complete enough to demonstrate the concept.
+        `;
+
+        try {
+          // Use the public method to generate a code example
+          const codeResult = await researchEngine.generateContent(codePrompt);
+          const codeText = codeResult.response.text();
+
+          // Extract code from the response
+          const codeMatch = codeText.match(/\`\`\`(?:[\w]+)?\n([\s\S]*?)\n\`\`\`/);
+          if (codeMatch && codeMatch[1]) {
+            codeExampleSection = `\n\n## Code Example\n\`\`\`${language}\n${codeMatch[1].trim()}\n\`\`\``;
+          }
+        } catch (e) {
+          console.error("Failed to generate code example:", e);
+        }
+      }
 
       // Include insights if available
       const insightsSection = result.insights && result.insights.length > 0
