@@ -14,13 +14,13 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60; // 1 hour
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map(); // Store query context for adaptation
-  private MAX_DATA_SOURCES = 75; // Significantly increased from default
-  private MAX_TOKEN_OUTPUT = 64000; // Substantially increased token output limit
-  private CHUNK_SIZE = 10000; // Process much larger chunks of data
-  private SEARCH_DEPTH = 5; // Significantly increased search depth
-  private MAX_PARALLEL_REQUESTS = 18; // Increased parallel processing
-  private ADDITIONAL_DOMAINS = 50; // Include more domains in searches
-  private MAX_RESEARCH_TIME = 120000; // Longer research time (milliseconds)
+  private MAX_DATA_SOURCES = 400; // Significantly increased from default (was 75)
+  private MAX_TOKEN_OUTPUT = 120000; // Substantially increased token output limit (was 64000)
+  private CHUNK_SIZE = 15000; // Process much larger chunks of data (was 10000)
+  private SEARCH_DEPTH = 8; // Significantly increased search depth (was 5)
+  private MAX_PARALLEL_REQUESTS = 24; // Increased parallel processing (was 18)
+  private ADDITIONAL_DOMAINS = 100; // Include more domains in searches (was 50)
+  private MAX_RESEARCH_TIME = 180000; // Longer research time in milliseconds (was 120000)
   private DEEP_RESEARCH_MODE = true; // Enable deep research mode
 
   constructor() {
@@ -377,7 +377,12 @@ export class ResearchEngine {
       // Calculate authority score
       let authorityScore = 0;
       try {
-        const domain = new URL(source.url).hostname;
+        // Ensure URL has protocol
+        let url = source.url;
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        const domain = new URL(url).hostname;
         authorityScore = this.getDomainAuthorityScore(domain);
       } catch (e) {
         authorityScore = 0.2; // Default if can't parse URL
@@ -437,6 +442,24 @@ export class ResearchEngine {
         architecture: `${mainKeywords} architecture design patterns`
       };
       
+      // Construct search query URLs for various search engines
+      const searchEngineUrls = [
+        `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+        `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+        `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`,
+        `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+        `https://www.wolframalpha.com/input?i=${encodeURIComponent(query)}`,
+        `https://www.startpage.com/sp/search?q=${encodeURIComponent(query)}`,
+        `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`,
+        `https://searx.thegpm.org/?q=${encodeURIComponent(query)}`,
+        `https://www.qwant.com/?q=${encodeURIComponent(query)}`,
+        `https://yandex.com/search/?text=${encodeURIComponent(query)}`,
+        `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`,
+        `https://swisscows.com/web?query=${encodeURIComponent(query)}`,
+        `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
+        `https://metager.org/meta/meta.ger3?eingabe=${encodeURIComponent(query)}`
+      ];
+      
       // Detect if query is about specific technologies
       const isTechQuery = /api|sdk|framework|library|platform|tool/i.test(query);
       
@@ -462,7 +485,11 @@ export class ResearchEngine {
           `https://replit.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
           `https://glitch.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
           `https://codepen.io/search/pens?q=${encodeURIComponent(humanQueries.examples)}`,
-          `https://jsfiddle.net/search/?q=${encodeURIComponent(humanQueries.examples)}`
+          `https://jsfiddle.net/search/?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://codesandbox.io/search?query=${encodeURIComponent(humanQueries.examples)}`,
+          `https://stackblitz.com/search?query=${encodeURIComponent(humanQueries.examples)}`,
+          `https://nodejs.org/api/all.html`,
+          `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(humanQueries.examples)}`
         ];
         
         // Add GitHub code search
@@ -484,7 +511,7 @@ export class ResearchEngine {
       }
       
       // More search queries from different engines for diversity
-      const searchEngineUrls = [
+      const additionalSearchUrls = [
         `https://www.google.com/search?q=${encodeURIComponent(humanQueries.general)}`,
         `https://www.google.com/search?q=${encodeURIComponent(humanQueries.features)}`,
         `https://duckduckgo.com/?q=${encodeURIComponent(humanQueries.general)}`,
@@ -502,7 +529,16 @@ export class ResearchEngine {
         `https://github.com/search?q=${encodeURIComponent(mainKeywords)}&type=repositories&s=updated&o=desc`,
         `https://www.w3schools.com/search/search.asp?q=${encodeURIComponent(mainKeywords)}`,
         `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(mainKeywords)}`,
-        `https://medium.com/search?q=${encodeURIComponent(mainKeywords)}&sort=recency`
+        `https://medium.com/search?q=${encodeURIComponent(mainKeywords)}&sort=recency`,
+        `https://www.npmjs.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(mainKeywords + ' tutorial')}`,
+        `https://css-tricks.com/?s=${encodeURIComponent(mainKeywords)}`,
+        `https://smashingmagazine.com/search/?q=${encodeURIComponent(mainKeywords)}`,
+        `https://web.dev/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://reactjs.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.python.org/3/search.html?q=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.microsoft.com/en-us/search/?terms=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.oracle.com/search/?search=${encodeURIComponent(mainKeywords)}`
       ];
       
       // Educational and documentation sites
@@ -510,23 +546,58 @@ export class ResearchEngine {
         `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(mainKeywords)}`,
         `https://www.tutorialspoint.com/search/search-results?search_string=${encodeURIComponent(mainKeywords)}`,
         `https://www.geeksforgeeks.org/search/?q=${encodeURIComponent(mainKeywords)}`,
-        `https://www.freecodecamp.org/news/search/?query=${encodeURIComponent(mainKeywords)}`
+        `https://www.freecodecamp.org/news/search/?query=${encodeURIComponent(mainKeywords)}`,
+        `https://hackr.io/tutorials/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.javatpoint.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.guru99.com/search.html?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.programiz.com/search/${encodeURIComponent(mainKeywords)}`,
+        `https://www.codecademy.com/search?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.khanacademy.org/search?page_search_query=${encodeURIComponent(mainKeywords)}`,
+        `https://developer.android.com/s/results?q=${encodeURIComponent(mainKeywords)}`
       ];
       
       // Add forum and discussion sites
       const forumUrls = [
         `https://www.reddit.com/search/?q=${encodeURIComponent(mainKeywords)}&sort=new`,
         `https://www.quora.com/search?q=${encodeURIComponent(mainKeywords)}`,
-        `https://discourse.org/search?q=${encodeURIComponent(mainKeywords)}`
+        `https://discourse.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forums.swift.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://community.openai.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.unity.com/search/search?keywords=${encodeURIComponent(mainKeywords)}`,
+        `https://gitter.im/home/search?term=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.codecademy.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.pytorch.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.tensorflow.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.djangoproject.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.vuejs.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forums.meteor.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.arduino.cc/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.xda-developers.com/search/?q=${encodeURIComponent(mainKeywords)}`
+      ];
+      
+      // Add academic and research sources
+      const academicUrls = [
+        `https://arxiv.org/search/?query=${encodeURIComponent(mainKeywords)}`,
+        `https://scholar.google.com/scholar?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.researchgate.net/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.semanticscholar.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${encodeURIComponent(mainKeywords)}`,
+        `https://dl.acm.org/action/doSearch?AllField=${encodeURIComponent(mainKeywords)}`,
+        `https://www.sciencedirect.com/search?qs=${encodeURIComponent(mainKeywords)}`,
+        `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(mainKeywords)}`,
+        `https://link.springer.com/search?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.ncbi.nlm.nih.gov/pmc/?term=${encodeURIComponent(mainKeywords)}`
       ];
       
       // Combine all URLs with domain-specific ones first, as they're more targeted
       let allUrls = [
         ...domainSpecificUrls,
         ...searchEngineUrls,
+        ...additionalSearchUrls,
         ...technicalUrls,
         ...educationalUrls,
-        ...forumUrls
+        ...forumUrls,
+        ...academicUrls
       ];
       
       // Add URLs for domain-specific sources identified for the query
@@ -582,9 +653,9 @@ export class ResearchEngine {
           }
           
           // Set a timeout for fetch to avoid hanging
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 12000); // Increased from 8000ms to 12000ms
+          
           console.log(`Fetching: ${url}`);
           const response = await fetch(url, { 
             signal: controller.signal,
@@ -594,9 +665,9 @@ export class ResearchEngine {
               'Accept-Language': 'en-US,en;q=0.5'
             }
           });
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
             console.log(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
             return null;
           }
@@ -682,7 +753,7 @@ export class ResearchEngine {
                   
                   // Set a timeout for fetch to avoid hanging
                   const linkController = new AbortController();
-                  const linkTimeoutId = setTimeout(() => linkController.abort(), 8000);
+                  const linkTimeoutId = setTimeout(() => linkController.abort(), 12000); // Increased from 8000ms to 12000ms
                   
                   console.log(`Fetching additional link: ${link}`);
                   const linkResponse = await fetch(link, { 
@@ -1370,7 +1441,12 @@ export class ResearchEngine {
     
     for (const source of sources) {
       try {
-        const domain = new URL(source.url).hostname;
+        // Ensure URL has protocol
+        let url = source.url || '';
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        const domain = new URL(url).hostname;
         domainCounts[domain] = (domainCounts[domain] || 0) + 1;
         
         if (highAuthorityDomains.some(authDomain => domain.includes(authDomain))) {
@@ -1658,7 +1734,7 @@ Please retry your query or contact support if this issue persists.
             try {
               console.log(`Checking authoritative source: ${source}`);
               const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 8000);
+              const timeout = setTimeout(() => controller.abort(), 12000); // Increased from 8000ms to 12000ms
               
               const response = await fetch(source, {
                 signal: controller.signal,
@@ -1784,7 +1860,12 @@ Please retry your query or contact support if this issue persists.
           initialSources.push(source);
           initialSourceUrls.add(source.url);
           try {
-            const domain = new URL(source.url).hostname;
+            // Ensure URL has protocol
+            let url = source.url || '';
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+              url = 'https://' + url;
+            }
+            const domain = new URL(url).hostname;
             dataStats.uniqueDomains.add(domain);
           } catch (e) {}
         });
@@ -1797,7 +1878,12 @@ Please retry your query or contact support if this issue persists.
             initialSources.push(source);
             initialSourceUrls.add(source.url);
             try {
-              const domain = new URL(source.url).hostname;
+              // Ensure URL has protocol
+              let url = source.url || '';
+              if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+              }
+              const domain = new URL(url).hostname;
               dataStats.uniqueDomains.add(domain);
             } catch (e) {}
           }
@@ -1815,7 +1901,12 @@ Please retry your query or contact support if this issue persists.
       const domainGroups: Record<string, {count: number, sources: ResearchSource[]}> = {};
       initialSources.forEach(source => {
         try {
-          const domain = new URL(source.url).hostname;
+          // Ensure URL has protocol
+          let url = source.url || '';
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+          }
+          const domain = new URL(url).hostname;
           if (!domainGroups[domain]) {
             domainGroups[domain] = {count: 1, sources: [source]};
           } else {
@@ -1828,7 +1919,12 @@ Please retry your query or contact support if this issue persists.
       // Calculate credibility score for each source
       initialSources = initialSources.map(source => {
         try {
-          const domain = new URL(source.url).hostname;
+          // Ensure URL has protocol
+          let url = source.url || '';
+          if (!url.startsWith('http://') && !url.startsWith('https://')) {
+            url = 'https://' + url;
+          }
+          const domain = new URL(url).hostname;
           const group = domainGroups[domain];
           
           // Calculate credibility factors:
@@ -1853,7 +1949,7 @@ Please retry your query or contact support if this issue persists.
           // Apply credibility adjustment to relevance
           const adjustedRelevance = Math.min(source.relevance + credibilityBoost, 1.0);
           
-            return this.createSourceObject({
+          return this.createSourceObject({
             ...source,
             relevance: adjustedRelevance
           });
@@ -2244,7 +2340,7 @@ Please retry your query or contact support if this issue persists.
       updatedSource.validationScore = this.calculateValidationScore({
         technicalConsistency: hasTechnicalTerms ? 0.8 : 0.4,
         queryAlignment: consistentWithQuery,
-        domainAuthority: this.getDomainAuthorityScore(source.url),
+        domainAuthority: this.getDomainAuthorityScore(source.url || ''),
         aiGenerated: aiGenerationScore,
         factualClaims: factualClaimsScore,
         freshness: freshnessScore,
@@ -2265,12 +2361,7 @@ Please retry your query or contact support if this issue persists.
       return updatedSource;
     } catch (error) {
       console.error("Error validating source:", error);
-      // Ensure timestamp exists in the returned object
-      return { 
-        ...source, 
-        validationScore: 0.5,
-        timestamp: source.timestamp || new Date().toISOString()
-      };
+      return source; // Return the original source if validation fails
     }
   }
   
@@ -2596,6 +2687,11 @@ Please retry your query or contact support if this issue persists.
    */
   private getDomainAuthorityScore(url: string): number {
     try {
+      // Ensure URL has protocol
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      
       const domain = new URL(url).hostname.toLowerCase();
       
       // High authority technical domains
