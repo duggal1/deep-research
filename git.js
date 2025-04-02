@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-/* eslint-disable @typescript-eslint/no-require-imports */
 
 // run "node git " cli command to make it automate the git actions
 const { execSync } = require('child_process');
