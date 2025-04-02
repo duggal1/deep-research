@@ -172,7 +172,7 @@ export async function POST(req: Request) {
             domain = allReliableDomains[Math.floor(Math.random() * allReliableDomains.length)];
           }
 
-          // Ensure URL has proper format and uses the reliable domain
+          // Ensure URL has proper format and uses the reliable domains
           const url = `https://${domain}`;
 
           // Generate a realistic title based on the query and domain
