@@ -11,21 +11,22 @@ export class ResearchEngine {
   private model: any;
   private embeddingModel: any;
   private cache: Map<string, { data: ResearchResult; timestamp: number }>;
-  private CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+  private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
-  private queryContext: Map<string, any> = new Map(); // Store query context for adaptation
-  private MAX_DATA_SOURCES = 15000; // Significantly increased from 850 to support 15000+ sources
-  private MAX_TOKEN_OUTPUT = 250000; // Increased token output for more comprehensive reports (was 200000)
-  private CHUNK_SIZE = 20000; // Process larger chunks of data
-  private SEARCH_DEPTH = 10; // Increased search depth for more thorough research
-  private MAX_PARALLEL_REQUESTS = 40; // Increased parallel processing capacity
-  private ADDITIONAL_DOMAINS = 200; // Include more domains in searches
-  private MAX_RESEARCH_TIME = 180000; // Longer research time in milliseconds (was 120000)
-  private DEEP_RESEARCH_MODE = true; // Enable deep research mode
-  private sourcesCollected: number = 0; // Track sources collected during research
-  private domainsCollected: Set<string> = new Set(); // Track unique domains
-  private dataSize: number = 0; // Track data size in KB
-  private elapsedTime: number = 0; // Track elapsed time
+  private queryContext: Map<string, any> = new Map();
+  private MAX_DATA_SOURCES = 15000;
+  private MAX_TOKEN_OUTPUT = 250000;
+  private CHUNK_SIZE = 20000;
+  private SEARCH_DEPTH = 10;
+  private MAX_PARALLEL_REQUESTS = 40;
+  private ADDITIONAL_DOMAINS = 200;
+  private MAX_RESEARCH_TIME = 180000;
+  private DEEP_RESEARCH_MODE = true;
+  private sourcesCollected: number = 0;
+  private domainsCollected: Set<string> = new Set();
+  private dataSize: number = 0;
+  private elapsedTime: number = 0;
+
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
