@@ -1,9 +1,16 @@
 import React from 'react'
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
 
-const page = () => {
+const Page = () => {
   return (
-    <div className=' flex justify-center items-center h-screen text-5xl font-serif truncate font-bold'>welcome to my landing page bitch!</div>
+    <div className="flex flex-col justify-center items-center h-screen gap-6">
+      <div className="text-5xl font-serif font-bold">Welcome to my landing page!</div>
+      <Link href="/main">
+        <Button>Get Started for free</Button>
+      </Link>
+    </div>
   )
 }
 
-export default page
+export default Page
