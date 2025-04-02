@@ -6,6 +6,7 @@ const researchEngine = new ResearchEngine();
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
+export const maxDuration = 300; // Increase max duration to 5 minutes
 
 export async function POST(req: Request) {
   try {
@@ -83,10 +84,10 @@ export async function POST(req: Request) {
           f.key.toLowerCase().includes('information'));
         
         // Set content from findings or use first finding as fallback
-        executiveSummary = summaryFinding ? summaryFinding.details : result.findings[0].details.slice(0, 300);
+        executiveSummary = summaryFinding ? summaryFinding.details : (result.findings[0].details.slice(0, 500));
         keyFindings = keyFindingsList.length > 0 
           ? keyFindingsList.map(f => f.details).join('\n\n')
-          : result.findings[0].details.slice(0, 500);
+          : (result.findings[0].details.slice(0, 1000));
         detailedAnalysis = detailsFinding 
           ? detailsFinding.details 
           : result.findings.map(f => `${f.key}:\n${f.details}`).join('\n\n');
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
       // Format sources with relevance
       const formattedSources = result.sources
         .sort((a, b) => b.relevance - a.relevance)
-        .slice(0, 10) // Limit to top 10 sources
+        .slice(0, 25) // Show top 25 sources instead of 10
         .map(s => ({
           title: s.title || "Unknown source",
           url: s.url || "#",
@@ -152,7 +153,7 @@ Executive Summary:
 ${executiveSummary}
 
 Key Findings:
-${keyFindings.split('\n').slice(0, 5).join('\n')}
+${keyFindings}
 
 Detailed Analysis:
 ${detailedAnalysis}${codeExampleSection}${insightsSection}
