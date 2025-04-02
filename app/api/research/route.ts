@@ -180,11 +180,25 @@ export async function POST(req: Request) {
         else if (/typescript|ts/i.test(query)) language = 'typescript';
         else if (/react|next\.?js/i.test(query)) language = 'jsx';
 
-        // Generate a code example prompt for the AI
+        // Generate a code example prompt for the AI with explicit formatting instructions
         const codePrompt = `
           Generate a practical code example for: "${query}"
-          Use ${language} and follow best practices.
-          The example should be concise but complete enough to demonstrate the concept.
+
+          Requirements:
+          1. Use ${language} programming language
+          2. Follow best practices and modern conventions
+          3. Include comments to explain key parts
+          4. Make sure the code is complete and functional
+          5. Keep it concise but comprehensive enough to demonstrate the concept
+
+          IMPORTANT: Format your response EXACTLY like this:
+
+          \`\`\`${language}
+          // Your code here
+          \`\`\`
+
+          DO NOT include any explanation text outside the code block.
+          ONLY return the code block with the ${language} syntax.
         `;
 
         try {
@@ -192,10 +206,22 @@ export async function POST(req: Request) {
           const codeResult = await researchEngine.generateContent(codePrompt);
           const codeText = codeResult.response.text();
 
-          // Extract code from the response
-          const codeMatch = codeText.match(/\`\`\`(?:[\w]+)?\n([\s\S]*?)\n\`\`\`/);
-          if (codeMatch && codeMatch[1]) {
-            codeExampleSection = `\n\n## Code Example\n\`\`\`${language}\n${codeMatch[1].trim()}\n\`\`\``;
+          // Extract code from the response with improved regex
+          const codeMatch = codeText.match(/```(?:[\w]+)?\s*\n([\s\S]*?)\n```/);
+          if (codeMatch && codeMatch[1] && codeMatch[1].trim().length > 0) {
+            // Ensure the code has proper syntax elements to be detected as code
+            const code = codeMatch[1].trim();
+
+            // Add a title based on the query
+            let title = "Implementation Example";
+            if (query.length < 50) {
+              title = query.charAt(0).toUpperCase() + query.slice(1);
+            }
+
+            codeExampleSection = `\n\n## Code Example: ${title}\n\`\`\`${language}\n${code}\n\`\`\``;
+
+            // Add log for code generation
+            addLog(`Generated code example (${code.split('\n').length} lines of ${language})`);
           }
         } catch (e) {
           console.error("Failed to generate code example:", e);

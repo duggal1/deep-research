@@ -447,18 +447,34 @@ export default function Home() {
       const match = /language-(\w+)/.exec(className || '');
       const code = String(children).replace(/\n$/, '');
 
-      // Improved code detection logic
-      // 1. If language is specified, it's definitely code
-      // 2. If no language but has code-like syntax (brackets, operators, etc.)
-      // 3. Check for common programming patterns
-      const hasCodeSyntax = /[{}[\]()<>:;=+\-*/%]/.test(code);
-      const hasCodePatterns = /\b(function|const|let|var|if|else|for|while|return|import|export|class|interface|type|async|await)\b/.test(code);
-      const hasHTMLTags = /<\/?[a-z][\s\S]*>/i.test(code);
-      const isMultiLine = code.includes('\n');
-      const isRealCode = match || (hasCodeSyntax && (hasCodePatterns || isMultiLine || hasHTMLTags));
+      // Very strict code detection logic to prevent false positives
 
-      // Only treat as code block if it's not inline and is real code
-      if (!inline && isRealCode) {
+      // Only treat as code block if it meets one of these strict criteria
+      const isCodeBlock = !inline && (
+        // 1. Has explicit language specified (most reliable indicator)
+        match ||
+
+        // 2. Contains multiple lines AND has clear code syntax
+        (code.includes('\n') &&
+         // Must have brackets AND either semicolons or assignments
+         /[{}]/.test(code) &&
+         /[;=]/.test(code)) ||
+
+        // 3. Contains specific programming keywords AND syntax
+        (/\b(function|const|let|var|if|else|for|while|return|import|export|class)\b/.test(code) &&
+         // Must have both brackets and parentheses
+         /[{}]/.test(code) &&
+         /[\(\)]/.test(code))
+      );
+
+      // Check for common false positives (text that looks like code but isn't)
+      const isProbablyText =
+        // Long paragraphs without code syntax
+        (code.length > 100 && !code.includes('\n') && !code.includes(';') && !code.includes('{}')) ||
+        // Contains many spaces between words (natural language)
+        (code.split(' ').length > 15 && !/[{}[\]();]/.test(code));
+
+      if (isCodeBlock && !isProbablyText) {
         return (
           <div className="group relative my-6">
             <div className="top-2 right-2 z-10 absolute">
