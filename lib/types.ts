@@ -61,6 +61,12 @@ export interface ResearchResult {
     timestamp: string;
     error?: string;
   };
+  researchMetrics?: {
+    sourcesCount: number;
+    domainsCount: number;
+    dataSize: string;
+    elapsedTime: number;
+  };
 }
 
 export interface ResearchError {

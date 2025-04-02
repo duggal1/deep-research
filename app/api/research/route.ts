@@ -147,28 +147,75 @@ export async function POST(req: Request) {
              (result as any).confidence >= 0.5 ? 'MEDIUM' : 'LOW')
           : 'MEDIUM';
           
+      // Format the detailed analysis to ensure proper markdown
+      let formattedDetailedAnalysis = detailedAnalysis;
+
+      // Fix table formatting issues
+      if (detailedAnalysis.includes('|')) {
+        formattedDetailedAnalysis = detailedAnalysis
+          .replace(/\|\s*---+\s*\|/g, '| --- |')
+          .replace(/\|[-\s|]+\n/g, '| --- | --- | --- |\n');
+      }
+
+      // Fix comparative assessment section formatting
+      if (detailedAnalysis.includes('COMPARATIVE ASSESSMENT')) {
+        formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
+          /(COMPARATIVE ASSESSMENT[\s\S]*?)(\n\n|$)/g,
+          '## Comparative Assessment\n\n$1\n\n'
+        );
+      }
+
+      // Remove excessive dashes that break markdown formatting
+      formattedDetailedAnalysis = formattedDetailedAnalysis.replace(/[-]{10,}/g, '---');
+
+      // Ensure proper spacing around headings
+      formattedDetailedAnalysis = formattedDetailedAnalysis.replace(/(\n#+\s.*?)(\n[^#\n])/g, '$1\n$2');
+
+      // Fix broken markdown tables
+      if (formattedDetailedAnalysis.includes('|')) {
+        // Fix inconsistent table formatting
+        formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
+          /\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|[\s-]*\n/g,
+          (match, col1, col2, col3) => {
+            return `| ${col1.trim()} | ${col2.trim()} | ${col3.trim()} |\n| --- | --- | --- |\n`;
+          }
+        );
+      }
+
+      // Get research metrics from result
+      const researchMetrics = result.researchMetrics || {
+        sourcesCount: result.sources.length,
+        domainsCount: new Set(result.sources.map(s => {
+          try { return new URL(s.url).hostname; } catch (e) { return s.url; }
+        })).size,
+        dataSize: `${Math.round(Buffer.byteLength(JSON.stringify(result), 'utf8') / 1024)}KB`,
+        elapsedTime: result.metadata.executionTimeMs
+      };
+
       return NextResponse.json({
         report: `
-Executive Summary:
+## Executive Summary
 ${executiveSummary}
 
-Key Findings:
+## Key Findings
 ${keyFindings}
 
-Detailed Analysis:
-${detailedAnalysis}${codeExampleSection}${insightsSection}
+## Detailed Analysis
+${formattedDetailedAnalysis}${codeExampleSection}${insightsSection}
 
-Research Methodology:
+## Research Methodology
 This deep research was conducted through iterative, autonomous exploration. The engine first created a research plan, then conducted initial investigations, identified knowledge gaps, and performed targeted follow-up research.
 
-Research Path:
+## Research Path
 ${formattedPath.join('\n')}
 
-Top Sources:
+## Top Sources
 ${formattedSources.map(s => `- ${s.title} (Relevance: ${s.relevance})\n  ${s.url}`).join('\n')}
 
-Confidence Level: ${confidenceLevel}
-        `.trim()
+## Confidence Level
+${confidenceLevel}
+        `.trim(),
+        metrics: researchMetrics
       }, {
         status: 200,
         headers: {

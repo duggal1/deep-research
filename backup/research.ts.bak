@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { enhancedFetch, domainAwareFetch } from './enhanced-fetch';
 import { ResearchResult, ResearchSource, ResearchPlan, ResearchFinding, CodeExample, ResearchConfidenceLevel } from './types';
 
 // Add embedding model
@@ -14,18 +15,14 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60; // 1 hour
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map(); // Store query context for adaptation
-  private MAX_DATA_SOURCES = 850; // Increased from 400 to get 850+ sources
-  private MAX_TOKEN_OUTPUT = 120000; // Substantially increased token output limit (was 64000)
-  private CHUNK_SIZE = 15000; // Process much larger chunks of data (was 10000)
-  private SEARCH_DEPTH = 8; // Significantly increased search depth (was 5)
-  private MAX_PARALLEL_REQUESTS = 30; // Increased parallel processing (was 24)
-  private ADDITIONAL_DOMAINS = 150; // Include more domains in searches (was 100)
-  private MAX_RESEARCH_TIME = 180000; // Longer research time in milliseconds (was 120000)
+  private MAX_DATA_SOURCES = 850; // Significantly increased to 850+ sources
+  private MAX_TOKEN_OUTPUT = 150000; // Substantially increased token output limit
+  private CHUNK_SIZE = 18000; // Process much larger chunks of data
+  private SEARCH_DEPTH = 10; // Significantly increased search depth
+  private MAX_PARALLEL_REQUESTS = 30; // Increased parallel processing
+  private ADDITIONAL_DOMAINS = 150; // Include more domains in searches
+  private MAX_RESEARCH_TIME = 120000; // Optimized research time in milliseconds
   private DEEP_RESEARCH_MODE = true; // Enable deep research mode
-  private sourcesCollected: number = 0; // Track sources collected during research
-  private domainsCollected: Set<string> = new Set(); // Track unique domains
-  private dataSize: number = 0; // Track data size in KB
-  private elapsedTime: number = 0; // Track elapsed time
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -98,42 +95,11 @@ export class ResearchEngine {
     };
   }
 
-  private getCachedResult(query: string): ResearchResult & {
-    analysis: string;
-    researchPath: string[];
-    plan: ResearchPlan;
-    researchMetrics?: {
-      sourcesCount: number;
-      domainsCount: number;
-      dataSize: string;
-      elapsedTime: number;
-    };
-  } | null {
-    const cachedItem = this.cache.get(query);
-    
-    if (cachedItem && (Date.now() - cachedItem.timestamp) < this.CACHE_DURATION) {
-      const cachedResult = cachedItem.data;
-      
-      // Ensure the cached result has all required properties for the extended type
-      // If any of these properties don't exist, don't use the cache
-      if (!('analysis' in cachedResult) || !('researchPath' in cachedResult) || !('plan' in cachedResult)) {
-        return null;
-      }
-      
-      // Cast to the extended type since we've verified the properties exist
-      return cachedResult as ResearchResult & {
-        analysis: string;
-        researchPath: string[];
-        plan: ResearchPlan;
-        researchMetrics?: {
-          sourcesCount: number;
-          domainsCount: number;
-          dataSize: string;
-          elapsedTime: number;
-        };
-      };
+  private getCachedResult(query: string): ResearchResult | null {
+    const cached = this.cache.get(query);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_DURATION) {
+      return cached.data;
     }
-    
     return null;
   }
 
@@ -364,26 +330,526 @@ export class ResearchEngine {
   }
 
   /**
+   * Fallback research method when web crawling fails
+   * @param query The search query
+   * @param depth The search depth
+   * @returns Research data and sources
+   */
+  private async fallbackResearch(query: string, depth: number = 1): Promise<{
+    data: string;
+    sources: ResearchSource[];
+  }> {
+    console.log(`Using fallback research for query: "${query}"`);
+
+    // Create some basic sources with general information
+    const sources: ResearchSource[] = [
+      {
+        url: 'https://fallback-source.example.com/general-info',
+        title: 'General Information (Fallback)',
+        content: `This is fallback content for the query: "${query}". The web crawling process encountered an error, so we're providing basic information.`,
+        relevance: 0.7,
+        timestamp: new Date().toISOString()
+      }
+    ];
+
+    // Try to get some relevant domains for this query
+    const relevantDomains = this.identifyRelevantDomains(query);
+
+    // Add some fallback sources based on the query type
+    if (query.toLowerCase().includes('javascript') || query.toLowerCase().includes('js')) {
+      sources.push({
+        url: 'https://developer.mozilla.org/en-US/docs/Web/JavaScript',
+        title: 'JavaScript Documentation (MDN Web Docs)',
+        content: 'JavaScript (JS) is a lightweight, interpreted, or just-in-time compiled programming language with first-class functions.',
+        relevance: 0.8,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    if (query.toLowerCase().includes('python')) {
+      sources.push({
+        url: 'https://docs.python.org/3/',
+        title: 'Python Documentation',
+        content: 'Python is a programming language that lets you work quickly and integrate systems more effectively.',
+        relevance: 0.8,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Combine all the content
+    const combinedData = sources
+      .map(s => `Source: ${s.title}\n${s.content}`)
+      .join('\n\n---\n\n');
+
+    return {
+      data: combinedData,
+      sources
+    };
+  }
+
+  /**
+   * Adapt search strategy based on previous queries and results
+   * @param query The current query
+   * @param result The result data to learn from
+   */
+  private adaptSearchStrategy(query: string, result: { sources: ResearchSource[], data: string }): void {
+    try {
+      // Store query context for future adaptation
+      this.queryContext.set(query, {
+        timestamp: Date.now(),
+        sourceCount: result.sources.length,
+        domains: result.sources.map(s => {
+          try {
+            return new URL(s.url).hostname;
+          } catch (e) {
+            return '';
+          }
+        }).filter(Boolean),
+        topRelevanceScores: result.sources
+          .slice(0, 5)
+          .map(s => s.relevance)
+      });
+
+      // Limit context size
+      if (this.queryContext.size > 50) {
+        // Remove oldest entries
+        const entries = Array.from(this.queryContext.entries());
+        const oldestEntries = entries
+          .sort((a, b) => a[1].timestamp - b[1].timestamp)
+          .slice(0, 10);
+
+        for (const [key] of oldestEntries) {
+          this.queryContext.delete(key);
+        }
+      }
+    } catch (error) {
+      console.error("Error adapting search strategy:", error);
+      // Non-critical error, can be ignored
+    }
+  }
+
+  /**
    * Prioritize sources based on freshness and authority
    */
+  /**
+   * Calculate a freshness score for content based on date signals
+   * @param content The content to analyze
+   * @param query The original query
+   * @returns A score between 0 and 1 indicating freshness
+   */
+  private calculateFreshnessScore(content: string, query: string): number {
+    // Default score if we can't determine freshness
+    let freshnessScore = 0.5;
+
+    try {
+      // Look for date patterns in the content
+      const currentYear = new Date().getFullYear();
+      const lastYear = currentYear - 1;
+
+      // Check for current year
+      if (content.includes(currentYear.toString())) {
+        freshnessScore = 0.9;
+      }
+      // Check for last year
+      else if (content.includes(lastYear.toString())) {
+        freshnessScore = 0.7;
+      }
+
+      // Look for date patterns like "Updated on", "Published on", etc.
+      const datePatterns = [
+        /updated\s+on\s+(\w+\s+\d{1,2},?\s+\d{4})/i,
+        /published\s+on\s+(\w+\s+\d{1,2},?\s+\d{4})/i,
+        /posted\s+on\s+(\w+\s+\d{1,2},?\s+\d{4})/i,
+        /date:\s+(\w+\s+\d{1,2},?\s+\d{4})/i,
+        /(\d{1,2}\s+\w+\s+\d{4})/i,
+        /(\w+\s+\d{1,2},?\s+\d{4})/i
+      ];
+
+      for (const pattern of datePatterns) {
+        const match = content.match(pattern);
+        if (match && match[1]) {
+          try {
+            const date = new Date(match[1]);
+            if (!isNaN(date.getTime())) {
+              const now = new Date();
+              const ageInDays = (now.getTime() - date.getTime()) / (24 * 60 * 60 * 1000);
+
+              if (ageInDays < 7) {
+                freshnessScore = 1.0; // Very fresh (last week)
+              } else if (ageInDays < 30) {
+                freshnessScore = 0.9; // Fresh (last month)
+              } else if (ageInDays < 90) {
+                freshnessScore = 0.8; // Somewhat fresh (last 3 months)
+              } else if (ageInDays < 365) {
+                freshnessScore = 0.6; // Moderately fresh (last year)
+              } else if (ageInDays < 730) {
+                freshnessScore = 0.4; // Somewhat old (last 2 years)
+              } else {
+                freshnessScore = 0.2; // Old (more than 2 years)
+              }
+
+              // Once we find a valid date, we can stop looking
+              break;
+            }
+          } catch (e) {
+            // If date parsing fails, continue with the next pattern
+            continue;
+          }
+        }
+      }
+
+      // Adjust score based on recency terms in the content
+      const recencyTerms = [
+        'latest', 'newest', 'recent', 'just released', 'new version',
+        'update', 'updated', 'current', 'now available', 'this month',
+        'this week', 'today', 'yesterday', 'this year'
+      ];
+
+      for (const term of recencyTerms) {
+        if (content.toLowerCase().includes(term)) {
+          freshnessScore = Math.min(freshnessScore + 0.1, 1.0);
+        }
+      }
+
+      return freshnessScore;
+    } catch (e) {
+      console.error("Error calculating freshness score:", e);
+      return 0.5; // Default score on error
+    }
+  }
+
+  /**
+   * Calculate a legacy relevance score without using embeddings
+   * @param text The text to evaluate
+   * @param query The query to compare against
+   * @returns A relevance score between 0 and 1
+   */
+  private calculateRelevanceLegacy(text: string, query: string): number {
+    try {
+      // Normalize text and query
+      const normalizedText = text.toLowerCase();
+      const normalizedQuery = query.toLowerCase();
+
+      // Extract keywords from query (remove common words)
+      const stopWords = new Set([
+        'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
+        'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'like',
+        'through', 'over', 'before', 'after', 'between', 'under', 'during',
+        'how', 'what', 'when', 'where', 'why', 'who', 'which', 'that',
+        'can', 'could', 'should', 'would', 'may', 'might', 'must', 'will'
+      ]);
+
+      const queryKeywords = normalizedQuery
+        .split(/\s+/)
+        .filter(word => word.length > 2 && !stopWords.has(word));
+
+      if (queryKeywords.length === 0) {
+        // If no meaningful keywords, use the whole query
+        queryKeywords.push(...normalizedQuery.split(/\s+/).filter(w => w.length > 2));
+      }
+
+      // Calculate keyword presence score
+      let keywordMatches = 0;
+      for (const keyword of queryKeywords) {
+        if (normalizedText.includes(keyword)) {
+          keywordMatches++;
+        }
+      }
+
+      const keywordScore = queryKeywords.length > 0
+        ? keywordMatches / queryKeywords.length
+        : 0;
+
+      // Calculate exact phrase match score
+      const phraseScore = normalizedText.includes(normalizedQuery) ? 0.3 : 0;
+
+      // Calculate keyword density score
+      const textWords = normalizedText.split(/\s+/).length;
+      let keywordDensity = 0;
+
+      if (textWords > 0) {
+        let keywordCount = 0;
+        for (const keyword of queryKeywords) {
+          const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'gi');
+          const matches = normalizedText.match(regex);
+          keywordCount += matches ? matches.length : 0;
+        }
+
+        keywordDensity = keywordCount / textWords;
+      }
+
+      const densityScore = Math.min(keywordDensity * 10, 0.3);
+
+      // Calculate proximity score (how close query terms appear together)
+      let proximityScore = 0;
+      if (queryKeywords.length > 1) {
+        // Simple implementation - check if keywords appear within a certain distance
+        const words = normalizedText.split(/\s+/);
+        const positions: Record<string, number[]> = {};
+
+        // Find positions of all keywords
+        queryKeywords.forEach(keyword => {
+          positions[keyword] = [];
+        });
+
+        words.forEach((word, index) => {
+          queryKeywords.forEach(keyword => {
+            if (word.includes(keyword)) {
+              positions[keyword].push(index);
+            }
+          });
+        });
+
+        // Calculate minimum distance between different keywords
+        let minDistance = words.length;
+        const keywordsWithPositions = Object.keys(positions).filter(k => positions[k].length > 0);
+
+        if (keywordsWithPositions.length > 1) {
+          for (let i = 0; i < keywordsWithPositions.length; i++) {
+            for (let j = i + 1; j < keywordsWithPositions.length; j++) {
+              const pos1 = positions[keywordsWithPositions[i]];
+              const pos2 = positions[keywordsWithPositions[j]];
+
+              for (const p1 of pos1) {
+                for (const p2 of pos2) {
+                  const distance = Math.abs(p1 - p2);
+                  minDistance = Math.min(minDistance, distance);
+                }
+              }
+            }
+          }
+
+          // Convert distance to score (closer is better)
+          proximityScore = minDistance <= 5 ? 0.2 :
+                          minDistance <= 10 ? 0.1 :
+                          minDistance <= 20 ? 0.05 : 0;
+        }
+      }
+
+      // Combine scores with weights
+      const combinedScore =
+        (keywordScore * 0.4) +
+        (phraseScore * 0.3) +
+        (densityScore * 0.2) +
+        (proximityScore * 0.1);
+
+      return Math.min(combinedScore, 1.0);
+    } catch (e) {
+      console.error("Error calculating legacy relevance:", e);
+      return 0.3; // Default moderate relevance on error
+    }
+  }
+
+  /**
+   * Get authority score for a domain based on its reputation
+   * @param domain The domain to evaluate
+   * @returns A score between 0 and 1 indicating authority
+   */
+  private getDomainAuthorityScore(domain: string): number {
+    // High authority technical and educational domains
+    const highAuthorityDomains = [
+      'github.com', 'stackoverflow.com', 'developer.mozilla.org',
+      'docs.python.org', 'reactjs.org', 'angular.io', 'vuejs.org',
+      'tensorflow.org', 'pytorch.org', 'kubernetes.io', 'docker.com',
+      'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
+      'developer.android.com', 'developer.apple.com', 'docs.microsoft.com',
+      'web.dev', 'developers.google.com', 'medium.com', 'arxiv.org',
+      'research.google', 'openai.com', 'huggingface.co', 'kaggle.com',
+      'wikipedia.org', 'w3.org', 'w3schools.com', 'freecodecamp.org',
+      'mit.edu', 'stanford.edu', 'harvard.edu', 'berkeley.edu',
+      'coursera.org', 'udacity.com', 'edx.org', 'khanacademy.org'
+    ];
+
+    // Medium authority domains
+    const mediumAuthorityDomains = [
+      'npmjs.com', 'pypi.org', 'maven.org', 'nuget.org',
+      'digitalocean.com', 'linode.com', 'heroku.com', 'netlify.com',
+      'vercel.com', 'cloudflare.com', 'akamai.com', 'fastly.com',
+      'reddit.com', 'dev.to', 'hashnode.dev', 'hackernoon.com',
+      'smashingmagazine.com', 'css-tricks.com', 'alistapart.com',
+      'tutorialspoint.com', 'geeksforgeeks.org', 'javatpoint.com',
+      'baeldung.com', 'sitepoint.com', 'scotch.io', 'codepen.io',
+      'replit.com', 'codesandbox.io', 'glitch.com', 'codewars.com',
+      'hackerrank.com', 'leetcode.com', 'topcoder.com', 'codeforces.com'
+    ];
+
+    // Check for exact domain match
+    if (highAuthorityDomains.some(d => domain === d || domain.endsWith('.' + d))) {
+      return 0.9;
+    }
+
+    if (mediumAuthorityDomains.some(d => domain === d || domain.endsWith('.' + d))) {
+      return 0.7;
+    }
+
+    // Check for educational and government domains
+    if (domain.endsWith('.edu') || domain.endsWith('.gov')) {
+      return 0.85;
+    }
+
+    // Check for organizational domains
+    if (domain.endsWith('.org')) {
+      return 0.65;
+    }
+
+    // Check for company domains
+    if (domain.endsWith('.com') || domain.endsWith('.io') || domain.endsWith('.co')) {
+      return 0.5;
+    }
+
+    // Default score for other domains
+    return 0.3;
+  }
+
+  /**
+   * Identify relevant domains for a specific query
+   * @param query The search query
+   * @returns Array of relevant domain URLs
+   */
+  private identifyRelevantDomains(query: string): string[] {
+    const queryLower = query.toLowerCase();
+    const domains: string[] = [];
+
+    // Programming languages
+    if (queryLower.includes('javascript') || queryLower.includes('js')) {
+      domains.push(
+        'developer.mozilla.org',
+        'javascript.info',
+        'npmjs.com',
+        'nodejs.org'
+      );
+    }
+
+    if (queryLower.includes('typescript') || queryLower.includes('ts')) {
+      domains.push(
+        'typescriptlang.org',
+        'github.com/microsoft/typescript',
+        'typescript-eslint.io'
+      );
+    }
+
+    if (queryLower.includes('python')) {
+      domains.push(
+        'docs.python.org',
+        'pypi.org',
+        'realpython.com',
+        'python.org'
+      );
+    }
+
+    if (queryLower.includes('java')) {
+      domains.push(
+        'docs.oracle.com/javase',
+        'baeldung.com',
+        'dev.java',
+        'spring.io'
+      );
+    }
+
+    if (queryLower.includes('c#') || queryLower.includes('csharp') || queryLower.includes('.net')) {
+      domains.push(
+        'docs.microsoft.com/dotnet',
+        'learn.microsoft.com/dotnet',
+        'nuget.org'
+      );
+    }
+
+    // Frameworks
+    if (queryLower.includes('react')) {
+      domains.push(
+        'reactjs.org',
+        'react.dev',
+        'legacy.reactjs.org'
+      );
+    }
+
+    if (queryLower.includes('angular')) {
+      domains.push(
+        'angular.io',
+        'material.angular.io'
+      );
+    }
+
+    if (queryLower.includes('vue')) {
+      domains.push(
+        'vuejs.org',
+        'pinia.vuejs.org',
+        'router.vuejs.org'
+      );
+    }
+
+    if (queryLower.includes('svelte')) {
+      domains.push(
+        'svelte.dev',
+        'kit.svelte.dev'
+      );
+    }
+
+    // Cloud providers
+    if (queryLower.includes('aws') || queryLower.includes('amazon web services')) {
+      domains.push(
+        'aws.amazon.com',
+        'docs.aws.amazon.com'
+      );
+    }
+
+    if (queryLower.includes('azure') || queryLower.includes('microsoft cloud')) {
+      domains.push(
+        'azure.microsoft.com',
+        'learn.microsoft.com/azure'
+      );
+    }
+
+    if (queryLower.includes('gcp') || queryLower.includes('google cloud')) {
+      domains.push(
+        'cloud.google.com',
+        'developers.google.com/cloud'
+      );
+    }
+
+    // AI and ML
+    if (queryLower.includes('machine learning') || queryLower.includes('ml') ||
+        queryLower.includes('ai') || queryLower.includes('artificial intelligence')) {
+      domains.push(
+        'tensorflow.org',
+        'pytorch.org',
+        'huggingface.co',
+        'kaggle.com',
+        'paperswithcode.com',
+        'arxiv.org'
+      );
+    }
+
+    // Always include these general programming resources
+    domains.push(
+      'github.com',
+      'stackoverflow.com',
+      'medium.com',
+      'dev.to',
+      'freecodecamp.org'
+    );
+
+    return domains.map(domain => `https://${domain}`);
+  }
+
   private prioritizeSources(sources: ResearchSource[], query: string): ResearchSource[] {
     // Check how fresh content needs to be based on query
     const needsVeryRecent = /latest|newest|new|recent|update|changelog|release|version|202[3-5]/i.test(query);
     const needsModeratelyRecent = /last year|trend|current|modern|today/i.test(query);
-    
+
     // Prioritization weights
     const weights = {
       freshness: needsVeryRecent ? 0.4 : needsModeratelyRecent ? 0.25 : 0.1,
       authority: 0.3,
       relevance: 0.3
     };
-    
+
     // Current date for comparison
     const now = Date.now();
     const ONE_DAY = 24 * 60 * 60 * 1000;
     const ONE_MONTH = 30 * ONE_DAY;
     const ONE_YEAR = 365 * ONE_DAY;
-    
+
     // Score and sort sources
     return sources.map(source => {
       // Parse the timestamp
@@ -393,7 +859,7 @@ export class ResearchEngine {
       } catch (e) {
         timestamp = now - ONE_YEAR; // Default to 1 year old if invalid
       }
-      
+
       // Calculate freshness score
       const age = now - timestamp;
       let freshnessScore;
@@ -408,7 +874,7 @@ export class ResearchEngine {
       } else {
         freshnessScore = 0.1; // Old (more than a year)
       }
-      
+
       // Calculate authority score
       let authorityScore = 0;
       try {
@@ -422,13 +888,13 @@ export class ResearchEngine {
       } catch (e) {
         authorityScore = 0.2; // Default if can't parse URL
       }
-      
+
       // Calculate combined priority score
-      const priorityScore = 
+      const priorityScore =
         (freshnessScore * weights.freshness) +
         (authorityScore * weights.authority) +
         (source.relevance * weights.relevance);
-      
+
       // Return source with updated relevance reflecting the prioritization
       return {
         ...source,
@@ -440,220 +906,318 @@ export class ResearchEngine {
 
   /**
    * Improved web crawling with error resilience and adaptation
+   * Uses enhanced fetch utilities for better performance and reliability
    */
   private async crawlWeb(query: string, depth: number = 2): Promise<{
     data: string;
     sources: ResearchSource[];
   }> {
-    // Prepare search queries
-    const searchQueries = this.generateSearchQueries(query);
-    console.log(`Generated ${searchQueries.length} search queries for "${query}"`);
-    
-    // Get domains related to the query
-    const domains = this.identifyRelevantDomains(query);
-    console.log(`Identified ${domains.length} relevant domains for "${query}"`);
-    
-    // Create search URLs
-    const searchUrls = this.createSearchUrls(searchQueries, domains);
-    console.log(`Created ${searchUrls.length} search URLs`);
-    
-    // Prepare to store search results
-    let allResults: string[] = [];
-    let allSources: ResearchSource[] = [];
-    
     try {
-      // Perform web searches
-      console.log(`Executing web search with ${searchUrls.length} URLs`);
+      console.log(`Starting web crawling for query: "${query}" at depth ${depth} with ${this.MAX_PARALLEL_REQUESTS} parallel requests`);
+
+      // Extract main keywords from the query (remove filler words)
+      const mainKeywords = query
+        .replace(/how to|what is|guide to|tutorial for|examples of|explain/gi, '')
+        .replace(/['"]/g, '')  // Remove quotes
+        .trim();
       
-      // Adjust this to simulate more sources if needed
-      const extraUrls: string[] = [];
-      if (process.env.NODE_ENV === 'development') {
-        // In development, simulate additional URLs to reach 850+ sources
-        const baseUrls = [
-          'https://github.com', 'https://stackoverflow.com', 'https://developer.mozilla.org',
-          'https://typescript.org', 'https://typescriptlang.org', 'https://medium.com',
-          'https://dev.to', 'https://hashnode.com', 'https://docs.microsoft.com'
+      // Check if query contains version numbers
+      const versionRegex = /v?\d+(\.\d+)+(-\w+)?/gi;
+      const versionMatch = query.match(versionRegex);
+      const versionTag = versionMatch ? versionMatch[0] : '';
+      
+      // Create human-like search queries with more variations
+      const humanQueries = {
+        general: `${mainKeywords}`,
+        features: `${mainKeywords} features${versionTag ? ' ' + versionTag : ''}`,
+        examples: `${mainKeywords} code example`,
+        tutorial: `${mainKeywords} tutorial how to`,
+        comparison: `${mainKeywords} vs alternatives comparison`,
+        bestPractices: `${mainKeywords} best practices guide`,
+        advanced: `advanced ${mainKeywords} techniques`,
+        latest: `latest ${mainKeywords} updates ${new Date().getFullYear()}`,
+        documentation: `${mainKeywords} official documentation`,
+        github: `${mainKeywords} github repository`,
+        reddit: `${mainKeywords} reddit discussion`,
+        stackoverflow: `${mainKeywords} stackoverflow solutions`,
+        frameworks: `${mainKeywords} frameworks libraries`,
+        architecture: `${mainKeywords} architecture design patterns`
+      };
+      
+      // Construct search query URLs for various search engines
+      const searchEngineUrls = [
+        `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+        `https://www.bing.com/search?q=${encodeURIComponent(query)}`,
+        `https://search.yahoo.com/search?p=${encodeURIComponent(query)}`,
+        `https://duckduckgo.com/?q=${encodeURIComponent(query)}`,
+        `https://www.wolframalpha.com/input?i=${encodeURIComponent(query)}`,
+        `https://www.startpage.com/sp/search?q=${encodeURIComponent(query)}`,
+        `https://www.ecosia.org/search?q=${encodeURIComponent(query)}`,
+        `https://searx.thegpm.org/?q=${encodeURIComponent(query)}`,
+        `https://www.qwant.com/?q=${encodeURIComponent(query)}`,
+        `https://yandex.com/search/?text=${encodeURIComponent(query)}`,
+        `https://www.mojeek.com/search?q=${encodeURIComponent(query)}`,
+        `https://swisscows.com/web?query=${encodeURIComponent(query)}`,
+        `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
+        `https://metager.org/meta/meta.ger3?eingabe=${encodeURIComponent(query)}`
+      ];
+      
+      // Detect if query is about specific technologies
+      const isTechQuery = /api|sdk|framework|library|platform|tool/i.test(query);
+      
+      // Detect if query is about code examples
+      const isCodeQuery = /code|example|implementation|snippet|sample|how to/i.test(query);
+      
+      // Set maximum crawl limit based on DEEP_RESEARCH_MODE
+      const maxCrawlUrls = this.DEEP_RESEARCH_MODE ? this.MAX_DATA_SOURCES : Math.min(30, this.MAX_DATA_SOURCES);
+      
+      // Create domain-specific URLs based on tech and code detection
+      let domainSpecificUrls: string[] = [];
+      
+      // Get extended list of relevant domains
+      const extendedDomains = this.identifyRelevantDomains(query).slice(0, this.ADDITIONAL_DOMAINS);
+      
+      if (isCodeQuery) {
+        domainSpecificUrls = [
+          `https://github.com/search?q=${encodeURIComponent(humanQueries.examples)}&type=repositories`,
+          `https://stackoverflow.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://dev.to/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://medium.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://hashnode.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://replit.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://glitch.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://codepen.io/search/pens?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://jsfiddle.net/search/?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://codesandbox.io/search?query=${encodeURIComponent(humanQueries.examples)}`,
+          `https://stackblitz.com/search?query=${encodeURIComponent(humanQueries.examples)}`,
+          `https://nodejs.org/api/all.html`,
+          `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(humanQueries.examples)}`
         ];
         
-        for (let i = 0; i < 45; i++) {
-          baseUrls.forEach(baseUrl => {
-            extraUrls.push(`${baseUrl}/article-${i}-${Date.now()}`);
-          });
-        }
+        // Add GitHub code search
+        domainSpecificUrls.push(`https://github.com/search?q=${encodeURIComponent(humanQueries.examples)}&type=code`);
+      } else if (isTechQuery) {
+        // Look for official documentation and community resources
+        const techName = mainKeywords.split(' ')[0]; // Extract main tech name
+        domainSpecificUrls = [
+          `https://github.com/search?q=${encodeURIComponent(techName)}&type=repositories`,
+          `https://stackoverflow.com/questions/tagged/${encodeURIComponent(techName)}?tab=Newest`,
+          `https://dev.to/t/${encodeURIComponent(techName.toLowerCase())}/latest?q=${encodeURIComponent(mainKeywords.substring(techName.length).trim())}`,
+          `https://docs.github.com/en/search?query=${encodeURIComponent(techName)}`,
+          `https://medium.com/search?q=${encodeURIComponent(techName)}`,
+          `https://reddit.com/r/programming/search/?q=${encodeURIComponent(techName)}`,
+          `https://npmjs.com/search?q=${encodeURIComponent(techName)}`,
+          `https://libraries.io/search?q=${encodeURIComponent(techName)}`,
+          `https://alternativeto.net/browse/search/?q=${encodeURIComponent(techName)}`
+        ];
       }
       
-      // Divide URLs into batches to not overwhelm the network
-      const batchSize = this.MAX_PARALLEL_REQUESTS;
-      const batches = [];
+      // More search queries from different engines for diversity
+      const additionalSearchUrls = [
+        `https://www.google.com/search?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://www.google.com/search?q=${encodeURIComponent(humanQueries.features)}`,
+        `https://duckduckgo.com/?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://www.bing.com/search?q=${encodeURIComponent(humanQueries.latest)}`,
+        `https://search.brave.com/search?q=${encodeURIComponent(humanQueries.documentation)}`,
+        `https://www.startpage.com/do/search?q=${encodeURIComponent(humanQueries.advanced)}`,
+        `https://www.mojeek.com/search?q=${encodeURIComponent(humanQueries.comparison)}`,
+        `https://search.yahoo.com/search?p=${encodeURIComponent(humanQueries.github)}`
+      ];
       
-      // Create batches of URLs
-      for (let i = 0; i < searchUrls.length; i += batchSize) {
-        batches.push(searchUrls.slice(i, i + batchSize));
+      // Technical reference sites
+      const technicalUrls = [
+        `https://stackoverflow.com/search?q=${encodeURIComponent(mainKeywords)}&tab=newest`,
+        `https://dev.to/search?q=${encodeURIComponent(mainKeywords)}&sort=latest`,
+        `https://github.com/search?q=${encodeURIComponent(mainKeywords)}&type=repositories&s=updated&o=desc`,
+        `https://www.w3schools.com/search/search.asp?q=${encodeURIComponent(mainKeywords)}`,
+        `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://medium.com/search?q=${encodeURIComponent(mainKeywords)}&sort=recency`,
+        `https://www.npmjs.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.youtube.com/results?search_query=${encodeURIComponent(mainKeywords + ' tutorial')}`,
+        `https://css-tricks.com/?s=${encodeURIComponent(mainKeywords)}`,
+        `https://smashingmagazine.com/search/?q=${encodeURIComponent(mainKeywords)}`,
+        `https://web.dev/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://reactjs.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.python.org/3/search.html?q=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.microsoft.com/en-us/search/?terms=${encodeURIComponent(mainKeywords)}`,
+        `https://docs.oracle.com/search/?search=${encodeURIComponent(mainKeywords)}`
+      ];
+      
+      // Educational and documentation sites
+      const educationalUrls = [
+        `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(mainKeywords)}`,
+        `https://www.tutorialspoint.com/search/search-results?search_string=${encodeURIComponent(mainKeywords)}`,
+        `https://www.geeksforgeeks.org/search/?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.freecodecamp.org/news/search/?query=${encodeURIComponent(mainKeywords)}`,
+        `https://hackr.io/tutorials/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.javatpoint.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.guru99.com/search.html?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.programiz.com/search/${encodeURIComponent(mainKeywords)}`,
+        `https://www.codecademy.com/search?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.khanacademy.org/search?page_search_query=${encodeURIComponent(mainKeywords)}`,
+        `https://developer.android.com/s/results?q=${encodeURIComponent(mainKeywords)}`
+      ];
+      
+      // Add forum and discussion sites
+      const forumUrls = [
+        `https://www.reddit.com/search/?q=${encodeURIComponent(mainKeywords)}&sort=new`,
+        `https://www.quora.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://discourse.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forums.swift.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://community.openai.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.unity.com/search/search?keywords=${encodeURIComponent(mainKeywords)}`,
+        `https://gitter.im/home/search?term=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.codecademy.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.pytorch.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://discuss.tensorflow.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.djangoproject.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.vuejs.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forums.meteor.com/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.arduino.cc/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://forum.xda-developers.com/search/?q=${encodeURIComponent(mainKeywords)}`
+      ];
+      
+      // Add academic and research sources
+      const academicUrls = [
+        `https://arxiv.org/search/?query=${encodeURIComponent(mainKeywords)}`,
+        `https://scholar.google.com/scholar?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.researchgate.net/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.semanticscholar.org/search?q=${encodeURIComponent(mainKeywords)}`,
+        `https://ieeexplore.ieee.org/search/searchresult.jsp?queryText=${encodeURIComponent(mainKeywords)}`,
+        `https://dl.acm.org/action/doSearch?AllField=${encodeURIComponent(mainKeywords)}`,
+        `https://www.sciencedirect.com/search?qs=${encodeURIComponent(mainKeywords)}`,
+        `https://pubmed.ncbi.nlm.nih.gov/?term=${encodeURIComponent(mainKeywords)}`,
+        `https://link.springer.com/search?query=${encodeURIComponent(mainKeywords)}`,
+        `https://www.ncbi.nlm.nih.gov/pmc/?term=${encodeURIComponent(mainKeywords)}`
+      ];
+      
+      // Combine all URLs with domain-specific ones first, as they're more targeted
+      let allUrls = [
+        ...domainSpecificUrls,
+        ...searchEngineUrls,
+        ...additionalSearchUrls,
+        ...technicalUrls,
+        ...educationalUrls,
+        ...forumUrls,
+        ...academicUrls
+      ];
+      
+      // Add URLs for domain-specific sources identified for the query
+      if (extendedDomains.length > 0) {
+        const additionalDomainUrls = extendedDomains.map(domain => 
+          `https://${domain}/search?q=${encodeURIComponent(mainKeywords)}`
+        );
+        allUrls = [...allUrls, ...additionalDomainUrls];
       }
       
-      // Process each batch
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        console.log(`Processing batch ${i+1}/${batches.length} with ${batch.length} URLs`);
-        
+      // For GitHub and StackOverflow searches, add variations for deeper results
+      if (isTechQuery || isCodeQuery) {
+        const variations = [
+          `https://github.com/search?q=${encodeURIComponent(mainKeywords + " starter template")}&type=repositories`,
+          `https://github.com/search?q=${encodeURIComponent(mainKeywords + " boilerplate")}&type=repositories`,
+          `https://stackoverflow.com/search?q=${encodeURIComponent(mainKeywords + " best practice")}`
+        ];
+        allUrls = [...allUrls, ...variations];
+      }
+      
+      // Deduplicate URLs
+      allUrls = Array.from(new Set(allUrls));
+      
+      // Limit to maximum URLs to crawl
+      allUrls = allUrls.slice(0, maxCrawlUrls);
+      
+      // Create an array of sources
+      const sources: ResearchSource[] = [];
+      let combinedData = '';
+      
+      console.log(`Preparing to fetch up to ${this.MAX_DATA_SOURCES} sources from ${allUrls.length} URLs`);
+      
+      // Use our enhanced domain-aware fetch utility
+      const fetchResults = await domainAwareFetch(
+        allUrls.slice(0, Math.min(allUrls.length, this.MAX_DATA_SOURCES)),
+        Math.min(30, Math.floor(this.MAX_PARALLEL_REQUESTS / 2)),
+        3
+      );
+      
+      console.log(`Successfully fetched ${fetchResults.length} sources out of ${Math.min(allUrls.length, this.MAX_DATA_SOURCES)} attempted`);
+      
+      // Process the fetched results
+      const processPromises = fetchResults.map(async (result) => {
         try {
-          // Wrap fetch calls in try/catch to handle individual fetch failures
-          const responses = await Promise.all(
-            batch.map(async (url) => {
-              try {
-                return await fetch(url);
-              } catch (error) {
-                console.error(`Error fetching ${url}:`, error);
-                return null; // Return null for failed fetches instead of throwing
-              }
-            })
-          );
-
-          // Filter out nulls (failed fetches) and process successful responses
-          const validResponses = responses.filter(response => response !== null);
+          const { url, html } = result;
           
-          // Process responses
-          const results = await Promise.all(
-            validResponses.map(async (response) => {
-              if (!response) return { text: '', url: '' };
-              
-              try {
-                const text = await response.text();
-                return { text, url: response.url };
-              } catch (error) {
-                console.error(`Error processing response from ${response.url}:`, error);
-                return { text: '', url: response.url };
-              }
-            })
-          );
+          // Extract title from HTML
+          let title = url;
+          const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+          if (titleMatch && titleMatch[1]) {
+            title = titleMatch[1].trim();
+          }
           
           // Extract relevant content
-          for (const result of results) {
-            if (result.text && result.url) {
-              const relevantContent = this.extractRelevantContent(result.text, query, result.url);
-              
-              if (relevantContent) {
-                allResults.push(relevantContent);
-                
-                // Create source object
-                const sourceObj = this.createSourceObject({
-                  url: result.url,
-                  title: this.extractTitleFromHTML(result.text) || result.url,
-                  content: relevantContent,
-                  relevance: this.calculateRelevance(relevantContent, query)
-                });
-                
-                // Add to sources
-                allSources.push(sourceObj);
-                
-                // Update metrics for tracking
-                this.sourcesCollected = allSources.length;
-                try {
-                  const domain = new URL(result.url).hostname;
-                  this.domainsCollected.add(domain);
-                } catch (e) {
-                  // Skip invalid URLs
-                }
-                this.dataSize = Buffer.byteLength(relevantContent, 'utf8') / 1024;
-                this.elapsedTime = Date.now() - this.startTime;
-              }
-            }
-          }
-        } catch (batchError) {
-          console.error(`Error processing batch ${i+1}:`, batchError);
-          // Continue with next batch instead of failing completely
-          continue;
-        }
-      }
-      
-      // Process extra URLs if needed
-      if (extraUrls.length > 0) {
-        console.log(`Processing ${extraUrls.length} additional sources for comprehensive research`);
-        
-        // Create synthetic sources from extra URLs
-        for (const url of extraUrls) {
-          // Generate a plausible title
-          const urlParts = url.split('/');
-          const title = urlParts[urlParts.length - 1]
-            .replace(/-/g, ' ')
-            .replace(/\d+/g, '')
-            .trim() || 'Research Source';
+          const extractedContent = this.extractRelevantContent(html, query, url);
+          
+          // Calculate relevance
+          const relevanceScore = this.calculateRelevanceLegacy(extractedContent, query);
+          
+          // Check for freshness signals in the content
+          const freshnessScore = this.calculateFreshnessScore(extractedContent, query);
+          
+          // Adjust relevance based on freshness for recency-sensitive queries
+          const recencyAdjustedRelevance = /latest|recent|new|update/i.test(query)
+            ? ((relevanceScore * 0.7) + (freshnessScore * 0.3))
+            : relevanceScore;
+          
+          // Only keep sources with minimum relevance and content
+          if (recencyAdjustedRelevance >= 0.3 && extractedContent.length > 100) {
+            const source: ResearchSource = {
+              url,
+              title,
+              content: extractedContent,
+              relevance: recencyAdjustedRelevance,
+              timestamp: new Date().toISOString()
+            };
             
-          // Create synthetic content
-          const content = `Information about ${query} from ${url}`;
-          
-          // Create source object
-          const sourceObj = this.createSourceObject({
-            url,
-            title: title.charAt(0).toUpperCase() + title.slice(1),
-            content,
-            relevance: Math.random() * 0.5 + 0.5 // Random relevance between 0.5 and 1
-          });
-          
-          // Add to sources
-          allSources.push(sourceObj);
-        }
-        
-        // Update metrics
-        this.sourcesCollected = allSources.length;
-        extraUrls.forEach(url => {
-          try {
-            const domain = new URL(url).hostname;
-            this.domainsCollected.add(domain);
-          } catch (e) {
-            // Skip invalid URLs
+            sources.push(source);
           }
-        });
+        } catch (error) {
+          console.error(`Error processing result for ${result.url}:`, error);
+        }
+      });
+      
+      // Wait for all processing to complete
+      await Promise.all(processPromises);
+      
+      // Update combined data from all valid sources
+      for (const source of sources) {
+        combinedData += `\n\nSOURCE: ${source.title}\nURL: ${source.url}\n${source.content.substring(0, 2000)}`;
       }
       
-      console.log(`Web search complete. Found ${allSources.length} sources.`);
+      console.log(`Processed ${sources.length} valid sources with combined data length: ${combinedData.length} characters`);
+      
+      // Prioritize sources based on relevance, freshness, and authority
+      const prioritizedSources = this.prioritizeSources(sources, query);
+      
+      // Combine all the content - now using prioritized sources
+      combinedData = prioritizedSources
+        .map(r => `Source: ${r.title || 'Unknown'}\n${r.content || ''}`)
+        .join('\n\n---\n\n');
+      
+      // Learn from this query for future adaptation
+      this.adaptSearchStrategy(query, {
+        sources: prioritizedSources,
+        data: combinedData
+      });
+      
+      console.log(`Completed web crawling with ${prioritizedSources.length} sources`);
+      
+      return {
+        data: combinedData,
+        sources: prioritizedSources
+      };
     } catch (error) {
-      console.error("Error in web crawling:", error);
-      
-      // Try fallback research if main approach fails
-      try {
-        return await this.fallbackResearch(query, depth);
-      } catch (fallbackError) {
-        console.error("Fallback research also failed:", fallbackError);
-        // Return empty result if all approaches fail
-        return {
-          data: `Research failed: ${error instanceof Error ? error.message : String(error)}`,
-          sources: []
-        };
-      }
+      console.error("Web crawling failed", error);
+      return this.fallbackResearch(query, depth);
     }
-    
-    // Prioritize sources
-    allSources = this.prioritizeSources(allSources, query);
-    
-    // Combine the data
-    let combinedData = allResults.join("\n\n");
-    
-    // Truncate if needed
-    if (combinedData.length > this.CHUNK_SIZE * 10) {
-      combinedData = combinedData.substring(0, this.CHUNK_SIZE * 10);
-    }
-    
-    // Update metrics for tracking research progress
-    this.sourcesCollected = allSources.length;
-    allSources.forEach(source => {
-      try {
-        const domain = new URL(source.url).hostname;
-        this.domainsCollected.add(domain);
-      } catch (e) {
-        // Skip invalid URLs
-      }
-    });
-    this.dataSize = Buffer.byteLength(combinedData, 'utf8') / 1024;
-    this.elapsedTime = Date.now() - this.startTime;
-    
-    // Adapt search strategy for future searches
-    this.adaptSearchStrategy(query, { sources: allSources, data: combinedData });
-    
-    return {
-      data: combinedData,
-      sources: allSources
-    };
   }
 
   /**
@@ -1486,21 +2050,9 @@ Please retry your query or contact support if this issue persists.
     }
   }
 
-  async research(query: string): Promise<ResearchResult & {
-    analysis: string;
-    researchPath: string[];
-    plan: ResearchPlan;
-    researchMetrics?: {
-      sourcesCount: number;
-      domainsCount: number;
-      dataSize: string;
-      elapsedTime: number;
-    };
-  }> {
-    this.startTime = Date.now();
-    this.sourcesCollected = 0;
-    this.domainsCollected = new Set();
-    this.dataSize = 0;
+  async research(query: string): Promise<ResearchResult> {
+    const startTime = Date.now();
+    this.startTime = startTime;
     
     // Check cache first
     const cachedResult = this.getCachedResult(query);
@@ -1889,17 +2441,7 @@ Please retry your query or contact support if this issue persists.
       }
       
       // Create the final research result
-      const result: ResearchResult & {
-        analysis: string;
-        researchPath: string[];
-        plan: ResearchPlan;
-        researchMetrics?: {
-          sourcesCount: number;
-          domainsCount: number;
-          dataSize: string;
-          elapsedTime: number;
-        };
-      } = {
+      const result = {
         query,
         findings: [
           {
@@ -1913,24 +2455,21 @@ Please retry your query or contact support if this issue persists.
           totalSources: allSources.length,
           qualitySources: allSources.filter(s => s.validationScore && s.validationScore >= 0.6).length,
           avgValidationScore: allSources.reduce((sum, s) => sum + (s.validationScore || 0), 0) / allSources.length,
-          executionTimeMs: Date.now() - this.startTime,
+          executionTimeMs: Date.now() - startTime,
           timestamp: new Date().toISOString()
         },
-        // Add required properties for extended type
+        // Add backward compatibility fields
         analysis: analysis,
         researchPath: researchPaths,
-        plan: researchPlan,
-        // Add research metrics
-        researchMetrics: {
-          sourcesCount: this.sourcesCollected,
-          domainsCount: this.domainsCollected.size,
-          dataSize: `${this.dataSize.toFixed(2)}KB`,
-          elapsedTime: this.elapsedTime
-        }
+        plan: researchPlan
+      } as ResearchResult & {
+        analysis: string;
+        researchPath: string[];
+        plan: ResearchPlan;
       };
       
       // Calculate and log performance metrics
-      const duration = (Date.now() - this.startTime) / 1000; // in seconds
+      const duration = (Date.now() - startTime) / 1000; // in seconds
       console.log(`Research complete in ${duration.toFixed(1)}s`);
       console.log(`Data collected: ${(dataStats.initialDataSize + dataStats.refinedDataSize) / 1024}KB`);
       console.log(`Sources: ${allSources.length} from ${dataStats.uniqueDomains.size} domains`);
@@ -2571,54 +3110,5 @@ Please retry your query or contact support if this issue persists.
       console.error("Error parsing domain:", error);
       return 0.3;
     }
-  }
-
-  // Add a method to get current research progress
-  getCurrentProgress(): { 
-    sourcesCount: number;
-    domainsCount: number;
-    dataSize: string;
-    elapsedTime: number;
-  } {
-    return {
-      sourcesCount: this.sourcesCollected,
-      domainsCount: this.domainsCollected.size,
-      dataSize: `${this.dataSize.toFixed(2)}KB`,
-      elapsedTime: this.elapsedTime
-    };
-  }
-
-  // Helper method to create search URLs
-  private createSearchUrls(queries: string[], domains: string[]): string[] {
-    const urls: string[] = [];
-    
-    // Search engines
-    const searchEngines = [
-      'https://www.google.com/search?q=',
-      'https://www.bing.com/search?q=',
-      'https://search.brave.com/search?q=',
-      'https://duckduckgo.com/?q=',
-      'https://www.ecosia.org/search?q='
-    ];
-    
-    // Create search URLs
-    for (const query of queries) {
-      for (const engine of searchEngines) {
-        urls.push(`${engine}${encodeURIComponent(query)}`);
-      }
-      
-      // Domain-specific searches
-      for (const domain of domains.slice(0, 20)) { // Limit to first 20 domains
-        urls.push(`https://www.google.com/search?q=${encodeURIComponent(query)}+site:${domain}`);
-      }
-    }
-    
-    return urls;
-  }
-
-  // Extract title from HTML content
-  private extractTitleFromHTML(html: string): string {
-    const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
-    return titleMatch ? titleMatch[1].trim() : '';
   }
 }
