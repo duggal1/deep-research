@@ -1,10 +1,11 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ResearchResult, ResearchSource, ResearchPlan } from './types';
+import { ResearchResult, ResearchSource, ResearchPlan, ResearchFinding, CodeExample, ResearchConfidenceLevel } from './types';
 
 export class ResearchEngine {
   private model: any;
   private cache: Map<string, { data: ResearchResult; timestamp: number }>;
   private CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+  private startTime: number = 0;
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -151,67 +152,111 @@ export class ResearchEngine {
   }> {
     try {
       console.log(`Starting real web crawling for query: "${query}"`);
-      const sources: ResearchSource[] = [];
-      let combinedData = "";
       
-      // Create more effective search queries
-      const mainKeywords = query.split(' ')
-        .filter(word => word.length > 3)
-        .slice(0, 5)
-        .join(' ');
+      // Extract main keywords from the query (remove filler words)
+      const mainKeywords = query
+        .replace(/how to|what is|guide to|tutorial for|examples of|explain/gi, '')
+        .replace(/['"]/g, '')  // Remove quotes
+        .trim();
       
-      // Create shorter, more targeted search queries
-      const searchQuery = encodeURIComponent(mainKeywords);
-      const specificQuery = encodeURIComponent(query.substring(0, 100));
+      // Check if query contains version numbers
+      const versionRegex = /v?\d+(\.\d+)+(-\w+)?/gi;
+      const versionMatch = query.match(versionRegex);
+      const versionTag = versionMatch ? versionMatch[0] : '';
       
-      // Use a variety of relevant, authoritative sources
-      // 1. Start with domain-specific sources based on topic detection
+      // Create human-like search queries
+      const humanQueries = {
+        general: `${mainKeywords}`,
+        features: `${mainKeywords} features${versionTag ? ' ' + versionTag : ''}`,
+        examples: `${mainKeywords} code example`,
+        tutorial: `${mainKeywords} tutorial how to`,
+        comparison: `${mainKeywords} vs alternatives comparison`,
+        bestPractices: `${mainKeywords} best practices guide`
+      };
+      
+      // Detect if query is about specific technologies
+      const isTechQuery = /api|sdk|framework|library|platform|tool/i.test(query);
+      
+      // Detect if query is about code examples
+      const isCodeQuery = /code|example|implementation|snippet|sample|how to/i.test(query);
+      
+      // Create domain-specific URLs based on tech and code detection
       let domainSpecificUrls: string[] = [];
       
-      // Tech topic detection
-      if (/\b(javascript|typescript|react|angular|vue|node|npm|webpack|next\.?js|software|programming|code|developer|api)\b/i.test(query)) {
+      if (isCodeQuery) {
         domainSpecificUrls = [
-          `https://github.com/vercel/next.js/releases`,
-          `https://nextjs.org/blog`,
-          `https://github.com/vercel/next.js/issues?q=${searchQuery}`,
-          `https://dev.to/t/nextjs/latest?q=${searchQuery}`,
-          `https://stackoverflow.com/questions/tagged/next.js?tab=Newest`
+          `https://github.com/search?q=${encodeURIComponent(humanQueries.examples)}&type=repositories`,
+          `https://stackoverflow.com/search?q=${encodeURIComponent(humanQueries.examples)}`,
+          `https://dev.to/search?q=${encodeURIComponent(humanQueries.examples)}`
+        ];
+      } else if (isTechQuery) {
+        // Look for official documentation and community resources
+        const techName = mainKeywords.split(' ')[0]; // Extract main tech name
+        domainSpecificUrls = [
+          `https://github.com/search?q=${encodeURIComponent(techName)}&type=repositories`,
+          `https://stackoverflow.com/questions/tagged/${encodeURIComponent(techName)}?tab=Newest`,
+          `https://dev.to/t/${encodeURIComponent(techName.toLowerCase())}/latest?q=${encodeURIComponent(mainKeywords.substring(techName.length).trim())}`
         ];
       }
       
-      // Business topic detection
-      else if (/\b(business|startup|company|entrepreneur|market|investment|funding|venture|finance|profit|revenue)\b/i.test(query)) {
-        domainSpecificUrls = [
-          `https://techcrunch.com/search/${searchQuery}`,
-          `https://www.crunchbase.com/discover/organization.companies/${searchQuery}`,
-          `https://www.forbes.com/search/?q=${searchQuery}`
-        ];
-      }
-      
-      // General knowledge sources as backup
+      // General search URLs - use more focused queries
       const generalUrls = [
-        `https://en.wikipedia.org/wiki/${encodeURIComponent(mainKeywords.replace(/\s+/g, '_'))}`,
-        `https://www.google.com/search?q=${specificQuery}`,
-        `https://duckduckgo.com/?q=${specificQuery}`,
-        `https://news.google.com/search?q=${searchQuery}`,
-        `https://scholar.google.com/scholar?q=${searchQuery}`
+        `https://www.google.com/search?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://www.google.com/search?q=${encodeURIComponent(humanQueries.features)}`,
+        `https://duckduckgo.com/?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://dev.to/search?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://stackoverflow.com/search?q=${encodeURIComponent(humanQueries.general)}`,
+        // Add academic sources for deeper research
+        `https://scholar.google.com/scholar?q=${encodeURIComponent(mainKeywords)}`,
+        `https://www.researchgate.net/search?q=${encodeURIComponent(mainKeywords)}`,
+        // Add more search engines
+        `https://www.bing.com/search?q=${encodeURIComponent(humanQueries.general)}`,
+        `https://search.brave.com/search?q=${encodeURIComponent(humanQueries.general)}`
       ];
       
-      // Final list of URLs to try
-      const searchUrls = [...domainSpecificUrls, ...generalUrls];
+      // Find topical sites based on query content
+      const topicalUrls = this.getTopicalSearchUrls(query);
       
-      // Try to fetch content from each source with timeout
+      // Combine URLs with domain-specific ones first
+      const searchUrls = [...domainSpecificUrls, ...topicalUrls, ...generalUrls];
+      
+      // Track requested domains to manage rate limiting
+      const requestedDomains = new Set<string>();
+      // Track delays for each domain
+      const domainDelays: Record<string, number> = {};
+      
+      // Create an array of fetch promises
+      const sources: ResearchSource[] = [];
+      let combinedData = '';
+      
       const fetchPromises = searchUrls.map(async (url, index) => {
         try {
-          console.log(`Fetching ${index + 1}/${searchUrls.length}: ${url}`);
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 8000); // 8s timeout
+          // Extract domain for rate limiting
+          const urlObj = new URL(url);
+          const domain = urlObj.hostname;
           
+          // Check if we've requested this domain recently and need a delay
+          if (requestedDomains.has(domain)) {
+            const delay = domainDelays[domain] || 500;
+            // Increase delay for repeated requests, max 3 seconds
+            domainDelays[domain] = Math.min(delay * 1.5, 3000);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          } else {
+            // First request to this domain
+            requestedDomains.add(domain);
+            domainDelays[domain] = 500; // Initial delay
+          }
+          
+          // Set a timeout for fetch to avoid hanging
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 8000);
+          
+          console.log(`Fetching: ${url}`);
           const response = await fetch(url, { 
             signal: controller.signal,
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+              'Accept': 'text/html',
               'Accept-Language': 'en-US,en;q=0.5'
             }
           });
@@ -222,257 +267,490 @@ export class ResearchEngine {
             return null;
           }
           
-          const contentType = response.headers.get('content-type') || '';
-          if (!contentType.includes('text/html') && 
-              !contentType.includes('application/json') && 
-              !contentType.includes('application/xml')) {
-            console.log(`Skipping non-HTML/JSON/XML content from ${url}`);
-            return null;
-          }
+          const html = await response.text();
           
-          const text = await response.text();
-          
-          // Advanced content extraction
-          let extractedContent = this.extractRelevantContent(text, query, url);
-          
-          // Extract a title from the page
+          // Extract title from HTML
           let title = url;
-          const titleMatch = text.match(/<title[^>]*>(.*?)<\/title>/i);
+          const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
           if (titleMatch && titleMatch[1]) {
             title = titleMatch[1].trim();
           }
           
-          // Calculate relevance score based on keyword matches
-          const keywords = query.toLowerCase().split(/\s+/);
-          const contentLower = extractedContent.toLowerCase();
+          // Extract relevant content
+          const extractedContent = this.extractRelevantContent(html, query, url);
           
-          // Calculate keyword density for relevance scoring
-          const keywordMatches = keywords.reduce((count, word) => {
-            if (word.length > 3) { // Only count significant words
-              const regex = new RegExp(`\\b${word}\\b`, 'gi');
-              const matches = (contentLower.match(regex) || []).length;
-              return count + matches;
-            }
-            return count;
-          }, 0);
-          
-          // Normalize score (higher is better, max 1.0)
-          const relevanceScore = Math.min(0.3 + (keywordMatches / (extractedContent.length / 500) * 0.7), 1.0);
+          // Calculate relevance
+          const relevanceScore = this.calculateRelevance(extractedContent, query);
           
           // Only keep sources with minimum relevance and content
-          if (relevanceScore > 0.4 && extractedContent.length > 300) {
-            // Add to sources
-            sources.push({
+          const minContentLength = 50;
+          if (relevanceScore >= 0.3 && extractedContent.length > minContentLength) {
+            // Get additional links from the page for deeper crawling
+            const linkMatches = html.match(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>/g);
+            let additionalLinks: string[] = [];
+            
+            if (linkMatches && depth > 1) {
+              additionalLinks = linkMatches
+                .map(match => {
+                  const hrefMatch = match.match(/href="([^"]*)"/);
+                  return hrefMatch ? hrefMatch[1] : null;
+                })
+                .filter(Boolean) as string[];
+                
+              // Convert relative URLs to absolute
+              additionalLinks = additionalLinks.map(link => {
+                if (link.startsWith('http')) return link;
+                try {
+                  return new URL(link, url).href;
+                } catch (e) {
+                  return null;
+                }
+              }).filter(Boolean) as string[];
+              
+              // Select up to 3 most relevant additional links
+              additionalLinks = additionalLinks
+                .filter(link => 
+                  !link.includes('login') && 
+                  !link.includes('signin') && 
+                  !link.includes('signup') &&
+                  !link.includes('register') &&
+                  !link.includes('cookie') &&
+                  !link.includes('privacy') &&
+                  (this.checkUrlRelevance(link, query) > 0.5)
+                )
+                .slice(0, 3);
+                
+              // Process additional links
+              for (const link of additionalLinks) {
+                try {
+                  const linkUrl = new URL(link);
+                  const linkDomain = linkUrl.hostname;
+                  
+                  if (requestedDomains.has(linkDomain)) {
+                    const delay = domainDelays[linkDomain] || 500;
+                    domainDelays[linkDomain] = Math.min(delay * 1.5, 3000);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                  } else {
+                    requestedDomains.add(linkDomain);
+                    domainDelays[linkDomain] = 500;
+                  }
+                  
+                  // Set a timeout for fetch to avoid hanging
+                  const linkController = new AbortController();
+                  const linkTimeoutId = setTimeout(() => linkController.abort(), 8000);
+                  
+                  console.log(`Fetching additional link: ${link}`);
+                  const linkResponse = await fetch(link, { 
+                    signal: linkController.signal,
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
+                      'Accept': 'text/html',
+                      'Accept-Language': 'en-US,en;q=0.5'
+                    }
+                  });
+                  clearTimeout(linkTimeoutId);
+                  
+                  if (!linkResponse.ok) continue;
+                  
+                  const linkHtml = await linkResponse.text();
+                  
+                  // Extract title
+                  let linkTitle = link;
+                  const linkTitleMatch = linkHtml.match(/<title[^>]*>(.*?)<\/title>/i);
+                  if (linkTitleMatch && linkTitleMatch[1]) {
+                    linkTitle = linkTitleMatch[1].trim();
+                  }
+                  
+                  // Extract content
+                  const linkContent = this.extractRelevantContent(linkHtml, query, link);
+                  
+                  // Calculate relevance
+                  const linkRelevance = this.calculateRelevance(linkContent, query);
+                  
+                  if (linkRelevance >= 0.4 && linkContent.length > minContentLength) {
+                    return {
+                      url: link,
+                      title: linkTitle,
+                      relevance: linkRelevance,
+                      content: linkContent,
+                      timestamp: new Date().toISOString()
+                    };
+                  }
+                } catch (e) {
+                  console.log(`Error fetching additional link: ${link}`, e);
+                }
+              }
+            }
+            
+            return {
               url,
-              title: title || `Source ${index + 1}`,
+              title,
               relevance: relevanceScore,
+              content: extractedContent,
               timestamp: new Date().toISOString()
-            });
-            
-            // Add to combined data
-            combinedData += `### Source: ${title} (${url})\n${extractedContent}\n\n`;
-            
-            console.log(`✓ Source added: ${title} (relevance: ${relevanceScore.toFixed(2)})`);
-            return extractedContent;
-          } else {
-            console.log(`✗ Source rejected: ${title} (low relevance: ${relevanceScore.toFixed(2)})`);
-            return null;
+            };
           }
-        } catch (error) {
-          console.error(`Error fetching ${url}:`, error);
+          
+          return null;
+        } catch (e) {
+          console.log(`Error fetching ${url}:`, e);
           return null;
         }
       });
       
-      // Wait for all fetches to complete (or timeout)
-      const results = await Promise.all(fetchPromises);
-      const validResults = results.filter(Boolean);
+      const results = (await Promise.all(fetchPromises)).filter(Boolean);
       
-      console.log(`Crawling complete: ${validResults.length}/${searchUrls.length} sources valid`);
-      
-      // If we couldn't get enough real data, fall back to AI generation BUT try harder first
-      if (combinedData.trim().length < 1000 || sources.length === 0) {
-        console.log("Insufficient web data, trying secondary search");
+      // Combine all the content
+      combinedData = results
+        .map(r => `Source: ${r?.title || 'Unknown'}\n${r?.content || ''}`)
+        .join('\n\n---\n\n');
         
-        // Create secondary search queries based on the original query
-        const secondaryKeywords = `${mainKeywords} overview information details`;
-        const secondaryUrls = [
-          `https://www.bing.com/search?q=${encodeURIComponent(secondaryKeywords)}`,
-          `https://www.reddit.com/search/?q=${encodeURIComponent(mainKeywords)}`,
-          `https://medium.com/search?q=${encodeURIComponent(mainKeywords)}`
-        ];
-        
-        // Try secondary sources
-        const secondaryPromises = secondaryUrls.map(async (url, index) => {
-          try {
-            console.log(`Trying secondary source ${index + 1}/${secondaryUrls.length}: ${url}`);
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            
-            const response = await fetch(url, { 
-              signal: controller.signal,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-                'Accept': 'text/html',
-                'Accept-Language': 'en-US,en;q=0.5'
-              }
-            });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) return null;
-            
-            const text = await response.text();
-            const extractedContent = this.extractRelevantContent(text, query, url);
-            
-            if (extractedContent.length > 300) {
-              let title = url;
-              const titleMatch = text.match(/<title[^>]*>(.*?)<\/title>/i);
-              if (titleMatch && titleMatch[1]) {
-                title = titleMatch[1].trim();
-              }
-              
-              sources.push({
-                url,
-                title: title,
-                relevance: 0.7,
-                timestamp: new Date().toISOString()
-              });
-              
-              combinedData += `### Source: ${title} (${url})\n${extractedContent}\n\n`;
-              console.log(`✓ Secondary source added: ${title}`);
-              return extractedContent;
-            }
-            return null;
-          } catch (error) {
-            console.error(`Error fetching secondary source ${url}:`, error);
-            return null;
-          }
-        });
-        
-        await Promise.all(secondaryPromises);
-      }
+      // Compile sources
+      sources.push(...results.map(r => ({
+        url: r?.url || '',
+        title: r?.title || 'Unknown Source',
+        relevance: r?.relevance || 0.5,
+        content: r?.content || '',
+        timestamp: r?.timestamp || new Date().toISOString()
+      })));
       
-      // NOW check if we have enough data, and only fall back if we don't
-      if (combinedData.trim().length < 800 || sources.length === 0) {
-        console.log("Still insufficient web data, falling back to AI generation");
-        return this.fallbackResearch(query, depth);
-      }
+      console.log(`Completed web crawling with ${sources.length} sources`);
       
-      console.log(`Web crawling successful: ${sources.length} sources, ${combinedData.length} chars`);
       return {
         data: combinedData,
         sources
       };
     } catch (error) {
-      console.error("Error in crawlWeb:", error);
+      console.error("Web crawling failed", error);
       return this.fallbackResearch(query, depth);
     }
   }
-  
-  // New helper method for extracting relevant content
-  private extractRelevantContent(html: string, query: string, url: string): string {
+
+  /**
+   * Generate a diverse set of search queries based on the user query
+   */
+  private generateSearchQueries(query: string): string[] {
+    // Extract main keywords
+    const mainKeywords = query
+      .replace(/how to|what is|guide to|tutorial for|examples of|explain/gi, '')
+      .replace(/['"]/g, '')  // Remove quotes
+      .trim();
+      
+    // Check for version numbers/specific identifiers
+    const versionRegex = /v?\d+(\.\d+)+(-\w+)?/gi;
+    const versionMatch = query.match(versionRegex);
+    const versionTag = versionMatch ? versionMatch[0] : '';
+    
+    // Identify if it's a code/programming query
+    const isProgrammingQuery = /\b(code|function|api|library|framework|programming|developer|sdk|npm|package|class|method|interface|component|hook|module|dependency|import|export)\b/i.test(query);
+    
+    // Identify specific technology areas
+    const webDev = /\b(html|css|javascript|typescript|react|vue|angular|svelte|dom|browser|frontend|web|responsive|node|express|nextjs|remix|gatsby)\b/i.test(query);
+    const mobileDev = /\b(ios|android|react native|flutter|swift|kotlin|mobile app|mobile development)\b/i.test(query);
+    const dataScience = /\b(python|machine learning|ml|ai|data science|tensorflow|pytorch|pandas|numpy|statistics|dataset|classification|regression|neural network)\b/i.test(query);
+    const devOps = /\b(docker|kubernetes|ci\/cd|jenkins|github actions|aws|gcp|azure|cloud|serverless|lambda|deployment|container)\b/i.test(query);
+    const database = /\b(sql|postgresql|mysql|mongodb|database|nosql|orm|query|joins|schema|data model|prisma|mongoose|sequelize)\b/i.test(query);
+    
+    // Check for request intent
+    const wantsExamples = /\b(example|code|sample|snippet|demo|implementation|reference|how to use)\b/i.test(query);
+    const wantsTutorial = /\b(tutorial|guide|walkthrough|step by step|learn|course|explain|how to)\b/i.test(query);
+    const wantsComparison = /\b(vs|versus|comparison|compare|difference|better|alternative)\b/i.test(query);
+    const wantsBestPractices = /\b(best practice|pattern|architecture|optimize|improve|clean|proper|correct way|standard)\b/i.test(query);
+    
+    // Generate query variants
+    const queries = [
+      mainKeywords, // Basic query
+      `${mainKeywords}${versionTag ? ' ' + versionTag : ''}`, // With version tag if present
+    ];
+    
+    // Add intent-specific queries
+    if (wantsExamples) {
+      queries.push(
+        `${mainKeywords} example code`,
+        `${mainKeywords} code sample`,
+        `${mainKeywords} implementation example${versionTag ? ' ' + versionTag : ''}`
+      );
+    }
+    
+    if (wantsTutorial) {
+      queries.push(
+        `${mainKeywords} tutorial guide`,
+        `how to use ${mainKeywords}${versionTag ? ' ' + versionTag : ''}`,
+        `${mainKeywords} step by step guide`
+      );
+    }
+    
+    if (wantsComparison) {
+      queries.push(
+        `${mainKeywords} comparison alternatives`,
+        `${mainKeywords} vs other${isProgrammingQuery ? ' libraries' : ''}`,
+        `${mainKeywords} pros and cons`
+      );
+    }
+    
+    if (wantsBestPractices) {
+      queries.push(
+        `${mainKeywords} best practices`,
+        `${mainKeywords} recommended patterns`,
+        `${mainKeywords} optimization techniques`
+      );
+    }
+    
+    // Add technology-specific queries
+    if (webDev) {
+      queries.push(
+        `${mainKeywords} web development`,
+        `${mainKeywords} frontend ${isProgrammingQuery ? 'library' : 'usage'}`
+      );
+    }
+    
+    if (mobileDev) {
+      queries.push(
+        `${mainKeywords} mobile development`,
+        `${mainKeywords} ${/ios|swift/i.test(query) ? 'iOS' : 'Android'} implementation`
+      );
+    }
+    
+    if (dataScience) {
+      queries.push(
+        `${mainKeywords} data science application`,
+        `${mainKeywords} machine learning implementation`
+      );
+    }
+    
+    if (devOps) {
+      queries.push(
+        `${mainKeywords} devops integration`,
+        `${mainKeywords} cloud deployment`
+      );
+    }
+    
+    if (database) {
+      queries.push(
+        `${mainKeywords} database usage`,
+        `${mainKeywords} data modeling`
+      );
+    }
+    
+    // Documentation queries for technical topics
+    if (isProgrammingQuery) {
+      queries.push(
+        `${mainKeywords} documentation${versionTag ? ' ' + versionTag : ''}`,
+        `${mainKeywords} api reference`,
+        `${mainKeywords} official docs`,
+        `${mainKeywords} github`
+      );
+    }
+    
+    // Filter out duplicates and return
+    return [...new Set(queries)];
+  }
+
+  /**
+   * Identify the most relevant domains for a particular query
+   */
+  private identifyRelevantDomains(query: string): string[] {
+    const domains: string[] = [];
+    
+    // General reference domains
+    domains.push('stackoverflow.com', 'github.com');
+    
+    // Check for programming languages/technologies
+    if (/\bjavascript\b|\bjs\b/i.test(query)) {
+      domains.push('developer.mozilla.org', 'javascript.info', 'npmjs.com');
+    }
+    
+    if (/\btypescript\b|\bts\b/i.test(query)) {
+      domains.push('typescriptlang.org', 'typescript-eslint.io');
+    }
+    
+    if (/\bpython\b/i.test(query)) {
+      domains.push('docs.python.org', 'pypi.org', 'realpython.com');
+    }
+    
+    if (/\bjava\b/i.test(query)) {
+      domains.push('docs.oracle.com', 'maven.apache.org');
+    }
+    
+    if (/\bc#\b|\bcsharp\b/i.test(query)) {
+      domains.push('docs.microsoft.com', 'learn.microsoft.com');
+    }
+    
+    if (/\bruby\b/i.test(query)) {
+      domains.push('ruby-lang.org', 'rubygems.org');
+    }
+    
+    if (/\bgo\b|\bgolang\b/i.test(query)) {
+      domains.push('golang.org', 'go.dev');
+    }
+    
+    if (/\brust\b/i.test(query)) {
+      domains.push('rust-lang.org', 'crates.io');
+    }
+    
+    // Check for frameworks/libraries
+    if (/\breact\b/i.test(query)) {
+      domains.push('reactjs.org', 'react.dev', 'legacy.reactjs.org');
+    }
+    
+    if (/\bangular\b/i.test(query)) {
+      domains.push('angular.io', 'angularjs.org');
+    }
+    
+    if (/\bvue\b/i.test(query)) {
+      domains.push('vuejs.org', 'v3.vuejs.org');
+    }
+    
+    if (/\bsvelte\b/i.test(query)) {
+      domains.push('svelte.dev');
+    }
+    
+    if (/\bnextjs\b|\bnext\.js\b/i.test(query)) {
+      domains.push('nextjs.org', 'vercel.com');
+    }
+    
+    if (/\bnode\b|\bnode\.js\b/i.test(query)) {
+      domains.push('nodejs.org', 'nodejs.dev');
+    }
+    
+    if (/\bexpress\b/i.test(query)) {
+      domains.push('expressjs.com');
+    }
+    
+    if (/\bflutter\b/i.test(query)) {
+      domains.push('flutter.dev', 'pub.dev');
+    }
+    
+    if (/\bdjango\b/i.test(query)) {
+      domains.push('djangoproject.com');
+    }
+    
+    if (/\blaravel\b/i.test(query)) {
+      domains.push('laravel.com');
+    }
+    
+    if (/\bspring\b/i.test(query)) {
+      domains.push('spring.io');
+    }
+    
+    // Check for databases
+    if (/\bsql\b|\bdatabase\b/i.test(query)) {
+      domains.push('db-engines.com');
+      
+      if (/\bmysql\b/i.test(query)) {
+        domains.push('dev.mysql.com');
+      }
+      
+      if (/\bpostgresql\b|\bpostgres\b/i.test(query)) {
+        domains.push('postgresql.org');
+      }
+      
+      if (/\bmongodb\b/i.test(query)) {
+        domains.push('mongodb.com');
+      }
+      
+      if (/\bredis\b/i.test(query)) {
+        domains.push('redis.io');
+      }
+    }
+    
+    // Check for cloud platforms/devops
+    if (/\baws\b|\bamazon\s+web\s+services\b/i.test(query)) {
+      domains.push('aws.amazon.com', 'docs.aws.amazon.com');
+    }
+    
+    if (/\bazure\b|\bmicrosoft\s+azure\b/i.test(query)) {
+      domains.push('azure.microsoft.com');
+    }
+    
+    if (/\bgcp\b|\bgoogle\s+cloud\b/i.test(query)) {
+      domains.push('cloud.google.com');
+    }
+    
+    if (/\bdocker\b/i.test(query)) {
+      domains.push('docs.docker.com');
+    }
+    
+    if (/\bkubernetes\b|\bk8s\b/i.test(query)) {
+      domains.push('kubernetes.io');
+    }
+    
+    // Education platforms for broader topics
+    domains.push(
+      'medium.com',
+      'dev.to',
+      'freecodecamp.org',
+      'geeksforgeeks.org',
+      'w3schools.com',
+      'javatpoint.com',
+      'tutorialspoint.com'
+    );
+    
+    // Research and academic sources if query seems academic
+    if (/\bresearch\b|\bpaper\b|\bstudy\b|\btheory\b|\balgorithm\b|\bmathematical\b/i.test(query)) {
+      domains.push(
+        'arxiv.org',
+        'scholar.google.com',
+        'researchgate.net',
+        'ieee.org',
+        'acm.org'
+      );
+    }
+    
+    return domains;
+  }
+
+  /**
+   * Check URL relevance to the query based on URL text
+   */
+  private checkUrlRelevance(url: string, query: string): number {
     try {
-      // Remove script and style tags
-      let extractedContent = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ');
-      extractedContent = extractedContent.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ');
-      
-      // Try to find main content area based on common patterns
-      let mainContent = '';
-      
-      // Check for common content containers
-      const contentPatterns = [
-        /<article[^>]*>([\s\S]*?)<\/article>/i,
-        /<main[^>]*>([\s\S]*?)<\/main>/i,
-        /<div[^>]*?(?:class|id)=["']?(?:content|main|post|article)["']?[^>]*>([\s\S]*?)<\/div>/i,
-        /<div[^>]*?(?:class|id)=["']?(?:entry|blog|post-content)["']?[^>]*>([\s\S]*?)<\/div>/i
-      ];
-      
-      for (const pattern of contentPatterns) {
-        const match = extractedContent.match(pattern);
-        if (match && match[1] && match[1].length > 200) {
-          mainContent = match[1];
-          break;
-        }
-      }
-      
-      // If no main content found, use the whole document
-      if (!mainContent) {
-        mainContent = extractedContent;
-      }
-      
-      // Extract text while preserving some structure
-      const structuredContent = mainContent
-        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, '## $1\n')  // Convert h1 to markdown h2
-        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, '### $1\n') // Convert h2 to markdown h3
-        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, '#### $1\n') // Convert h3 to markdown h4
-        .replace(/<h4[^>]*>(.*?)<\/h4>/gi, '##### $1\n') // Convert h4 to markdown h5
-        .replace(/<h5[^>]*>(.*?)<\/h5>/gi, '###### $1\n') // Convert h5 to markdown h6
-        .replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n') // Convert list items to markdown list items
-        .replace(/<p[^>]*>(.*?)<\/p>/gi, '$1\n\n') // Convert paragraphs
-        .replace(/<a\s+(?:[^>]*?\s+)?href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi, '$2 [$1]') // Convert links
-        .replace(/<[^>]*>/g, ' ') // Remove remaining HTML tags
-        .replace(/&nbsp;/gi, ' ') // Replace &nbsp; with space
-        .replace(/&lt;/gi, '<') // Replace &lt; with <
-        .replace(/&gt;/gi, '>') // Replace &gt; with >
-        .replace(/&amp;/gi, '&') // Replace &amp; with &
-        .replace(/&quot;/gi, '"') // Replace &quot; with "
-        .replace(/\s+/g, ' ') // Normalize whitespace
-        .trim();
-      
-      // Check if GitHub releases page and format appropriately
-      if (url.includes("github.com") && url.includes("/releases")) {
-        const releaseEntries = html.match(/<div[^>]*release-entry[^>]*>[\s\S]*?<\/div>/gi) || [];
-        if (releaseEntries.length > 0) {
-          let releases = '';
-          for (const entry of releaseEntries.slice(0, 5)) { // Get first 5 releases only
-            const titleMatch = entry.match(/<a[^>]*release-title[^>]*>([\s\S]*?)<\/a>/i);
-            const bodyMatch = entry.match(/<div[^>]*release-body[^>]*>([\s\S]*?)<\/div>/i);
-            
-            if (titleMatch && titleMatch[1]) {
-              releases += `### ${titleMatch[1].trim()}\n`;
-              if (bodyMatch && bodyMatch[1]) {
-                const body = bodyMatch[1].replace(/<[^>]*>/g, ' ').trim();
-                releases += `${body}\n\n`;
-              }
-            }
-          }
-          return releases || structuredContent.substring(0, 5000);
-        }
-      }
-      
-      // Extract only the most relevant parts using a window around query terms
-      const queryTerms = query.toLowerCase().split(/\s+/).filter(term => term.length > 3);
-      let relevantChunks = '';
-      
-      if (queryTerms.length > 0) {
-        const sentences = structuredContent.split(/(?<=\.|\?|\!)\s+/);
-        
-        for (const sentence of sentences) {
-          const sentenceLower = sentence.toLowerCase();
-          for (const term of queryTerms) {
-            if (sentenceLower.includes(term) && sentence.length < 500) {
-              relevantChunks += sentence + ' ';
-              break;
-            }
-          }
-        }
-      }
-      
-      // If we found relevant chunks, return those; otherwise, return the first 5000 chars of structured content
-      return (relevantChunks.length > 300) 
-        ? relevantChunks.trim() 
-        : structuredContent.substring(0, 5000);
-        
-    } catch (e) {
-      console.error("Error in extractRelevantContent:", e);
-      // Fallback to basic extraction
-      return html
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
+      const urlObj = new URL(url);
+      const path = urlObj.pathname.toLowerCase();
+      const keywords = query.toLowerCase()
+        .replace(/how to|what is|guide to|tutorial for|examples of|explain/gi, '')
+        .replace(/['"]/g, '')
         .trim()
-        .substring(0, 3000);
+        .split(/\s+/)
+        .filter(kw => kw.length > 3);
+      
+      let relevanceScore = 0;
+      
+      // Check for keywords in path
+      for (const keyword of keywords) {
+        if (path.includes(keyword)) {
+          relevanceScore += 0.2;
+        }
+      }
+      
+      // Check for documentation, guides, etc.
+      if (path.includes('docs') || 
+          path.includes('guide') || 
+          path.includes('tutorial') || 
+          path.includes('reference') || 
+          path.includes('example') || 
+          path.includes('api')) {
+        relevanceScore += 0.3;
+      }
+      
+      // Penalize certain paths
+      if (path.includes('login') || 
+          path.includes('signin') || 
+          path.includes('signup') || 
+          path.includes('register') || 
+          path.includes('cookie') || 
+          path.includes('privacy') ||
+          path.includes('terms') ||
+          path.includes('contact') ||
+          path.includes('about') ||
+          path.includes('pricing') ||
+          path.includes('download')) {
+        relevanceScore -= 0.3;
+      }
+      
+      return Math.max(0, Math.min(1, relevanceScore));
+    } catch (e) {
+      return 0;
     }
   }
 
@@ -549,7 +827,8 @@ export class ResearchEngine {
             url: `https://www.google.com/search?q=${searchQuery}`,
             title: `Search: ${query}`,
             relevance: 0.5,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            content: basicData
           }
         ]
       };
@@ -563,21 +842,30 @@ export class ResearchEngine {
   ): Promise<string> {
     // First, extract key facts from the raw data
     const factExtractionPrompt = `
-      From the following research data on "${query}", extract ONLY factual information.
-      Do not include opinions or speculations, only facts that have clear evidence.
+      From the following research data on "${query}", extract only factual information.
+      Focus on extracting precise information that directly answers the research query.
       
       Research Data:
       ${data.substring(0, 20000)}
       
-      Return a list of 10-15 key facts in this format:
-      1. [Fact with specific details]
-      2. [Fact with specific details]
+      Return a comprehensive list of at least 20 key facts in this format:
+      1. [Detailed fact with specific references, statistics, or technical details when available]
+      2. [Detailed fact with specific references, statistics, or technical details when available]
       ...
+      
+      When extracting facts:
+      - Include version numbers, technical specifications, and exact terminology
+      - Note specific limitations or requirements when mentioned
+      - Include data points and statistics with their sources when available
+      - Note any contradictions between different sources
+      - Extract specific implementation examples or code patterns if relevant
+      - Include real-world usage examples and case studies
+      - Note performance metrics, compatibility information, and system requirements
     `;
     
     let extractedFacts = "";
     try {
-      console.log("Extracting facts from research data");
+      console.log("Extracting detailed facts from research data");
       const factResult = await this.model.generateContent(factExtractionPrompt);
       extractedFacts = factResult.response.text();
     } catch (error) {
@@ -585,49 +873,173 @@ export class ResearchEngine {
       extractedFacts = "Fact extraction failed due to technical limitations.";
     }
     
-    // Now analyze the data and facts
-    const prompt = `
-      Task: Analyze the following research data and facts to generate a comprehensive report.
+    // Extract code examples separately for technical topics
+    let codeExamples = "";
+    const isCodeRelated = /\bcode\b|\bprogramming\b|\bapi\b|\bjavascript\b|\bpython\b|\bjava\b|\bc\+\+\b|\bcsharp\b|\bruby\b|\bphp\b|\bswift\b|\bkotlin\b|\brust\b|\bhtml\b|\bcss\b/i.test(query);
+    
+    if (isCodeRelated) {
+      const codeExtractionPrompt = `
+        From the research data, extract ONLY code examples, implementations, or technical patterns related to: "${query}"
+        
+        Research Data:
+        ${data.substring(0, 20000)}
+        
+        Format each example with:
+        - A title describing what the code does
+        - The programming language used
+        - The complete code snippet formatted properly
+        - A brief explanation of how it works
+        - Any necessary context (frameworks, libraries, etc.)
+        
+        Extract at least 3-5 different code examples if available. Format with proper markdown code blocks.
+      `;
       
-      Query: ${query}
+      try {
+        console.log("Extracting code examples for technical query");
+        const codeResult = await this.model.generateContent(codeExtractionPrompt);
+        codeExamples = codeResult.response.text();
+      } catch (error) {
+        console.error("Error in code examples extraction:", error);
+        codeExamples = "";
+      }
+    }
+    
+    // Now analyze the data, facts and code examples comprehensively
+    const prompt = `
+      Task: Produce an in-depth, expert-level analysis of the following research data to answer: "${query}"
+      
+      Research Query: ${query}
       
       Extracted Key Facts:
       ${extractedFacts}
       
+      ${codeExamples ? `Technical Code Examples:\n${codeExamples}\n\n` : ''}
+      
       Research Data: 
       ${data.substring(0, 15000)}
       
-      Source Count: ${sources.length}
-      Source Domains: ${sources.map(s => new URL(s.url).hostname).join(', ')}
+      Source Analysis:
+      - Total Sources: ${sources.length}
+      - Source Domains: ${sources.map(s => {
+        try { 
+          return new URL(s.url).hostname; 
+        } catch(e) { 
+          return s.url; 
+        }
+      }).join(', ')}
+      - Source Credibility: ${this.analyzeSourceCredibility(sources)}
       
-      Instructions:
-      1. Focus on evidence-based conclusions supported by multiple sources
-      2. Evaluate the credibility and expertise of each source
-      3. Identify consensus views versus minority perspectives
-      4. Acknowledge data limitations and gaps in knowledge
-      5. Distinguish between established facts and emerging trends
-      6. Consider how recent the information is
-      7. Note important conflicts between sources
+      Instructions for Comprehensive Analysis:
+      1. Provide extremely detailed, technical insights that directly answer the research query
+      2. Organize the information hierarchically with clear sections and subsections
+      3. Include factual, quantitative data wherever possible
+      4. Compare and contrast different approaches, technologies, or viewpoints
+      5. Identify key factors, variables, or considerations that influence the topic
+      6. Explain complex concepts with clear examples or analogies
+      7. Highlight practical applications, implementation details, and real-world implications
+      8. Address limitations, challenges, and potential solutions
+      9. Provide context about the historical development and future directions
+      10. Include specific examples and case studies that illustrate key points
       
-      Format the response as a detailed report with:
-      - Executive Summary (concise overview - 2-3 sentences)
-      - Key Findings (5-7 bullet points of most important discoveries)
-      - Detailed Analysis (evidence-based discussion with source citations)
-      - Limitations (what couldn't be determined from available data)
-      - Conclusions (what can be confidently stated based on evidence)
+      Format your response as a structured, professionally formatted report with:
+      - Executive Summary (concise overview - 150-200 words)
+      - Key Findings (comprehensive list of 10-15 major discoveries with details)
+      - Detailed Analysis (in-depth examination organized by subtopics)
+      - Technical Implementation (specific details, examples, and guidelines)
+      - Comparative Analysis (evaluation of different approaches, methods, or solutions)
+      - Practical Applications (real-world usage scenarios and implementation guidance)
+      - Limitations and Challenges (detailed discussion of constraints with potential solutions)
+      - Future Directions (emerging trends and developments)
+      - Conclusions (synthesized insights and recommendations)
       
       Use direct citations when appropriate like [Source: domain.com].
-      Write in a clear, direct style with no fluff or filler content.
+      Prioritize depth of analysis over breadth - provide detailed, technical explanations rather than superficial overviews.
+      Include as much specific data and factual information as possible to substantiate all claims and assertions.
+      Incorporate numerical data, statistics, technical specifications, and quantitative measurements.
+      If the topic is technical, include specific implementation details, architecture considerations, and technical requirements.
     `;
 
     try {
-      console.log("Analyzing research data with fact-based approach");
+      console.log("Generating comprehensive research analysis");
       const result = await this.model.generateContent(prompt);
-      return result.response.text();
+      const analysisText = result.response.text();
+      
+      // Further enhance the analysis with references and visualizations descriptions
+      const enhancementPrompt = `
+        Review and enhance this research analysis on "${query}" by:
+        
+        1. Adding appropriate references and citations
+        2. Including descriptions of relevant visualizations (diagrams, flowcharts, etc.)
+        3. Adding detailed examples and case studies
+        4. Providing more technical depth and specific implementation details
+        
+        Original Analysis:
+        ${analysisText}
+        
+        Return the enhanced analysis with all the original content preserved, but with added depth,
+        technical precision, and extended examples. Do not remove any content from the original analysis.
+      `;
+      
+      try {
+        const enhancedResult = await this.model.generateContent(enhancementPrompt);
+        return enhancedResult.response.text();
+      } catch (error) {
+        console.log("Enhancement failed, returning original analysis");
+        return analysisText;
+      }
     } catch (error) {
-      console.error("Error in analyzeData:", error);
-      return `Analysis could not be generated due to an error: ${error instanceof Error ? error.message : String(error)}`;
+      console.error("Error in comprehensive analyzeData:", error);
+      return `Analysis could not be generated due to an error: ${error instanceof Error ? error.message : String(error)}. Please try a more specific query or check your internet connection.`;
     }
+  }
+  
+  /**
+   * Analyze the credibility of sources
+   */
+  private analyzeSourceCredibility(sources: ResearchSource[]): string {
+    if (!sources || sources.length === 0) return "No sources available";
+    
+    // Count domains for credibility analysis
+    const domainCounts: Record<string, number> = {};
+    const highAuthorityDomains = [
+      'github.com', 'stackoverflow.com', 'developer.mozilla.org', 
+      'docs.python.org', 'docs.oracle.com', 'docs.microsoft.com',
+      'arxiv.org', 'ieee.org', 'acm.org', 'scholar.google.com',
+      'research.google', 'research.microsoft.com', 'researchgate.net',
+      'nature.com', 'science.org', 'nejm.org', 'sciencedirect.com'
+    ];
+    
+    let highAuthorityCount = 0;
+    let totalDomains = 0;
+    
+    for (const source of sources) {
+      try {
+        const domain = new URL(source.url).hostname;
+        domainCounts[domain] = (domainCounts[domain] || 0) + 1;
+        
+        if (highAuthorityDomains.some(authDomain => domain.includes(authDomain))) {
+          highAuthorityCount++;
+        }
+        
+        totalDomains++;
+      } catch (e) {
+        // Skip invalid URLs
+      }
+    }
+    
+    const domainsWithMultipleSources = Object.entries(domainCounts)
+      .filter(([domain, count]) => count > 1)
+      .map(([domain, count]) => `${domain} (${count} sources)`);
+    
+    const credibilityAssessment = 
+      highAuthorityCount > totalDomains * 0.5 ? "High - Multiple authoritative sources" :
+      highAuthorityCount > totalDomains * 0.3 ? "Medium-High - Some authoritative sources" :
+      highAuthorityCount > totalDomains * 0.1 ? "Medium - Few authoritative sources" :
+      "Unverified - Limited authoritative sources";
+    
+    return `${credibilityAssessment}. ${domainsWithMultipleSources.length > 0 ? 
+      `Multiple sources from: ${domainsWithMultipleSources.join(', ')}` : 
+      'No domains with multiple sources'}`;
   }
 
   private async refineQueries(query: string, initialData: string, plan: ResearchPlan): Promise<string[]> {
@@ -781,18 +1193,20 @@ Please retry your query or contact support if this issue persists.
   }
 
   async research(query: string): Promise<ResearchResult> {
+    const startTime = Date.now();
+    this.startTime = startTime;
+    
+    // Check cache first
+    const cachedResult = this.getCachedResult(query);
+    if (cachedResult) {
+      console.log(`Using cached research result for: "${query}"`);
+      return cachedResult;
+    }
+    
+    console.log(`Starting deep research process for: "${query}"`);
+    
     try {
-      console.log(`Starting deep research process for: "${query}"`);
-      const startTime = Date.now();
-      
-      // 1. Check cache first
-      const cachedResult = this.getCachedResult(query);
-      if (cachedResult) {
-        console.log(`Returning cached research result for: "${query}"`);
-        return cachedResult;
-      }
-
-      // 2. Create research plan
+      // 1. Create research plan
       console.log(`[1/7] Creating research plan for: "${query}"`);
       let researchPlan: ResearchPlan;
       try {
@@ -817,7 +1231,7 @@ Please retry your query or contact support if this issue persists.
         };
       }
 
-      // 3. Directly check authoritative sources first (major improvement)
+      // 2. Directly check authoritative sources first (major improvement)
       console.log(`[2/7] Checking authoritative sources first`);
       const authoritativeSources = this.getAuthoritativeSources(query);
       
@@ -890,7 +1304,8 @@ Please retry your query or contact support if this issue persists.
               url: r?.url || '#',
               title: r?.title || 'Unknown Source',
               relevance: r?.relevance || 0.5,
-              timestamp: new Date().toISOString()
+              timestamp: r?.timestamp || new Date().toISOString(),
+              content: r?.content || ''
             }));
             
             if (authoritativeData.length > 2000) {
@@ -903,7 +1318,7 @@ Please retry your query or contact support if this issue persists.
         }
       }
       
-      // 4. Conduct initial research using web crawling, NOT AI generation
+      // 3. Conduct initial research using web crawling, NOT AI generation
       console.log(`[3/7] Conducting initial research on ${researchPlan.subQueries.length} sub-queries`);
       
       // Use real web crawling for each sub-query
@@ -980,7 +1395,7 @@ Please retry your query or contact support if this issue persists.
       dataStats.initialDataSize = initialData.length;
       dataStats.initialSourceCount = initialSources.length;
       
-      // 5. Fact validation step (new)
+      // 4. Fact validation step (new)
       console.log(`[4/7] Validating facts from ${initialSources.length} sources`);
       
       // Group sources by domain to detect consensus
@@ -1034,7 +1449,7 @@ Please retry your query or contact support if this issue persists.
         }
       });
       
-      // 6. Initial analysis to identify knowledge gaps
+      // 5. Initial analysis to identify knowledge gaps
       console.log(`[5/7] Analyzing research data (${Math.round(initialData.length/1000)}KB)`);
       let initialAnalysis = "";
       try {
@@ -1045,7 +1460,7 @@ Please retry your query or contact support if this issue persists.
         initialAnalysis = `Failed to analyze initial data: ${analysisError instanceof Error ? analysisError.message : String(analysisError)}`;
       }
       
-      // 7. Refine queries based on initial analysis
+      // 6. Refine queries based on initial analysis
       console.log(`[6/7] Refining research queries based on analysis`);
       let refinedQueries: string[] = [];
       try {
@@ -1084,7 +1499,7 @@ Please retry your query or contact support if this issue persists.
         ];
       }
       
-      // Build full research path
+      // 7. Build full research path
       const researchPaths = [query, ...researchPlan.subQueries, ...refinedQueries];
       
       // 8. Deeper research on refined queries
@@ -1148,14 +1563,31 @@ Please retry your query or contact support if this issue persists.
       }
       
       // Create the final research result
-      const result: ResearchResult = {
+      const result = {
         query,
-        findings: initialData + '\n\n' + refinedData.join('\n\n'),
-        analysis,
+        findings: [
+          {
+            key: "Research Data",
+            details: initialData + '\n\n' + refinedData.join('\n\n')
+          }
+        ],
         sources: allSources,
-        confidence: 0.85,
-        plan: researchPlan,
-        researchPath: researchPaths
+        confidenceLevel: "medium" as ResearchConfidenceLevel,
+        metadata: {
+          totalSources: allSources.length,
+          qualitySources: allSources.filter(s => s.validationScore && s.validationScore >= 0.6).length,
+          avgValidationScore: allSources.reduce((sum, s) => sum + (s.validationScore || 0), 0) / allSources.length,
+          executionTimeMs: Date.now() - startTime,
+          timestamp: new Date().toISOString()
+        },
+        // Add backward compatibility fields
+        analysis: analysis,
+        researchPath: researchPaths,
+        plan: researchPlan
+      } as ResearchResult & {
+        analysis: string;
+        researchPath: string[];
+        plan: ResearchPlan;
       };
       
       // Calculate and log performance metrics
@@ -1233,5 +1665,572 @@ Please retry your query or contact support if this issue persists.
     
     // Final relevance score calculation (0.0 to 1.0)
     return Math.min(0.3 + (densityScore * 0.7), 1.0);
+  }
+
+  private async validateSource(source: ResearchSource, query: string): Promise<ResearchSource> {
+    try {
+      const updatedSource = { ...source };
+      
+      // Check for technical consistency
+      const hasCodeSnippets = source.content.includes('```') || source.content.includes('`');
+      const hasTechnicalTerms = this.checkTechnicalTerms(source.content, query);
+      const consistentWithQuery = this.checkContentAlignment(source.content, query);
+      
+      // Check for AI-generated content markers
+      const aiGenerationScore = this.checkForAiGenerated(source.content);
+      
+      // Check for factual claims
+      const factualClaimsScore = this.assessFactualClaims(source.content);
+      
+      // Calculate freshness score based on date patterns in the content
+      const freshnessScore = this.calculateFreshnessScore(source.content, query);
+      
+      // Update validation metrics
+      updatedSource.validationScore = this.calculateValidationScore({
+        technicalConsistency: hasTechnicalTerms ? 0.8 : 0.4,
+        queryAlignment: consistentWithQuery,
+        domainAuthority: this.getDomainAuthorityScore(source.url),
+        aiGenerated: aiGenerationScore,
+        factualClaims: factualClaimsScore,
+        freshness: freshnessScore,
+        hasCode: hasCodeSnippets ? 0.9 : 0.5
+      });
+      
+      // Add validation metadata
+      updatedSource.validationMetadata = {
+        technicalTerms: hasTechnicalTerms,
+        consistentWithQuery,
+        aiGenerationLikelihood: aiGenerationScore > 0.7 ? 'high' : 
+                               aiGenerationScore > 0.4 ? 'medium' : 'low',
+        factualClaimsScore,
+        freshnessScore,
+        hasCode: hasCodeSnippets
+      };
+      
+      return updatedSource;
+    } catch (error) {
+      console.error("Error validating source:", error);
+      return { ...source, validationScore: 0.5 }; // Default score on error
+    }
+  }
+  
+  /**
+   * Calculates overall validation score using weighted factors
+   */
+  private calculateValidationScore(factors: {
+    technicalConsistency: number;
+    queryAlignment: number;
+    domainAuthority: number;
+    aiGenerated: number;
+    factualClaims: number;
+    freshness: number;
+    hasCode: number;
+  }): number {
+    // Weighted scores - higher weights for more important factors
+    const weights = {
+      technicalConsistency: 0.20,
+      queryAlignment: 0.20,
+      domainAuthority: 0.15,
+      aiGenerated: 0.15, // Inverse relationship - higher AI detection means lower score
+      factualClaims: 0.10,
+      freshness: 0.10,
+      hasCode: 0.10
+    };
+    
+    // Calculate weighted score, inverting the AI generation score
+    let score = 
+      (factors.technicalConsistency * weights.technicalConsistency) +
+      (factors.queryAlignment * weights.queryAlignment) +
+      (factors.domainAuthority * weights.domainAuthority) +
+      ((1 - factors.aiGenerated) * weights.aiGenerated) + // Invert AI score
+      (factors.factualClaims * weights.factualClaims) +
+      (factors.freshness * weights.freshness) +
+      (factors.hasCode * weights.hasCode);
+      
+    // Ensure score is between 0 and 1
+    score = Math.max(0, Math.min(1, score));
+    return parseFloat(score.toFixed(2));
+  }
+  
+  /**
+   * Check if content contains relevant technical terms to validate authenticity
+   */
+  private checkTechnicalTerms(content: string, query: string): boolean {
+    // Extract key technical terms from query
+    const techTerms = this.extractTechnicalTerms(query);
+    
+    // If no technical terms found, consider generic validation
+    if (techTerms.length === 0) return true;
+    
+    // Check for presence of multiple technical terms
+    const contentLower = content.toLowerCase();
+    const termMatches = techTerms.filter(term => contentLower.includes(term.toLowerCase()));
+    
+    // Return true if at least 30% of terms are present
+    return termMatches.length >= Math.max(1, Math.ceil(techTerms.length * 0.3));
+  }
+  
+  /**
+   * Extract technical terms from query
+   */
+  private extractTechnicalTerms(query: string): string[] {
+    // Common technical terms in software development contexts
+    const techTermsDict = [
+      "api", "framework", "library", "component", "module", "function", "method", 
+      "class", "object", "interface", "type", "typescript", "javascript",
+      "react", "vue", "angular", "node", "npm", "yarn", "webpack", "babel",
+      "express", "mongodb", "sql", "database", "query", "mutation", "graphql",
+      "rest", "http", "session", "authentication", "authorization", "token", "jwt",
+      "oauth", "saml", "cors", "xss", "csrf", "security", "vulnerability",
+      "injection", "sanitization", "validation", "middleware", "plugin", "hook",
+      "event", "listener", "callback", "promise", "async", "await", "cache",
+      "memory", "storage", "local", "session", "cookie", "header", "request",
+      "response", "server", "client", "browser", "dom", "html", "css", "scss",
+      "animation", "transition", "transform", "media", "query", "responsive",
+      "mobile", "desktop", "device", "viewport", "layout", "grid", "flex",
+      "container", "deploy", "build", "compile", "lint", "test", "unit", "integration",
+      "e2e", "ci", "cd", "docker", "kubernetes", "cloud", "aws", "azure",
+      "gcp", "serverless", "lambda", "function", "s3", "bucket", "route53",
+      "cloudfront", "cdn", "load", "balancer", "vpc", "subnet", "version", "git",
+      "commit", "branch", "merge", "pull", "push", "rebase", "repository", "next.js",
+      "nuxt", "gatsby", "remix", "vite", "esbuild", "turbopack", "swr", "tanstack",
+      "query", "redux", "mobx", "context", "api", "hook", "ssr", "ssg", "isr",
+      "csr", "hydration", "route", "handler", "middleware", "fetch", "axios",
+      "data", "fetching", "url", "path", "param", "router", "navigation", "link"
+    ];
+    
+    // Check for version numbers
+    const versionRegex = /v?\d+(\.\d+)+(-\w+)?/gi;
+    const versionMatches = query.match(versionRegex) || [];
+    
+    // Extract potential terms from query
+    const words = query.toLowerCase().split(/\s+/);
+    const extractedTerms = words.filter(word => 
+      techTermsDict.includes(word) || 
+      word.endsWith('.js') || 
+      word.endsWith('.ts') ||
+      word.startsWith('npm:') ||
+      word.startsWith('yarn:') ||
+      word.includes('-js') ||
+      word.includes('-ts')
+    );
+    
+    // Combine extracted terms with version numbers
+    return [...extractedTerms, ...versionMatches];
+  }
+  
+  /**
+   * Check how well content aligns with query intent
+   */
+  private checkContentAlignment(content: string, query: string): number {
+    // Extract main keywords from query (excluding stopwords)
+    const stopwords = ["a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for", "with", "about", "as"];
+    const keywords = query.toLowerCase().split(/\s+/).filter(word => 
+      !stopwords.includes(word) && word.length > 2
+    );
+    
+    if (keywords.length === 0) return 0.5; // Default medium score if no keywords
+    
+    // Count keyword occurrences in content
+    const contentLower = content.toLowerCase();
+    let matchCount = 0;
+    
+    for (const keyword of keywords) {
+      // Use regex to count whole word occurrences
+      const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'gi');
+      const matches = contentLower.match(regex) || [];
+      matchCount += matches.length;
+    }
+    
+    // Calculate density score based on content length and matches
+    const contentWords = contentLower.split(/\s+/).length;
+    const keywordDensity = matchCount / Math.max(1, contentWords);
+    
+    // Ideal density is around 1-5% - too low means unrelated, too high means keyword stuffing
+    const densityScore = keywordDensity < 0.01 ? keywordDensity * 50 :  // Scale up if below 1%
+                          keywordDensity > 0.08 ? 1 - ((keywordDensity - 0.08) * 10) : // Penalize if over 8%
+                          0.5 + (keywordDensity * 5); // Scale in the ideal range
+    
+    return Math.max(0, Math.min(1, densityScore));
+  }
+  
+  /**
+   * Check for signs that content might be AI-generated
+   */
+  private checkForAiGenerated(content: string): number {
+    // Indicators of AI-generated content
+    const aiMarkers = [
+      // Generic, vague language
+      "in conclusion", "to summarize", "as we can see", "it is important to note",
+      "it is worth mentioning", "it should be noted", "generally speaking",
+      
+      // Repetitive phrases
+      "in this article", "in this guide", "in this tutorial", "in this post",
+      
+      // Perfect structure markers
+      "firstly", "secondly", "thirdly", "lastly", "in summary",
+      
+      // Common AI hallucination phrases
+      "according to recent studies", "experts say", "research shows", 
+      "studies have shown", "it is widely accepted",
+      
+      // Disclaimer-like language
+      "please note that", "it's important to remember", "keep in mind that"
+    ];
+    
+    // Count occurrences of AI markers
+    let markerCount = 0;
+    for (const marker of aiMarkers) {
+      const regex = new RegExp(`\\b${this.escapeRegExp(marker)}\\b`, 'gi');
+      const matches = content.match(regex) || [];
+      markerCount += matches.length;
+    }
+    
+    // Check for unnaturally perfect paragraph structuring
+    const paragraphs = content.split(/\n\n+/);
+    const similarParagraphLengths = this.checkParagraphLengthConsistency(paragraphs);
+    
+    // Check for lack of specialized terminology (inverse of technical terms)
+    // Lack of specific code, commands, technical jargon indicates generic content
+    const hasCodeBlocks = content.includes('```') || (content.match(/`[^`]+`/g) || []).length > 2;
+    
+    // Calculate combined score
+    const markersScore = Math.min(1, markerCount / 5); // Cap at 1
+    const structureScore = similarParagraphLengths ? 0.7 : 0.3;
+    const codeScore = hasCodeBlocks ? 0.2 : 0.8; // Lower score (more likely human) if code blocks
+    
+    // Final weighted score (higher = more likely AI generated)
+    return (markersScore * 0.4) + (structureScore * 0.3) + (codeScore * 0.3);
+  }
+  
+  /**
+   * Check for highly consistent paragraph lengths, which is common in AI content
+   */
+  private checkParagraphLengthConsistency(paragraphs: string[]): boolean {
+    if (paragraphs.length < 3) return false;
+    
+    // Get lengths of paragraphs
+    const lengths = paragraphs.map(p => p.length);
+    
+    // Calculate standard deviation of lengths
+    const mean = lengths.reduce((sum, len) => sum + len, 0) / lengths.length;
+    const squareDiffs = lengths.map(len => (len - mean) ** 2);
+    const variance = squareDiffs.reduce((sum, diff) => sum + diff, 0) / lengths.length;
+    const stdDev = Math.sqrt(variance);
+    
+    // Calculate coefficient of variation (standardized measure of dispersion)
+    const cv = stdDev / mean;
+    
+    // If CV is low, paragraphs are suspiciously uniform in length
+    return cv < 0.3 && paragraphs.length >= 5;
+  }
+  
+  /**
+   * Assess the factual claims density in content
+   */
+  private assessFactualClaims(content: string): number {
+    // Check for specific fact patterns
+    const factPatterns = [
+      // Numbers and statistics
+      /\b\d+(\.\d+)?%\b/g, // Percentages
+      /\b(million|billion|trillion)\b/gi, // Large numbers
+      
+      // Dates and time references
+      /\b(in|since|from|until) \d{4}\b/gi, // Year references
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(st|nd|rd|th)?,? \d{4}\b/gi, // Full dates
+      /\bv\d+(\.\d+)+(-\w+)?\b/gi, // Version numbers
+      
+      // Citations and references
+      /\b(according to|as stated by|as reported by|cited by|reference|source)\b/gi,
+      
+      // Specific named entities
+      /\b[A-Z][a-z]+ (API|SDK|library|framework|tool|protocol)\b/g, // Named technologies
+      
+      // Technical specifications
+      /\b\d+(\.\d+)? (MB|GB|KB|TB|ms|seconds)\b/gi, // Measurements
+    ];
+    
+    // Count matches
+    let factCount = 0;
+    for (const pattern of factPatterns) {
+      const matches = content.match(pattern) || [];
+      factCount += matches.length;
+    }
+    
+    // Calculate density based on content length
+    const contentWords = content.split(/\s+/).length;
+    const factDensity = factCount / Math.max(100, contentWords) * 100;
+    
+    // Score based on density - more facts is better
+    return Math.min(1, factDensity / 5); // Cap at 1
+  }
+  
+  /**
+   * Calculate freshness score based on date mentions
+   */
+  private calculateFreshnessScore(content: string, query: string): number {
+    // Extract version number from query if present
+    const versionMatch = query.match(/v?\d+(\.\d+)+(-\w+)?/i);
+    const queryVersion = versionMatch ? versionMatch[0] : null;
+    
+    // Look for date patterns in content
+    const datePatterns = [
+      // Full dates
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(st|nd|rd|th)?,? \d{4}\b/gi,
+      
+      // Year patterns
+      /\b(in|since|from|until|for) (202\d|2019)\b/gi,
+      
+      // Recent relative time
+      /\b(last|past) (month|week|year|few months)\b/gi,
+      
+      // Version mentions
+      /\bv?\d+(\.\d+)+(-\w+)?\b/gi
+    ];
+    
+    // Current year
+    const currentYear = new Date().getFullYear();
+    
+    // Check for presence of dates
+    let latestYearFound = 0;
+    let hasRecentDate = false;
+    let hasVersionMatch = false;
+    
+    // Check each pattern
+    for (const pattern of datePatterns) {
+      const matches = content.match(pattern) || [];
+      
+      for (const match of matches) {
+        // Check for years
+        const yearMatch = match.match(/\b(202\d|2019)\b/);
+        if (yearMatch) {
+          const year = parseInt(yearMatch[0]);
+          latestYearFound = Math.max(latestYearFound, year);
+          if (year >= currentYear - 1) {
+            hasRecentDate = true;
+          }
+        }
+        
+        // Check for version match with query
+        if (queryVersion && match.includes(queryVersion)) {
+          hasVersionMatch = true;
+        }
+      }
+    }
+    
+    // Calculate score based on freshness signals
+    let score = 0.5; // Default middle score
+    
+    if (hasRecentDate) score += 0.3;
+    if (latestYearFound === currentYear) score += 0.2;
+    if (hasVersionMatch) score += 0.3;
+    
+    // Adjustment for query version
+    if (queryVersion && !hasVersionMatch) score -= 0.3;
+    
+    return Math.max(0, Math.min(1, score));
+  }
+  
+  /**
+   * Get authority score for domain
+   */
+  private getDomainAuthorityScore(url: string): number {
+    try {
+      const domain = new URL(url).hostname.toLowerCase();
+      
+      // High authority technical domains
+      const highAuthorityDomains = [
+        'github.com', 'stackoverflow.com', 'developer.mozilla.org', 
+        'nextjs.org', 'vercel.com', 'reactjs.org', 'nodejs.org', 
+        'npmjs.com', 'typescript.org', 'typescriptlang.org', 'medium.com',
+        'web.dev', 'developers.google.com', 'docs.microsoft.com',
+        'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
+        'smashingmagazine.com', 'css-tricks.com', 'youtube.com', 'freecodecamp.org'
+      ];
+      
+      // Medium authority domains
+      const mediumAuthorityDomains = [
+        'dev.to', 'hashnode.com', 'digitalocean.com', 'hackernoon.com',
+        'blog.logrocket.com', 'codecademy.com', 'pluralsight.com', 
+        'udemy.com', 'coursera.org', 'w3schools.com', 'tutorialspoint.com',
+        'geeksforgeeks.org'
+      ];
+      
+      // Check for exact domain match
+      if (highAuthorityDomains.some(d => domain === d || domain.endsWith(`.${d}`))) {
+        return 0.9;
+      }
+      
+      if (mediumAuthorityDomains.some(d => domain === d || domain.endsWith(`.${d}`))) {
+        return 0.7;
+      }
+      
+      // Partially matching domains (subdomains or related)
+      const partialMatches = [...highAuthorityDomains, ...mediumAuthorityDomains].filter(
+        d => domain.includes(d.replace(/\.(com|org|net|io)$/, ''))
+      );
+      
+      if (partialMatches.length > 0) {
+        return 0.6;
+      }
+      
+      // Check for educational or government domains
+      if (domain.endsWith('.edu') || domain.endsWith('.gov')) {
+        return 0.8;
+      }
+      
+      // Default score for unknown domains
+      return 0.4;
+    } catch (error) {
+      console.error("Error parsing domain:", error);
+      return 0.3;
+    }
+  }
+
+  /**
+   * Escape special characters in a string for use in a regular expression
+   */
+  private escapeRegExp(string: string): string {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  /**
+   * Generate topic-specific search URLs based on the query content
+   */
+  private getTopicalSearchUrls(query: string): string[] {
+    const queryLower = query.toLowerCase();
+    const urls: string[] = [];
+    
+    // Check for programming language specific content
+    if (queryLower.includes('javascript') || queryLower.includes('js')) {
+      urls.push(
+        `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(query)}`,
+        `https://www.npmjs.com/search?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('python')) {
+      urls.push(
+        `https://docs.python.org/3/search.html?q=${encodeURIComponent(query)}`,
+        `https://pypi.org/search/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('java')) {
+      urls.push(
+        `https://docs.oracle.com/en/java/javase/17/docs/api/index.html?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('rust')) {
+      urls.push(
+        `https://doc.rust-lang.org/book/?search=${encodeURIComponent(query)}`,
+        `https://crates.io/search?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // Framework specific content
+    if (queryLower.includes('react')) {
+      urls.push(
+        `https://react.dev/search?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('vue')) {
+      urls.push(
+        `https://vuejs.org/guide/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('angular')) {
+      urls.push(
+        `https://angular.io/docs?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('next.js') || queryLower.includes('nextjs')) {
+      urls.push(
+        `https://nextjs.org/docs?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // Database specific content
+    if (queryLower.includes('sql') || queryLower.includes('database') || queryLower.includes('db')) {
+      urls.push(
+        `https://www.postgresql.org/search/?q=${encodeURIComponent(query)}`,
+        `https://dev.mysql.com/doc/search/?q=${encodeURIComponent(query)}`,
+        `https://www.mongodb.com/docs/search/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // Cloud & DevOps specific content
+    if (queryLower.includes('aws') || queryLower.includes('amazon')) {
+      urls.push(
+        `https://docs.aws.amazon.com/search/doc-search.html?searchPath=documentation&searchQuery=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('azure') || queryLower.includes('microsoft cloud')) {
+      urls.push(
+        `https://learn.microsoft.com/en-us/search/?terms=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('google cloud') || queryLower.includes('gcp')) {
+      urls.push(
+        `https://cloud.google.com/s/results?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('docker') || queryLower.includes('container')) {
+      urls.push(
+        `https://docs.docker.com/search/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('kubernetes') || queryLower.includes('k8s')) {
+      urls.push(
+        `https://kubernetes.io/docs/search/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // AI and ML specific content
+    if (queryLower.includes('machine learning') || queryLower.includes('ml') || 
+        queryLower.includes('ai') || queryLower.includes('artificial intelligence')) {
+      urls.push(
+        `https://pytorch.org/docs/stable/search.html?q=${encodeURIComponent(query)}`,
+        `https://www.tensorflow.org/s/results?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // Mobile development
+    if (queryLower.includes('android')) {
+      urls.push(
+        `https://developer.android.com/s/results?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('ios') || queryLower.includes('swift')) {
+      urls.push(
+        `https://developer.apple.com/search/?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    if (queryLower.includes('flutter')) {
+      urls.push(
+        `https://docs.flutter.dev/search?q=${encodeURIComponent(query)}`
+      );
+    }
+    
+    // Academic and research content
+    if (queryLower.includes('research') || queryLower.includes('paper') || 
+        queryLower.includes('theory') || queryLower.includes('algorithm')) {
+      urls.push(
+        `https://arxiv.org/search/?query=${encodeURIComponent(query)}`,
+        `https://dl.acm.org/action/doSearch?AllField=${encodeURIComponent(query)}`
+      );
+    }
+    
+    return urls;
   }
 }

@@ -26,35 +26,70 @@ export async function POST(req: Request) {
       const result = await researchEngine.research(query);
       console.log(`Research completed for: "${query}"`);
 
-      // Format analysis sections
-      const analysisLines = result.analysis.split('\n');
+      // Check if result uses legacy format (has analysis property)
+      const hasLegacyFormat = 'analysis' in result;
+      
+      // Extract content from findings instead of analysis
       let executiveSummary = '';
       let keyFindings = '';
       let detailedAnalysis = '';
       
-      // Extract sections (basic approach - could be more robust)
-      let currentSection = '';
-      for (const line of analysisLines) {
-        if (line.toLowerCase().includes('executive summary')) {
-          currentSection = 'summary';
-          continue;
-        } else if (line.toLowerCase().includes('key findings')) {
-          currentSection = 'findings';
-          continue;
-        } else if (line.toLowerCase().includes('detailed analysis')) {
-          currentSection = 'analysis';
-          continue;
-        } else if (line.toLowerCase().includes('conclusion')) {
-          break; // Stop at conclusions for brevity
-        }
+      if (hasLegacyFormat && (result as any).analysis) {
+        // Legacy format - extract from analysis
+        const analysisLines = (result as any).analysis.split('\n');
+        let currentSection = '';
+        
+        for (const line of analysisLines) {
+          if (line.toLowerCase().includes('executive summary')) {
+            currentSection = 'summary';
+            continue;
+          } else if (line.toLowerCase().includes('key findings')) {
+            currentSection = 'findings';
+            continue;
+          } else if (line.toLowerCase().includes('detailed analysis')) {
+            currentSection = 'analysis';
+            continue;
+          } else if (line.toLowerCase().includes('conclusion')) {
+            break;
+          }
 
-        if (currentSection === 'summary') {
-          executiveSummary += line + '\n';
-        } else if (currentSection === 'findings') {
-          keyFindings += line + '\n';
-        } else if (currentSection === 'analysis') {
-          detailedAnalysis += line + '\n';
+          if (currentSection === 'summary') {
+            executiveSummary += line + '\n';
+          } else if (currentSection === 'findings') {
+            keyFindings += line + '\n';
+          } else if (currentSection === 'analysis') {
+            detailedAnalysis += line + '\n';
+          }
         }
+        
+        // Use raw analysis as fallback
+        executiveSummary = executiveSummary.trim() || analysisLines[0] || 'No summary available';
+        keyFindings = keyFindings.trim() || (result as any).analysis.slice(0, 500) || 'No key findings available';
+      } else if (result.findings && result.findings.length > 0) {
+        // Get content from findings
+        // Try to find specific findings by key
+        const summaryFinding = result.findings.find(f => 
+          f.key.toLowerCase().includes('summary') || 
+          f.key.toLowerCase().includes('overview'));
+        
+        const keyFindingsList = result.findings.filter(f => 
+          f.key.toLowerCase().includes('key') || 
+          f.key.toLowerCase().includes('main') ||
+          f.key.toLowerCase().includes('important'));
+        
+        const detailsFinding = result.findings.find(f => 
+          f.key.toLowerCase().includes('details') || 
+          f.key.toLowerCase().includes('analysis') ||
+          f.key.toLowerCase().includes('information'));
+        
+        // Set content from findings or use first finding as fallback
+        executiveSummary = summaryFinding ? summaryFinding.details : result.findings[0].details.slice(0, 300);
+        keyFindings = keyFindingsList.length > 0 
+          ? keyFindingsList.map(f => f.details).join('\n\n')
+          : result.findings[0].details.slice(0, 500);
+        detailedAnalysis = detailsFinding 
+          ? detailsFinding.details 
+          : result.findings.map(f => `${f.key}:\n${f.details}`).join('\n\n');
       }
 
       // Check if we have any valid sources
@@ -63,25 +98,24 @@ export async function POST(req: Request) {
           url: "No sources found",
           title: "No sources available",
           relevance: 1,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          content: "No source content available"
         }];
       }
 
-      // Use the formatted findings if available, otherwise use raw
-      const formattedExecutiveSummary = executiveSummary.trim() || analysisLines[0] || 'No summary available';
-      const formattedKeyFindings = keyFindings.trim() || result.analysis.slice(0, 500) || 'No key findings available';
-
-      // Format research path to show the logic
-      const formattedPath = result.researchPath.map((query, i) => {
-        // First query is the main query
-        if (i === 0) return `Initial: "${query}"`;
-        // Subsequent queries from the plan
-        if (result.plan && result.plan.subQueries && i <= result.plan.subQueries.length) {
-          return `Plan ${i}: "${query}"`;
-        }
-        // Remaining are refined queries
-        return `Refinement ${i - (result.plan?.subQueries?.length || 0)}: "${query}"`;
-      });
+      // Format research path - handle case where researchPath may not exist in new version
+      const formattedPath = hasLegacyFormat && (result as any).researchPath
+        ? (result as any).researchPath.map((query: string, i: number) => {
+            // First query is the main query
+            if (i === 0) return `Initial: "${query}"`;
+            // Subsequent queries from the plan
+            if ((result as any).plan && (result as any).plan.subQueries && i <= (result as any).plan.subQueries.length) {
+              return `Plan ${i}: "${query}"`;
+            }
+            // Remaining are refined queries
+            return `Refinement ${i - ((result as any).plan?.subQueries?.length || 0)}: "${query}"`;
+          })
+        : [`Initial: "${query}"`]; // Default if no research path
 
       // Format sources with relevance
       const formattedSources = result.sources
@@ -93,16 +127,35 @@ export async function POST(req: Request) {
           relevance: (s.relevance * 100).toFixed(0) + '%'
         }));
 
+      // Include code examples if available
+      const codeExampleSection = result.codeExamples && result.codeExamples.length > 0
+        ? `\n\nCode Examples:\n${result.codeExamples.map(ex => 
+            `${ex.title}\n\`\`\`${ex.language}\n${ex.code}\n\`\`\``
+          ).join('\n\n')}`
+        : '';
+
+      // Include insights if available
+      const insightsSection = result.insights && result.insights.length > 0
+        ? `\n\nKey Insights:\n${result.insights.map(insight => `- ${insight}`).join('\n')}` 
+        : '';
+      
+      // Use confidenceLevel from new format or calculate from confidence in old format
+      const confidenceLevel = result.confidenceLevel ? result.confidenceLevel.toUpperCase() :
+        hasLegacyFormat && (result as any).confidence 
+          ? ((result as any).confidence >= 0.8 ? 'HIGH' : 
+             (result as any).confidence >= 0.5 ? 'MEDIUM' : 'LOW')
+          : 'MEDIUM';
+          
       return NextResponse.json({
         report: `
 Executive Summary:
-${formattedExecutiveSummary}
+${executiveSummary}
 
 Key Findings:
-${formattedKeyFindings.split('\n').slice(0, 5).join('\n')}
+${keyFindings.split('\n').slice(0, 5).join('\n')}
 
 Detailed Analysis:
-${detailedAnalysis || result.analysis}
+${detailedAnalysis}${codeExampleSection}${insightsSection}
 
 Research Methodology:
 This deep research was conducted through iterative, autonomous exploration. The engine first created a research plan, then conducted initial investigations, identified knowledge gaps, and performed targeted follow-up research.
@@ -112,6 +165,8 @@ ${formattedPath.join('\n')}
 
 Top Sources:
 ${formattedSources.map(s => `- ${s.title} (Relevance: ${s.relevance})\n  ${s.url}`).join('\n')}
+
+Confidence Level: ${confidenceLevel}
         `.trim()
       }, {
         status: 200,

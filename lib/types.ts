@@ -3,10 +3,20 @@ export interface ResearchSource {
   title: string;
   relevance: number;
   timestamp: string;
+  content: string;
   credibility?: number;
   verified?: boolean;
   domain?: string;
-  type?: 'official' | 'community' | 'academic' | 'news' | 'social' | 'other';
+  type?: 'official' | 'community' | 'blog' | 'forum' | 'documentation' | 'other';
+  validationScore?: number;
+  validationMetadata?: {
+    technicalTerms: boolean;
+    consistentWithQuery: number;
+    aiGenerationLikelihood: 'high' | 'medium' | 'low';
+    factualClaimsScore: number;
+    freshnessScore: number;
+    hasCode: boolean;
+  };
 }
 
 export interface ResearchPlan {
@@ -18,14 +28,39 @@ export interface ResearchPlan {
   priorityOrder: string[];
 }
 
+export interface ResearchFinding {
+  key: string;
+  details: string;
+}
+
+export interface CodeExample {
+  code: string;
+  language: string;
+  title: string;
+  source: {
+    url: string;
+    title: string;
+  };
+}
+
+export type ResearchConfidenceLevel = 'very high' | 'high' | 'medium' | 'low' | 'very low';
+
 export interface ResearchResult {
   query: string;
-  findings: string;
-  analysis: string;
+  findings: ResearchFinding[];
   sources: ResearchSource[];
-  confidence: number;
-  researchPath: string[];
-  plan: ResearchPlan;
+  codeExamples?: CodeExample[];
+  factConsensus?: string[];
+  insights?: string[];
+  confidenceLevel: ResearchConfidenceLevel;
+  metadata: {
+    totalSources: number;
+    qualitySources: number;
+    avgValidationScore: number;
+    executionTimeMs: number;
+    timestamp: string;
+    error?: string;
+  };
 }
 
 export interface ResearchError {
