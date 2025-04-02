@@ -121,28 +121,39 @@ export async function POST(req: Request) {
       // Format sources with relevance
       const formattedSources = result.sources
         .sort((a, b) => b.relevance - a.relevance)
-        .slice(0, 25) // Show top 25 sources instead of 10
-        .map(s => ({
-          title: s.title || "Unknown source",
-          url: s.url || "#",
-          relevance: (s.relevance * 100).toFixed(0) + '%'
-        }));
+        .slice(0, 30) // Show more top sources (increased from 25)
+        .map(s => {
+          let domain = "";
+          try {
+            domain = new URL(s.url).hostname.replace(/^www\./, '');
+          } catch (e) {
+            domain = s.url;
+          }
+          
+          return {
+            title: s.title || "Unknown source",
+            url: s.url || "#",
+            domain: domain,
+            relevance: (s.relevance * 100).toFixed(0) + '%'
+          };
+        });
 
       // Include code examples if available
       const codeExampleSection = result.codeExamples && result.codeExamples.length > 0
-        ? `\n\nCode Examples:\n${result.codeExamples.map(ex => 
-            `${ex.title}\n\`\`\`${ex.language}\n${ex.code}\n\`\`\``
+        ? `\n\n## Code Examples\n${result.codeExamples.map(ex => 
+            `### ${ex.title}\n\`\`\`${ex.language}\n${ex.code}\n\`\`\``
           ).join('\n\n')}`
         : '';
 
       // Include insights if available
       const insightsSection = result.insights && result.insights.length > 0
-        ? `\n\nKey Insights:\n${result.insights.map(insight => `- ${insight}`).join('\n')}` 
+        ? `\n\n## Key Insights\n${result.insights.map(insight => `- ${insight}`).join('\n')}` 
         : '';
       
       // Use confidenceLevel from new format or calculate from confidence in old format
-      const confidenceLevel = result.confidenceLevel ? result.confidenceLevel.toUpperCase() :
-        hasLegacyFormat && (result as any).confidence 
+      const confidenceLevel = result.confidenceLevel 
+        ? result.confidenceLevel.toUpperCase()
+        : hasLegacyFormat && (result as any).confidence 
           ? ((result as any).confidence >= 0.8 ? 'HIGH' : 
              (result as any).confidence >= 0.5 ? 'MEDIUM' : 'LOW')
           : 'MEDIUM';
@@ -152,13 +163,23 @@ export async function POST(req: Request) {
 
       // Fix table formatting issues
       if (detailedAnalysis.includes('|')) {
-        formattedDetailedAnalysis = detailedAnalysis
-          .replace(/\|\s*---+\s*\|/g, '| --- |')
-          .replace(/\|[-\s|]+\n/g, '| --- | --- | --- |\n');
+        // Fix inconsistent table formatting
+        formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
+          /\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|[\s-]*\n/g,
+          (match, col1, col2, col3) => {
+            return `| ${col1.trim()} | ${col2.trim()} | ${col3.trim()} |\n| --- | --- | --- |\n`;
+          }
+        );
+        
+        // Fix missing separators in tables
+        formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
+          /(\|.*\|\n)(?!\|[\s-]+\|)/g, 
+          '$1| --- | --- | --- |\n'
+        );
       }
 
       // Fix comparative assessment section formatting
-      if (detailedAnalysis.includes('COMPARATIVE ASSESSMENT')) {
+      if (formattedDetailedAnalysis.includes('COMPARATIVE ASSESSMENT')) {
         formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
           /(COMPARATIVE ASSESSMENT[\s\S]*?)(\n\n|$)/g,
           '## Comparative Assessment\n\n$1\n\n'
@@ -171,17 +192,6 @@ export async function POST(req: Request) {
       // Ensure proper spacing around headings
       formattedDetailedAnalysis = formattedDetailedAnalysis.replace(/(\n#+\s.*?)(\n[^#\n])/g, '$1\n$2');
 
-      // Fix broken markdown tables
-      if (formattedDetailedAnalysis.includes('|')) {
-        // Fix inconsistent table formatting
-        formattedDetailedAnalysis = formattedDetailedAnalysis.replace(
-          /\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|\s*([^|\n]+)\s*\|[\s-]*\n/g,
-          (match, col1, col2, col3) => {
-            return `| ${col1.trim()} | ${col2.trim()} | ${col3.trim()} |\n| --- | --- | --- |\n`;
-          }
-        );
-      }
-
       // Get research metrics from result
       const researchMetrics = result.researchMetrics || {
         sourcesCount: result.sources.length,
@@ -191,6 +201,20 @@ export async function POST(req: Request) {
         dataSize: `${Math.round(Buffer.byteLength(JSON.stringify(result), 'utf8') / 1024)}KB`,
         elapsedTime: result.metadata.executionTimeMs
       };
+
+      // Format research path for better display
+      const formattedResearchPath = `
+## Research Path
+${formattedPath.map((path: string) => `- ${path}`).join('\n')}
+      `;
+
+      // Format top sources for better display
+      const formattedTopSources = `
+## Top Sources
+${formattedSources.map(s => {
+  return `- **${s.title}** (Relevance: ${s.relevance})\n  [${s.domain}](${s.url})`;
+}).join('\n')}
+      `;
 
       return NextResponse.json({
         report: `
@@ -206,11 +230,9 @@ ${formattedDetailedAnalysis}${codeExampleSection}${insightsSection}
 ## Research Methodology
 This deep research was conducted through iterative, autonomous exploration. The engine first created a research plan, then conducted initial investigations, identified knowledge gaps, and performed targeted follow-up research.
 
-## Research Path
-${formattedPath.join('\n')}
+${formattedResearchPath}
 
-## Top Sources
-${formattedSources.map(s => `- ${s.title} (Relevance: ${s.relevance})\n  ${s.url}`).join('\n')}
+${formattedTopSources}
 
 ## Confidence Level
 ${confidenceLevel}

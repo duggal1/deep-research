@@ -96,12 +96,12 @@ export default function Home() {
       timer = setTimeout(() => {
         setCountdown(prev => Math.max(0, prev - 1));
 
-        // Use real stats if available, otherwise simulate increasing research stats
+        // Update progress states if research is in progress
         if (loading) {
-          setResearchStats(prev => {
-            if (realStats) {
-              // Use real progress stats from backend
-              const progress = Math.min(0.99, realStats.elapsedTime / estimatedTime);
+          if (realStats) {
+            // Use real data from backend
+            setResearchStats(prev => {
+              const progress = Math.min(0.99, realStats.elapsedTime / (estimatedTime * 1000));
               return {
                 ...prev,
                 sourcesCount: realStats.sourcesCount,
@@ -110,12 +110,14 @@ export default function Home() {
                 elapsedTime: realStats.elapsedTime / 1000, // Convert ms to s
                 status: getResearchStatus(progress, realStats.sourcesCount, realStats.domainsCount)
               };
-            } else {
-              // Use simulated stats (fallback)
+            });
+          } else {
+            // Fallback to simulated data only if no real stats are available
+            setResearchStats(prev => {
               const progress = 1 - (countdown / estimatedTime);
-              const targetSources = 850; // Target 850+ sources
+              const targetSources = 4500; // Target 4500+ sources based on real data observed
               const targetDomains = 90;
-
+              
               return {
                 ...prev,
                 sourcesCount: Math.min(targetSources, Math.floor(targetSources * progress)),
@@ -124,8 +126,8 @@ export default function Home() {
                 elapsedTime: estimatedTime - countdown,
                 status: getResearchStatus(progress, prev.sourcesCount, prev.domainsCount)
               };
-            }
-          });
+            });
+          }
         }
       }, 1000);
     }
@@ -242,17 +244,25 @@ export default function Home() {
   // Poll for progress updates during research
   const pollResearchProgress = useCallback(async () => {
     try {
-      const res = await fetch('/api/research/progress');
+      if (!loading) return;
+      
+      const res = await fetch('/api/research/progress', {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
       if (res.ok) {
         const data = await res.json();
-        if (data.metrics) {
+        if (data.metrics && data.metrics.sourcesCount > 0) {
           setRealStats(data.metrics);
         }
       }
     } catch (error) {
       console.log('Progress poll error:', error);
     }
-  }, []);
+  }, [loading]);
 
   const saveHistory = (newHistory: string[]) => {
     setSearchHistory(newHistory);
@@ -267,9 +277,10 @@ export default function Home() {
     setReport('');
     setRealStats(null);
 
-    // Estimate research time - roughly 30s + 10s per word in query
+    // Estimate research time - roughly 20s + 5s per word in query
+    // Reduced from 30s + 10s to reflect faster processing
     const wordCount = query.split(' ').length;
-    const timeEstimate = 30 + wordCount * 5;
+    const timeEstimate = 20 + wordCount * 5;
     setEstimatedTime(timeEstimate);
     setCountdown(timeEstimate);
 
@@ -298,7 +309,7 @@ export default function Home() {
     if (progressPollRef.current) {
       clearInterval(progressPollRef.current);
     }
-    progressPollRef.current = setInterval(pollResearchProgress, 3000);
+    progressPollRef.current = setInterval(pollResearchProgress, 2000); // Poll every 2 seconds
 
     try {
       const res = await fetch('/api/research', {
@@ -324,6 +335,15 @@ export default function Home() {
         // Set final metrics if available
         if (data.metrics) {
           setRealStats(data.metrics);
+          // Set final research stats
+          setResearchStats(prev => ({
+            ...prev,
+            sourcesCount: data.metrics.sourcesCount,
+            domainsCount: data.metrics.domainsCount,
+            dataSize: data.metrics.dataSize,
+            elapsedTime: data.metrics.elapsedTime / 1000,
+            status: `Research complete in ${(data.metrics.elapsedTime / 1000).toFixed(1)}s`
+          }));
         }
         const newHistory = [query, ...searchHistory.filter(q => q !== query)].slice(0, 5);
         saveHistory(newHistory);
@@ -425,21 +445,62 @@ export default function Home() {
       );
     },
 
+    // Custom table renderer to improve table appearance
+    table: ({ node, ...props }: any) => (
+      <div className="my-6 border border-border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse" {...props} />
+        </div>
+      </div>
+    ),
+    
+    tableHead: ({ node, ...props }: any) => (
+      <thead className="bg-primary/10 text-primary" {...props} />
+    ),
+    
+    tableRow: ({ node, isHeader, ...props }: any) => (
+      <tr className={`border-b border-border ${isHeader ? "" : "hover:bg-muted/30"}`} {...props} />
+    ),
+    
+    tableCell: ({ node, isHeader, ...props }: any) => {
+      if (isHeader) {
+        return <th className="px-4 py-3 font-medium text-left" {...props} />;
+      }
+      return <td className="px-4 py-3" {...props} />;
+    },
+
     // Custom heading renderer
     h1: ({ children }: any) => <h1 className="mt-8 mb-4 font-bold text-foreground text-3xl">{children}</h1>,
-    h2: ({ children }: any) => <h2 className="mt-6 mb-3 font-bold text-foreground text-2xl">{children}</h2>,
+    h2: ({ children }: any) => {
+      // Special formatting for section headers
+      const text = String(children);
+      
+      // Apply special styling for research sections
+      if (
+        text.includes('Research Path') ||
+        text.includes('Top Sources') ||
+        text.includes('Comparative Assessment')
+      ) {
+        return (
+          <h2 className="flex items-center mt-10 mb-4 pb-3 border-primary/50 border-b font-bold text-primary text-2xl">
+            {text}
+          </h2>
+        );
+      }
+      
+      return <h2 className="mt-6 mb-3 font-bold text-foreground text-2xl">{children}</h2>;
+    },
     h3: ({ children }: any) => {
       // Special formatting for section headers
       const text = String(children);
       if (
-        text.includes('Executive Summary:') ||
-        text.includes('Key Findings:') ||
-        text.includes('Detailed Analysis:') ||
-        text.includes('Research Methodology:') ||
-        text.includes('Research Path:') ||
-        text.includes('Top Sources:') ||
-        text.includes('Code Examples:') ||
-        text.includes('Key Insights:')
+        text.includes('Executive Summary') ||
+        text.includes('Key Findings') ||
+        text.includes('Detailed Analysis') ||
+        text.includes('Research Methodology') ||
+        text.includes('Code Examples') ||
+        text.includes('Key Insights') ||
+        text.includes('Confidence Level')
       ) {
         return (
           <h3 className="flex items-center mt-8 mb-4 pb-2 border-primary/20 border-b font-semibold text-primary text-xl">
@@ -477,23 +538,26 @@ export default function Home() {
       );
     },
 
-    // Custom list item renderer for sources
+    // Custom list item renderer for sources and research path
     li: ({ node, children, ...props }: any) => {
       const childrenStr = String(children);
 
-      // Check if this is a source item with URL
-      if (childrenStr.includes('http') && childrenStr.includes('Relevance:')) {
-        const urlMatch = childrenStr.match(/(https?:\/\/[^\s]+)/);
-        const url = urlMatch ? urlMatch[0] : '';
-        const domain = url ? extractDomain(url) : '';
-        const faviconUrl = domain ? getFaviconUrl(domain) : '';
-
-        // Extract title and relevance
-        const titleMatch = childrenStr.match(/^([^(]+)/);
-        const title = titleMatch ? titleMatch[1].trim() : 'Unknown Source';
-
+      // Check if this is a source item with URL (new format with domain/URL)
+      if (childrenStr.includes('Relevance:') && (childrenStr.includes('](http') || childrenStr.includes('](#'))) {
+        // Extract title, relevance and URL
+        const titleMatch = childrenStr.match(/\*\*(.*?)\*\*/);
+        const title = titleMatch ? titleMatch[1] : 'Unknown Source';
+        
         const relevanceMatch = childrenStr.match(/Relevance: ([^)]+)/);
         const relevance = relevanceMatch ? relevanceMatch[1].trim() : '';
+        
+        const domainMatch = childrenStr.match(/\[(.*?)\]/);
+        const domain = domainMatch ? domainMatch[1] : '';
+        
+        const urlMatch = childrenStr.match(/\((https?:\/\/[^)]+)\)/);
+        const url = urlMatch ? urlMatch[1] : '#';
+        
+        const faviconUrl = domain ? getFaviconUrl(domain) : '';
 
         return (
           <li className="flex items-start mb-3" {...props}>
@@ -530,7 +594,7 @@ export default function Home() {
       // Check if this is a research path item
       if (childrenStr.includes('Initial:') || childrenStr.includes('Plan ') || childrenStr.includes('Refinement ')) {
         return (
-          <li className="mb-2 py-1 pl-4 border-primary/30 border-l-2 text-muted-foreground" {...props}>
+          <li className="mb-2 py-1 pl-4 border-primary/30 hover:border-primary border-l-2 text-muted-foreground transition-colors" {...props}>
             {children}
           </li>
         );
@@ -564,49 +628,12 @@ export default function Home() {
       return match;
     });
 
-    // Ensure URLs in source listings are properly formatted for markdown
-    processed = processed.replace(
-      /(- .+?)\(Relevance: (.+?)\)\s+(https?:\/\/[^\s]+)/g,
-      '$1(Relevance: $2)\n[$3]($3)'
-    );
-
-    // Fix table formatting issues
+    // Fix table formatting issues if any remain
     processed = processed.replace(/\|\s*---+\s*\|/g, '| --- |');
     processed = processed.replace(/\|[-\s|]+\n/g, '| --- | --- | --- |\n');
 
-    // Fix comparative assessment section formatting
-    processed = processed.replace(
-      /(COMPARATIVE ASSESSMENT[\s\S]*?)(\n\n|$)/g,
-      '## Comparative Assessment\n\n$1\n\n'
-    );
-
-    // Fix broken markdown tables
-    const tableRegex = /\|[\s\S]*?\|[\s\S]*?\|/g;
-    processed = processed.replace(tableRegex, (match) => {
-      // Check if this is a broken table with excessive dashes
-      if (match.includes('-----------------------------')) {
-        // Extract the header row
-        const headerMatch = match.match(/\|(.*?)\|/);
-        if (headerMatch) {
-          const headerCells = headerMatch[1].split('|').map(cell => cell.trim());
-          const headerRow = `| ${headerCells.join(' | ')} |`;
-          const separatorRow = `| ${headerCells.map(() => '---').join(' | ')} |`;
-
-          // Return a properly formatted table header
-          return `${headerRow}\n${separatorRow}`;
-        }
-      }
-      return match;
-    });
-
-    // Remove excessive dashes that break markdown formatting
-    processed = processed.replace(/[-]{10,}/g, '---');
-
     // Ensure proper spacing around headings
     processed = processed.replace(/(\n#+\s.*?)(\n[^#\n])/g, '$1\n$2');
-
-    // Fix any broken HTML tags that might interfere with rendering
-    processed = processed.replace(/<(?!(a|img|br|hr|p|h[1-6]|ul|ol|li|blockquote|pre|code|strong|em|del)[\s>])[^>]*>/g, '');
 
     return processed;
   };
