@@ -183,7 +183,7 @@ const SignUpForm = () => {
                         variant="outline"
                         disabled={isGoogleLoading || isAppleLoading}
                         onClick={() => handleOAuth("oauth_google")}
-                        className="relative hover:bg-gray-50 py-6 border border-gray-200 w-full font-normal text-gray-700"
+                        className="relative  hover:bg-gray-50 dark:hover:bg-gray-900 dark:hover:text-white  py-6 border border-gray-300 dark:border-blue-900 w-full font-normal text-gray-700 dark:text-neutral-100"
                     >
                         {isGoogleLoading ? 
                             <LoadingIcon size="sm" className="left-4 absolute w-5 h-5" /> : 
@@ -198,7 +198,7 @@ const SignUpForm = () => {
                         variant="outline"
                         disabled={isGoogleLoading || isAppleLoading}
                         onClick={() => handleOAuth("oauth_apple")}
-                        className="relative hover:bg-gray-50 py-6 border border-gray-200 w-full font-normal text-gray-700"
+                        className="relative  hover:bg-gray-50 dark:hover:bg-gray-900 dark:hover:text-white  py-6 border border-gray-300 dark:border-blue-900 w-full font-normal text-gray-700 dark:text-neutral-100"
                     >
                         {isAppleLoading ? 
                             <LoadingIcon size="sm" className="left-4 absolute w-5 h-5" /> : 
@@ -219,7 +219,7 @@ const SignUpForm = () => {
                         variant="default"
                         disabled={isGoogleLoading || isAppleLoading}
                         onClick={() => setIsEmailOpen(false)}
-                        className="relative bg-gray-900 hover:bg-black py-6 w-full font-normal"
+                        className="relative bg-black text-white dark:bg-black hover:bg-gray-950 dark:hover:bg-gray-900 dark:hover:text-white  py-6 border border-gray-300 dark:border-blue-900 w-full font-normal  dark:text-neutral-100"
                     >
                         <MailIcon className="left-4 absolute w-5 h-5" />
                         Continue with Email

@@ -77,7 +77,7 @@ export function MainNavbar() {
          
             <div className="flex items-center gap-3">
               {isSignedIn ? (
-                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white hover:shadow-md hover:shadow-blue-600">
+                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white hover:shadow-md hover:shadow-cyan-500">
                   <span>Dashboard</span>
                
                 </Button>
@@ -91,7 +91,7 @@ export function MainNavbar() {
                   </button>
                   <Button
                     onClick={handleGetStarted}
-                   className="bg-black dark:bg-white hover:shadow-lg hover:shadow-amber-500"
+                   className="bg-black dark:bg-white hover:shadow-lg hover:shadow-blue-700"
                   >
                     Get Started
                     <ArrowRight className="w-3.5 h-3.5" />

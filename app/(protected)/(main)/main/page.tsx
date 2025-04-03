@@ -21,7 +21,6 @@ import {
   FileTextIcon,
   ImageIcon
 } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -29,12 +28,8 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuroraText } from '@/components/magicui/aurora-text';
-import Image from 'next/image';
 
-const ThemeSwitcher = dynamic(
-  () => import('@/components/theme-switcher').then(mod => mod.ThemeSwitcher),
-  { ssr: false }
-);
+
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -548,11 +543,15 @@ export default function Home() {
         );
       }
 
-      // Inline code
+      // Inline code - this is where the hydration error occurs
+      // We need to ensure this doesn't get rendered inside a <p> tag
+      // by the parent component
       return (
-        <code className="bg-muted px-1.5 py-0.5 rounded font-serif text-sm" {...props}>
-          {children}
-        </code>
+        <span className="inline-code">
+          <code className="bg-muted px-1.5 py-0.5 rounded font-serif text-sm" {...props}>
+            {children}
+          </code>
+        </span>
       );
     },
 
@@ -833,6 +832,16 @@ export default function Home() {
                 }}
               />
             </div>
+          </div>
+        );
+      }
+
+      // Check if children contains any React elements that might cause hydration issues
+      // If children is an array and contains objects (React elements), we need to handle it differently
+      if (Array.isArray(children) && children.some(child => typeof child === 'object')) {
+        return (
+          <div className="mb-4 text-card-foreground leading-relaxed">
+            {children}
           </div>
         );
       }

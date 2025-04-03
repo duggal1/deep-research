@@ -16,7 +16,7 @@ export class ResearchEngine {
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
   private MAX_DATA_SOURCES = 15000;
-  private MAX_TOKEN_OUTPUT = 250000;
+  private MAX_TOKEN_OUTPUT = 90000;
   private CHUNK_SIZE = 20000;
   private SEARCH_DEPTH = 10;
   private MAX_PARALLEL_REQUESTS = 40;

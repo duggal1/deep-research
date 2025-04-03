@@ -19,14 +19,14 @@ export default function ThemeSwitcher() {
     <div className="relative">
       <button
         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-        className="relative flex items-center justify-center w-10 h-10 rounded-full "
+        className="relative flex items-center justify-center w-8 h-8 rounded-full "
         aria-label="Toggle theme"
       >
-        <div className="absolute inset-0.5 rounded-full bg-gray-100 dark:bg-black flex items-center justify-center transition-colors duration-300">
+        <div className="absolute inset-0.5  flex items-center justify-center transition-colors duration-300">
           {theme === 'dark' ? (
-            <SunIcon className="h-6 w-6 text-orange-600 transition-all duration-300" />
+            <SunIcon className="h-6 w-6 text-orange-400 transition-all duration-300" />
           ) : (
-            <MoonIcon className="h-6 w-6 text-yellow-400 transition-all duration-300" />
+            <MoonIcon className="h-6 w-6 text-gray-400 transition-all duration-300" />
           )}
         </div>
       </button>

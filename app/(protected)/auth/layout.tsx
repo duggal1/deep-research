@@ -9,7 +9,7 @@ interface Props {
 
 const AuthLayout = ({ children }: Props) => {
     return (
-        <main className="relative bg-gray-50 w-full min-h-screen font-serif">
+        <main className="relative dark:bg-black bg-white w-full min-h-screen font-serif">
             <div className="top-0 left-0 absolute flex justify-center pt-8 w-full">
                 <div className="text-center">
                     <h1 className="font-serif font-semibold text-gray-950 dark:text-white text-5xl">
@@ -21,7 +21,7 @@ const AuthLayout = ({ children }: Props) => {
             
             {children}
             
-            <footer className="bottom-0 left-0 absolute pb-4 w-full text-gray-500 text-xs text-center">
+            <footer className="bottom-0 left-0 absolute pb-4 w-full text-gray-600 text-xs text-center">
                 © {new Date().getFullYear()} Blaze. All rights reserved.
             </footer>
         </main>
