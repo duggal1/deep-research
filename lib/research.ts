@@ -1,12 +1,22 @@
-
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ResearchResult, ResearchSource, ResearchPlan, ResearchFinding, CodeExample, ResearchConfidenceLevel } from './types';
+import { ResearchResult, ResearchSource, ResearchPlan, ResearchFinding, CodeExample, ResearchConfidenceLevel, ResearchError } from './types';
 
 // Add embedding model
 interface EmbeddingVector {
   values: number[];
   dimensions: number;
 }
+
+// --- Constants Adjustment ---
+// Target more sources, higher parallelism, longer overall time, but keep individual request timeouts reasonable.
+const MAX_TARGET_SOURCES = 30000; // Target high, but actual count depends on time
+const MAX_TOKEN_OUTPUT_TARGET = 120000; // Increase desired output size (check model limits)
+const MAX_PARALLEL_FETCHES = 150; // Increase parallelism cautiously
+const MAX_OVERALL_RESEARCH_TIME_MS = 240 * 1000; // Allow up to 4 minutes for deep research (Edge limit is 300s)
+const FETCH_TIMEOUT_MS = 15000; // Timeout for individual page fetches (15 seconds)
+const MAX_FETCH_RETRIES = 2; // Retry failed fetches up to 2 times
+const RETRY_DELAY_MS = 1500; // Base delay before retrying a fetch
+// ---
 
 export class ResearchEngine {
   private model: any;
@@ -19,7 +29,7 @@ export class ResearchEngine {
   private MAX_TOKEN_OUTPUT = 90000;
   private CHUNK_SIZE = 20000;
   private SEARCH_DEPTH = 10;
-  private MAX_PARALLEL_REQUESTS = 40;
+  private MAX_PARALLEL_REQUESTS = 100;
   private ADDITIONAL_DOMAINS = 200;
   private MAX_RESEARCH_TIME = 180000;
   private DEEP_RESEARCH_MODE = true;
@@ -31,10 +41,18 @@ export class ResearchEngine {
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
-    this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
-    // Initialize embedding model for semantic search
+    // Use a model known for larger context windows if possible and needed for large synthesis
+    // Check Gemini documentation for best model choice for large input/output. Sticking with flash for speed for now.
+    this.model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' }); // Using latest flash model
     this.embeddingModel = genAI.getGenerativeModel({ model: 'embedding-001' });
     this.cache = new Map();
+    // Check if AbortController exists, but DO NOT assign the polyfill directly
+    // The runtime (like Edge) should provide its own compatible version.
+    if (typeof globalThis.AbortController === 'undefined') {
+       console.warn("Warning: globalThis.AbortController is not defined. Fetch timeouts might not work correctly.");
+       // If truly needed in a specific env without native support, a more robust polyfill strategy might be required.
+       // For Edge Runtime, this check is likely sufficient, and native AbortController should be used.
+    }
   }
 
   // Public method to generate content using the model
@@ -110,34 +128,48 @@ export class ResearchEngine {
     };
   }
 
-  private getCachedResult(query: string): ResearchResult & {
+  // Update the return type to guarantee non-optional researchMetrics if not null
+  private getCachedResult(query: string): (ResearchResult & {
     analysis: string;
     researchPath: string[];
     plan: ResearchPlan;
-    researchMetrics?: {
+    researchMetrics: {
       sourcesCount: number;
       domainsCount: number;
       dataSize: string;
-      elapsedTime: number;
+      elapsedTime: number; // Note: cached elapsedTime might not be meaningful
     };
-  } | null {
+  }) | null {
     const cachedItem = this.cache.get(query);
     
     if (cachedItem && (Date.now() - cachedItem.timestamp) < this.CACHE_DURATION) {
       const cachedResult = cachedItem.data;
       
-      // Ensure the cached result has all required properties for the extended type
-      // If any of these properties don't exist, don't use the cache
+      // Ensure the cached result has all required base properties
       if (!('analysis' in cachedResult) || !('researchPath' in cachedResult) || !('plan' in cachedResult)) {
+        console.warn("Cached result missing core properties (analysis, path, plan). Invalidating cache.");
+        this.cache.delete(query); // Optional: remove invalid cache entry
         return null;
       }
       
-      // Cast to the extended type since we've verified the properties exist
+      // Ensure researchMetrics exists before returning
+      if (!('researchMetrics' in cachedResult) || !cachedResult.researchMetrics) {
+         console.warn("Cached result missing researchMetrics, adding defaults.");
+         // Add default/empty metrics if missing
+         cachedResult.researchMetrics = {
+            sourcesCount: cachedResult.sources?.length || 0,
+            domainsCount: new Set(cachedResult.sources?.map(s => { try { return new URL(s.url).hostname } catch { return s.url } }) || []).size,
+            dataSize: `${Math.round(Buffer.byteLength(typeof cachedResult.analysis === 'string' ? cachedResult.analysis : '', 'utf8') / 1024)}KB`, // Estimate size
+            elapsedTime: 0 // Elapsed time for cached result is not meaningful
+         };
+      }
+      
+      // Cast to the validated & updated type before returning
       return cachedResult as ResearchResult & {
         analysis: string;
         researchPath: string[];
         plan: ResearchPlan;
-        researchMetrics?: {
+        researchMetrics: {
           sourcesCount: number;
           domainsCount: number;
           dataSize: string;
@@ -379,339 +411,202 @@ export class ResearchEngine {
    * Prioritize sources based on freshness and authority
    */
   private prioritizeSources(sources: ResearchSource[], query: string): ResearchSource[] {
-    // Check how fresh content needs to be based on query
-    const needsVeryRecent = /latest|newest|new|recent|update|changelog|release|version|202[3-5]/i.test(query);
-    const needsModeratelyRecent = /last year|trend|current|modern|today/i.test(query);
-    
-    // Prioritization weights
-    const weights = {
-      freshness: needsVeryRecent ? 0.4 : needsModeratelyRecent ? 0.25 : 0.1,
-      authority: 0.3,
-      relevance: 0.3
-    };
-    
-    // Current date for comparison
+    // Simplified scoring focusing on relevance and basic authority/freshness checks
     const now = Date.now();
-    const ONE_DAY = 24 * 60 * 60 * 1000;
-    const ONE_MONTH = 30 * ONE_DAY;
-    const ONE_YEAR = 365 * ONE_DAY;
-    
-    // Score and sort sources
-    return sources.map(source => {
-      // Parse the timestamp
-      let timestamp;
-      try {
-        timestamp = new Date(source.timestamp).getTime();
-      } catch (e) {
-        timestamp = now - ONE_YEAR; // Default to 1 year old if invalid
-      }
-      
-      // Calculate freshness score
-      const age = now - timestamp;
-      let freshnessScore;
-      if (age < ONE_DAY) {
-        freshnessScore = 1.0; // Very fresh (last 24 hours)
-      } else if (age < ONE_MONTH) {
-        freshnessScore = 0.8; // Fresh (last month)
-      } else if (age < 6 * ONE_MONTH) {
-        freshnessScore = 0.6; // Somewhat fresh (last 6 months)
-      } else if (age < ONE_YEAR) {
-        freshnessScore = 0.4; // Moderately old (last year)
-      } else {
-        freshnessScore = 0.1; // Old (more than a year)
-      }
-      
-      // Calculate authority score
-      let authorityScore = 0;
-      try {
-        // Ensure URL has protocol
-        let url = source.url;
-        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-          url = 'https://' + url;
-        }
-        const domain = new URL(url).hostname;
-        authorityScore = this.getDomainAuthorityScore(domain);
-      } catch (e) {
-        authorityScore = 0.2; // Default if can't parse URL
-      }
-      
-      // Calculate combined priority score
-      const priorityScore = 
-        (freshnessScore * weights.freshness) +
-        (authorityScore * weights.authority) +
-        (source.relevance * weights.relevance);
-      
-      // Return source with updated relevance reflecting the prioritization
-      return {
-        ...source,
-        relevance: Math.min(1.0, priorityScore) // Cap at 1.0
-      };
-    })
-    .sort((a, b) => b.relevance - a.relevance); // Sort by priority score
+    const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+
+    return sources
+      .map(source => {
+        let score = source.relevance || 0.5; // Base score on initial relevance
+        let authorityScore = 0.3; // Default
+        let freshnessScore = 0.5; // Default
+
+        try {
+          const domain = new URL(source.url).hostname;
+          authorityScore = this.getDomainAuthorityScore(domain); // Use existing authority logic
+          if (source.timestamp) {
+             const age = now - new Date(source.timestamp).getTime();
+             freshnessScore = age < ONE_YEAR_MS ? (1 - age / (ONE_YEAR_MS * 2)) : 0; // Higher score for fresher content (within 2 years)
+          }
+        } catch { /* ignore errors */ }
+
+        // Weighted score - more weight on relevance
+        score = (score * 0.6) + (authorityScore * 0.2) + (freshnessScore * 0.2);
+        source.relevance = Math.min(1.0, Math.max(0, score)); // Update relevance
+        return source;
+      })
+      .sort((a, b) => b.relevance - a.relevance); // Sort descending by relevance
   }
 
   /**
    * Improved web crawling with error resilience and adaptation
    */
-  private async crawlWeb(query: string, depth: number = 2): Promise<{
-    data: string;
-    sources: ResearchSource[];
-  }> {
-    // Prepare search queries
-    const searchQueries = this.generateSearchQueries(query);
-    console.log(`Generated ${searchQueries.length} search queries for "${query}"`);
-    
-    // Get domains related to the query
-    const domains = this.identifyRelevantDomains(query);
-    console.log(`Identified ${domains.length} relevant domains for "${query}"`);
-    
-    // Create search URLs
-    const searchUrls = this.createSearchUrls(searchQueries, domains);
-    console.log(`Created ${searchUrls.length} search URLs`);
-    
-    // Prepare to store search results
-    let allResults: string[] = [];
-    let allSources: ResearchSource[] = [];
-    
-    try {
-      // Perform web searches
-      console.log(`Executing web search with ${searchUrls.length} URLs`);
-      
-      // Adjust this to generate more realistic data sources in development mode
-      const extraUrls: string[] = [];
-      if (process.env.NODE_ENV === 'development') {
-        // In development, generate realistic-looking sources
-        const baseUrls = [
-          'https://github.com', 'https://stackoverflow.com', 'https://developer.mozilla.org',
-          'https://typescript.org', 'https://typescriptlang.org', 'https://medium.com',
-          'https://dev.to', 'https://hashnode.com', 'https://docs.microsoft.com',
-          'https://www.digitalocean.com', 'https://www.freecodecamp.org', 'https://css-tricks.com',
-          'https://reactjs.org', 'https://angular.io', 'https://vuejs.org'
-        ];
-        
-        const queryWords = query.split(' ').filter(word => word.length > 3);
-        const prefixes = ['understanding', 'guide-to', 'complete', 'mastering', 'intro-to', 'learn', 'tutorial'];
-        const suffixes = ['techniques', 'examples', 'tutorial', 'guide', 'best-practices', 'patterns', 'tips'];
-        
-        // Generate 200+ sources per base URL to get 3000+ sources
-        for (let i = 0; i < 25; i++) {
-          baseUrls.forEach(baseUrl => {
-            // Create realistic path segments
-            const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-            const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
-            const queryWord = queryWords[Math.floor(Math.random() * queryWords.length)] || 'topic';
-            
-            // Create URL with realistic path structure
-            const urlPath = `/${prefix}-${queryWord}-${suffix}-${i}`;
-            extraUrls.push(`${baseUrl}${urlPath}`);
-          });
+  private async crawlWeb(
+      initialQuery: string,
+      overallAbortSignal: AbortSignal
+  ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number }> {
+    console.log(`[crawlWeb] Starting deep crawl for: "${initialQuery}"`);
+    const { addLog } = await import('../app/api/research/progress/route'); // Import logging
+
+    const crawledUrls = new Set<string>(); // Track URLs visited in this crawl session
+    const finalSources: ResearchSource[] = [];
+    let totalCrawledCount = 0;
+    let totalFailedCount = 0;
+
+    // --- Step 1: Fetch Search Engine Results ---
+    const searchUrls = this.createSearchEngineUrls(initialQuery);
+    addLog(`Fetching initial results from ${searchUrls.length} search engines.`);
+    const potentialPageLinks = new Set<string>();
+
+    await Promise.allSettled(searchUrls.map(async (searchUrl) => {
+       if (overallAbortSignal.aborted) return; // Check timeout
+       if (crawledUrls.has(searchUrl)) return; // Skip already crawled (less likely for SERPs)
+
+       console.log(`[crawlWeb] Fetching SERP: ${searchUrl}`);
+       crawledUrls.add(searchUrl);
+       totalCrawledCount++;
+
+       try {
+           const response = await this.fetchWithRetry(searchUrl, { signal: overallAbortSignal });
+           const html = await response.text();
+
+           // Very important: Check for CAPTCHAs or blocks
+           if (html.includes('CAPTCHA') || html.includes('needs to verify you') || html.includes('unusual traffic')) {
+               console.warn(`[crawlWeb] Possible CAPTCHA/block detected on ${searchUrl}. Skipping link extraction.`);
+               addLog(`Possible block/CAPTCHA on ${new URL(searchUrl).hostname}, trying other engines.`);
+               return; // Skip link extraction for this blocked page
+           }
+
+           const extracted = this.extractLinksFromHtml(html, searchUrl);
+           console.log(`[crawlWeb] Extracted ${extracted.length} potential links from ${searchUrl}`);
+           extracted.forEach(link => {
+               // Basic filtering of extracted links
+               if (!crawledUrls.has(link) && link.length < 256 && !link.endsWith('.pdf') && !link.endsWith('.zip')) { // Avoid already crawled, long URLs, PDFs etc.
+                   potentialPageLinks.add(link);
+               }
+           });
+       } catch (error: any) {
+           console.error(`[crawlWeb] Failed to fetch or process SERP ${searchUrl}: ${error.message}`);
+           totalFailedCount++;
+           addLog(`Failed to fetch results from ${new URL(searchUrl).hostname}.`);
+           // Don't add links from failed SERPs
+       }
+    }));
+
+    if (potentialPageLinks.size === 0) {
+        addLog("No links extracted from initial search results. Trying fallback or authoritative sources.");
+        // Consider adding authoritative sources check here as a fallback
+        console.warn("[crawlWeb] No links extracted from SERPs. Crawling will be limited.");
+        // Optionally, directly crawl authoritative sources here if no links found
+    }
+
+    // --- Step 2: Crawl Extracted Page Links ---
+    const pageUrlsToCrawl = Array.from(potentialPageLinks);
+    addLog(`Found ${pageUrlsToCrawl.length} unique links to crawl deeply.`);
+    console.log(`[crawlWeb] Starting deep crawl of ${pageUrlsToCrawl.length} extracted links...`);
+
+    const batches: string[][] = [];
+    for (let i = 0; i < pageUrlsToCrawl.length; i += MAX_PARALLEL_FETCHES) {
+        batches.push(pageUrlsToCrawl.slice(i, i + MAX_PARALLEL_FETCHES));
+    }
+
+    for (let i = 0; i < batches.length; i++) {
+        if (overallAbortSignal.aborted) {
+           console.log(`[crawlWeb] Overall timeout reached. Stopping batch processing.`);
+           addLog(`Timeout reached. Stopping further crawling.`);
+           break; // Stop processing batches if timeout occurs
         }
-      }
-      
-      // Divide URLs into batches to not overwhelm the network
-      const batchSize = this.MAX_PARALLEL_REQUESTS;
-      const batches = [];
-      
-      // Create batches of URLs
-      for (let i = 0; i < searchUrls.length; i += batchSize) {
-        batches.push(searchUrls.slice(i, i + batchSize));
-      }
-      
-      // Process each batch
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        console.log(`Processing batch ${i+1}/${batches.length} with ${batch.length} URLs`);
-        
-        // Stop if we've reached the source limit
-        if (allSources.length >= this.MAX_DATA_SOURCES) {
-            console.log(`Reached MAX_DATA_SOURCES limit (${this.MAX_DATA_SOURCES}). Stopping crawl.`);
+        if (finalSources.length >= MAX_TARGET_SOURCES) {
+            console.log(`[crawlWeb] Reached MAX_TARGET_SOURCES limit (${MAX_TARGET_SOURCES}). Stopping crawl.`);
+            addLog(`Reached target source limit (${MAX_TARGET_SOURCES}).`);
             break;
         }
-        
-        try {
-          // Wrap fetch calls in try/catch to handle individual fetch failures
-          const responses = await Promise.all(
-            batch.map(async (url) => {
-              try {
-                return await fetch(url);
-              } catch (error) {
-                console.error(`Error fetching ${url}:`, error);
-                return null; // Return null for failed fetches instead of throwing
-              }
-            })
-          );
 
-          // Filter out nulls (failed fetches) and process successful responses
-          const validResponses = responses.filter(response => response !== null);
-          
-          // Process responses
-          const results = await Promise.all(
-            validResponses.map(async (response) => {
-              if (!response) return { text: '', url: '' };
-              
-              try {
-                const text = await response.text();
-                return { text, url: response.url };
-              } catch (error) {
-                console.error(`Error processing response from ${response.url}:`, error);
-                return { text: '', url: response.url };
-              }
-            })
-          );
-          
-          // Extract relevant content
-          for (const result of results) {
-            if (result.text && result.url) {
-              const relevantContent = this.extractRelevantContent(result.text, query, result.url);
-              
-              if (relevantContent) {
-                allResults.push(relevantContent);
-                
-                // Create source object
-                const sourceObj = this.createSourceObject({
-                  url: result.url,
-                  title: this.extractTitleFromHTML(result.text) || result.url,
-                  content: relevantContent,
-                  relevance: this.calculateRelevance(relevantContent, query)
-                });
-                
-                // Add to sources
-                allSources.push(sourceObj);
-                
-                // Update metrics for tracking
-                this.sourcesCollected = allSources.length;
-                try {
-                  const domain = new URL(result.url).hostname;
-                  this.domainsCollected.add(domain);
-                } catch (e) {
-                  // Skip invalid URLs
-                }
-                this.dataSize = Buffer.byteLength(relevantContent, 'utf8') / 1024;
-                this.elapsedTime = Date.now() - this.startTime;
+        const batch = batches[i];
+        console.log(`[crawlWeb] Processing batch ${i + 1}/${batches.length} with ${batch.length} URLs.`);
+        addLog(`Crawling batch ${i + 1}/${batches.length} (${batch.length} URLs)`);
 
-                // Check source limit after adding a new source
-                if (allSources.length >= this.MAX_DATA_SOURCES) {
-                  console.log(`Reached MAX_DATA_SOURCES limit (${this.MAX_DATA_SOURCES}) during batch processing.`);
-                  break; // Break inner loop
-                }
-              }
-            }
-          }
-        } catch (batchError) {
-          console.error(`Error processing batch ${i+1}:`, batchError);
-          // Continue with next batch instead of failing completely
-          continue;
-        }
-      }
-      
-      // Process extra URLs if needed and if limit not reached
-      if (extraUrls.length > 0 && allSources.length < this.MAX_DATA_SOURCES) {
-        console.log(`Processing ${extraUrls.length} additional sources for comprehensive research`);
-        
-        // Create synthetic sources from extra URLs with more realistic content
-        for (const url of extraUrls) {
-          // Stop if we've reached the source limit
-          if (allSources.length >= this.MAX_DATA_SOURCES) {
-              console.log(`Reached MAX_DATA_SOURCES limit (${this.MAX_DATA_SOURCES}) while processing extra URLs.`);
-              break;
-          }
-          try {
-            // Extract domain for more realistic titles
-            const domain = new URL(url).hostname;
-            const domainName = domain.replace(/www\.|\.com|\.org|\.io/g, '');
-            
-            // Generate a plausible title
-            const urlParts = url.split('/');
-            const pathPart = urlParts[urlParts.length - 1].replace(/-/g, ' ');
-            
-            // Create a more realistic title
-            const title = `${pathPart.charAt(0).toUpperCase() + pathPart.slice(1)} | ${domainName.charAt(0).toUpperCase() + domainName.slice(1)}`;
-            
-            // Create synthetic but realistic-looking content
-            const content = `
-              Comprehensive information about ${query} from ${domain}.
-              This article covers key aspects of ${query} including implementation details,
-              best practices, and practical examples. The content has been verified by experts
-              and includes references to official documentation.
-            `;
-            
-            // Create source object with more realistic relevance scores
-            const relevanceBase = 0.7; // Base relevance
-            const relevanceVariation = 0.3; // Random variation
-            const relevance = relevanceBase + (Math.random() * relevanceVariation);
-            
-            const sourceObj = this.createSourceObject({
-              url,
-              title,
-              content,
-              relevance
-            });
-            
-            // Add to sources
-            allSources.push(sourceObj);
+        const batchPromises = batch.map(async (url) => {
+            if (overallAbortSignal.aborted) return null; // Check timeout before fetch
+            if (crawledUrls.has(url)) return null; // Skip duplicates within/across batches
 
-             // Update metrics immediately after adding
-            this.sourcesCollected = allSources.length;
+            crawledUrls.add(url); // Mark as attempted
+            totalCrawledCount++;
+
             try {
-                const domain = new URL(url).hostname;
-                this.domainsCollected.add(domain);
-            } catch (e) {
-              // Skip invalid URLs
+                const response = await this.fetchWithRetry(url, { signal: overallAbortSignal });
+                const text = await response.text(); // Get page content
+                const relevantContent = this.extractRelevantContent(text, initialQuery, url);
+
+                if (relevantContent && relevantContent.length > 200) { // Basic check for meaningful content
+                  const title = this.extractTitleFromHTML(text) || url;
+                    // Calculate initial relevance (use faster legacy for speed during crawl)
+                    const relevance = this.calculateRelevanceLegacy(relevantContent, initialQuery);
+
+                    if (relevance > 0.3) { // Only keep sources with some relevance
+                        return this.createSourceObject({
+                            url: response.url, // Use final URL after redirects
+                      title: title,
+                  content: relevantContent,
+                            relevance: relevance,
+                            timestamp: response.headers.get('last-modified') || response.headers.get('date') || new Date().toISOString() // Try to get timestamp
+                        });
+                    }
+                }
+            } catch (error: any) {
+                if (error.message !== 'Overall research timeout exceeded') { // Don't log timeout errors excessively
+                    console.error(`[crawlWeb] Failed to fetch/process content from ${url}: ${error.message}`);
+                    totalFailedCount++;
+                }
+                // Return null for failed URLs
+                return null;
             }
-          } catch (e) {
-            // Skip invalid URLs
-            console.error(`Error processing extra URL ${url}:`, e);
-          }
-        }
-      }
-      
-      console.log(`Web search complete. Found ${allSources.length} sources.`);
-    } catch (error) {
-      console.error("Error in web crawling:", error);
-      
-      // Try fallback research if main approach fails
-      try {
-        return await this.fallbackResearch(query, depth);
-      } catch (fallbackError) {
-        console.error("Fallback research also failed:", fallbackError);
-        // Return empty result if all approaches fail
-        return {
-          data: `Research failed: ${error instanceof Error ? error.message : String(error)}`,
-          sources: []
-        };
-      }
+            return null; // Return null if content wasn't relevant enough
+        });
+
+        // Process batch results
+        const results = await Promise.allSettled(batchPromises);
+
+        let sourcesInBatch = 0;
+        results.forEach(result => {
+            if (result.status === 'fulfilled' && result.value) {
+                 if (finalSources.length < MAX_TARGET_SOURCES) { // Check limit again before adding
+                     finalSources.push(result.value);
+                     sourcesInBatch++;
+                 }
+            } else if (result.status === 'rejected') {
+                // Error handled within the fetch/map logic already
+                if (result.reason?.message === 'Overall research timeout exceeded') {
+                    // If one promise failed due to overall timeout, the signal should be aborted for others too
+                    console.log("[crawlWeb] Batch processing interrupted by overall timeout.");
+                }
+            }
+        });
+        addLog(`Batch ${i+1} processed. Added ${sourcesInBatch} relevant sources. Total: ${finalSources.length}`);
+
+        // Optional: Add a small delay between batches to avoid aggressive crawling
+         if (!overallAbortSignal.aborted && i < batches.length - 1) {
+             await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
+         }
+    } // End batch loop
+
+    console.log(`[crawlWeb] Deep crawl finished. Collected ${finalSources.length} sources.`);
+    addLog(`Deep crawl phase complete. Found ${finalSources.length} potential sources.`);
+
+    // Final prioritization of all collected sources
+    const prioritizedSources = this.prioritizeSources(finalSources, initialQuery);
+
+    // Truncate if still over the target limit *after* prioritization
+    const finalTruncatedSources = prioritizedSources.slice(0, MAX_TARGET_SOURCES);
+    if (prioritizedSources.length > MAX_TARGET_SOURCES) {
+        addLog(`Truncated sources from ${prioritizedSources.length} to ${MAX_TARGET_SOURCES} after prioritization.`);
     }
-    
-    // Prioritize sources
-    allSources = this.prioritizeSources(allSources, query);
-    
-    // Combine the data
-    let combinedData = allResults.join("\n\n");
-    
-    // Truncate if needed
-    if (combinedData.length > this.CHUNK_SIZE * 10) {
-      combinedData = combinedData.substring(0, this.CHUNK_SIZE * 10);
-    }
-    
-    // Update metrics for tracking research progress
-    this.sourcesCollected = allSources.length;
-    allSources.forEach(source => {
-      try {
-        const domain = new URL(source.url).hostname;
-        this.domainsCollected.add(domain);
-      } catch (e) {
-        // Skip invalid URLs
-      }
-    });
-    this.dataSize = Buffer.byteLength(combinedData, 'utf8') / 1024;
-    this.elapsedTime = Date.now() - this.startTime;
-    
-    // Adapt search strategy for future searches
-    this.adaptSearchStrategy(query, { sources: allSources, data: combinedData });
+
     
     return {
-      data: combinedData,
-      sources: allSources
+        sources: finalTruncatedSources,
+        crawledUrlCount: totalCrawledCount,
+        failedUrlCount: totalFailedCount
     };
   }
 
@@ -1128,159 +1023,146 @@ export class ResearchEngine {
 
   private async analyzeData(
     query: string,
-    data: string,
-    sources: ResearchSource[]
+    sources: ResearchSource[],
+    overallAbortSignal: AbortSignal
   ): Promise<string> {
-    // First, extract key facts from the raw data
-    const factExtractionPrompt = `
-      From the following research data on "${query}", extract only factual information.
-      Focus on extracting precise information that directly answers the research query.
-      
-      Research Data:
-      ${data.substring(0, 20000)}
-      
-      Return a comprehensive list of at least 20 key facts in this format:
-      1. [Detailed fact with specific references, statistics, or technical details when available]
-      2. [Detailed fact with specific references, statistics, or technical details when available]
-      ...
-      
-      When extracting facts:
-      - Include version numbers, technical specifications, and exact terminology
-      - Note specific limitations or requirements when mentioned
-      - Include data points and statistics with their sources when available
-      - Note any contradictions between different sources
-      - Extract specific implementation examples or code patterns if relevant
-      - Include real-world usage examples and case studies
-      - Note performance metrics, compatibility information, and system requirements
-    `;
-    
-    let extractedFacts = "";
-    try {
-      console.log("Extracting detailed facts from research data");
-      const factResult = await this.model.generateContent(factExtractionPrompt);
-      extractedFacts = factResult.response.text();
-    } catch (error) {
-      console.error("Error in fact extraction:", error);
-      extractedFacts = "Fact extraction failed due to technical limitations.";
-    }
-    
-    // Extract code examples separately for technical topics
-    let codeExamples = "";
-    const isCodeRelated = /\bcode\b|\bprogramming\b|\bapi\b|\bjavascript\b|\bpython\b|\bjava\b|\bc\+\+\b|\bcsharp\b|\bruby\b|\bphp\b|\bswift\b|\bkotlin\b|\brust\b|\bhtml\b|\bcss\b/i.test(query);
-    
-    if (isCodeRelated) {
-      const codeExtractionPrompt = `
-        From the research data, extract ONLY code examples, implementations, or technical patterns related to: "${query}"
-        
-        Research Data:
-        ${data.substring(0, 20000)}
-        
-        Format each example with:
-        - A title describing what the code does
-        - The programming language used
-        - The complete code snippet formatted properly
-        - A brief explanation of how it works
-        - Any necessary context (frameworks, libraries, etc.)
-        
-        Extract at least 3-5 different code examples if available. Format with proper markdown code blocks.
-      `;
-      
-      try {
-        console.log("Extracting code examples for technical query");
-        const codeResult = await this.model.generateContent(codeExtractionPrompt);
-        codeExamples = codeResult.response.text();
-      } catch (error) {
-        console.error("Error in code examples extraction:", error);
-        codeExamples = "";
-      }
-    }
-    
-    // Now analyze the data, facts and code examples comprehensively
-    const prompt = `
-      Task: Produce an in-depth, expert-level analysis of the following research data to answer: "${query}"
-      
-      Research Query: ${query}
-      
-      Extracted Key Facts:
-      ${extractedFacts}
-      
-      ${codeExamples ? `Technical Code Examples:\n${codeExamples}\n\n` : ''}
-      
-      Research Data: 
-      ${data.substring(0, 15000)}
-      
-      Source Analysis:
-      - Total Sources: ${sources.length}
-      - Source Domains: ${sources.map(s => {
-        try { 
-          return new URL(s.url).hostname; 
-        } catch(e) { 
-          return s.url; 
-        }
-      }).join(', ')}
-      - Source Credibility: ${this.analyzeSourceCredibility(sources)}
-      
-      Instructions for Comprehensive Analysis:
-      1. Provide extremely detailed, technical insights that directly answer the research query
-      2. Organize the information hierarchically with clear sections and subsections
-      3. Include factual, quantitative data wherever possible
-      4. Compare and contrast different approaches, technologies, or viewpoints
-      5. Identify key factors, variables, or considerations that influence the topic
-      6. Explain complex concepts with clear examples or analogies
-      7. Highlight practical applications, implementation details, and real-world implications
-      8. Address limitations, challenges, and potential solutions
-      9. Provide context about the historical development and future directions
-      10. Include specific examples and case studies that illustrate key points
-      
-      Format your response as a structured, professionally formatted report with:
-      - Executive Summary (concise overview - 150-200 words)
-      - Key Findings (comprehensive list of 10-15 major discoveries with details)
-      - Detailed Analysis (in-depth examination organized by subtopics)
-      - Technical Implementation (specific details, examples, and guidelines)
-      - Comparative Analysis (evaluation of different approaches, methods, or solutions)
-      - Practical Applications (real-world usage scenarios and implementation guidance)
-      - Limitations and Challenges (detailed discussion of constraints with potential solutions)
-      - Future Directions (emerging trends and developments)
-      - Conclusions (synthesized insights and recommendations)
-      
-      Use direct citations when appropriate like [Source: domain.com].
-      Prioritize depth of analysis over breadth - provide detailed, technical explanations rather than superficial overviews.
-      Include as much specific data and factual information as possible to substantiate all claims and assertions.
-      Incorporate numerical data, statistics, technical specifications, and quantitative measurements.
-      If the topic is technical, include specific implementation details, architecture considerations, and technical requirements.
-    `;
+     const { addLog } = await import('../app/api/research/progress/route');
 
-    try {
-      console.log("Generating comprehensive research analysis");
-      const result = await this.model.generateContent(prompt);
-      const analysisText = result.response.text();
-      
-      // Further enhance the analysis with references and visualizations descriptions
-      const enhancementPrompt = `
-        Review and enhance this research analysis on "${query}" by:
-        
-        1. Adding appropriate references and citations
-        2. Including descriptions of relevant visualizations (diagrams, flowcharts, etc.)
-        3. Adding detailed examples and case studies
-        4. Providing more technical depth and specific implementation details
-        
-        Original Analysis:
-        ${analysisText}
-        
-        Return the enhanced analysis with all the original content preserved, but with added depth,
-        technical precision, and extended examples. Do not remove any content from the original analysis.
+     if (overallAbortSignal.aborted) throw new Error("Timeout before analysis could start.");
+
+     if (!sources || sources.length === 0) {
+        addLog("No sources found to analyze.");
+        return "No relevant information found during research.";
+     }
+
+    // Combine content from top N sources for context, respecting limits
+    // Prioritize higher relevance sources for the context window
+    const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2; // Allow ~2 chars per token for context
+    let combinedDataContext = "";
+    let contextLength = 0;
+    let sourcesInContext = 0;
+    for (const source of sources) { // Assumes sources are pre-sorted by relevance
+        const sourceText = `\n\n--- Source: ${source.title} (${source.url}) ---\n${source.content}`;
+        const textToAdd = sourceText.substring(0, Math.max(0, MAX_ANALYSIS_CONTEXT_CHARS - contextLength));
+        if (textToAdd.length > 100) { // Only add if there's meaningful space
+            combinedDataContext += textToAdd;
+            contextLength += textToAdd.length;
+            sourcesInContext++;
+            if (contextLength >= MAX_ANALYSIS_CONTEXT_CHARS) {
+                combinedDataContext += "..."; // Indicate truncation
+                break;
+            }
+        } else if (contextLength >= MAX_ANALYSIS_CONTEXT_CHARS) {
+            break; // Stop if limit reached
+        }
+    }
+
+    addLog(`Analyzing data from top ${sourcesInContext} sources (Context: ${(contextLength / 1024).toFixed(1)}KB).`);
+    console.log(`[analyzeData] Analyzing ${sourcesInContext}/${sources.length} sources. Context size: ${contextLength} chars.`);
+
+    // Fact Extraction (Optional - can be integrated into main prompt)
+    // ... (keep existing fact extraction if desired, pass overallAbortSignal) ...
+    // let extractedFacts = "Fact extraction skipped."; // Example if skipping
+
+    // Code Extraction (Optional)
+    // ... (keep existing code extraction if desired, pass overallAbortSignal) ...
+    // let codeExamples = ""; // Example if skipping
+
+    // Main Synthesis Prompt (Revised)
+    const prompt = `
+      Task: Synthesize the collected research data into an **in-depth, factual, and comprehensive analysis** answering the query: "${query}"
+      Query: ${query}
+
+      Available Data: Synthesized from ${sources.length} sources. Context below is from the top ${sourcesInContext} most relevant sources.
+
+      Research Data Context (Truncated at ${MAX_ANALYSIS_CONTEXT_CHARS} chars):
+      ${combinedDataContext}
+      --- End of Context ---
+
+      **Instructions for High-Quality Analysis:**
+      1.  **Directly Address Query:** Structure the analysis to answer "${query}" thoroughly.
+      2.  **Evidence-Based:** Base all claims strictly on the provided research context. Cite source domains ` + "`(e.g., [Source: domain.com])`" + ` implicitly by mentioning findings from specific sources if possible, but prioritize synthesis over explicit per-fact citation.
+      3.  **Synthesize, Don't Just List:** Integrate findings into a coherent narrative. Identify key themes, arguments, and technical details.
+      4.  **Identify Consensus & Conflict:** Highlight areas of agreement and disagreement found within the context data.
+      5.  **Technical Depth:** If the query is technical, provide detailed explanations, concepts, potential code patterns (use markdown), discuss implications based *only* on the provided context.
+      6.  **Structure and Clarity:** Organize logically (e.g., Introduction, Key Aspects, Conclusion). Use markdown formatting (headings, lists, tables if data supports).
+      7.  **Acknowledge Limitations:** Explicitly state if the provided context is insufficient to fully answer parts of the query. DO NOT HALLUCINATE or invent information.
+      8.  **Conciseness:** Focus on core findings. Avoid excessive fluff. Be factual and direct.
+
+      **Output Format:**
+
+      ## Comprehensive Analysis: ${query}
+
+      ### Executive Summary
+      (Brief overview of the main findings based *only* on the provided context.)
+
+      ### Key Findings & Detailed Breakdown
+      (Structured synthesis of information from the context. Use subheadings relevant to the query. Integrate facts and technical details.)
+
+      ### Identified Nuances or Contradictions
+      (Discussion of differing viewpoints or conflicting information found *within the context*.)
+
+      ### Conclusion from Research Data
+      (Concise summary answering the query based *only* on the analyzed context. State limitations clearly.)
+
+      ---
+      *Analysis based on data from ${sources.length} sources. Context derived from the top ${sourcesInContext} sources.*
       `;
       
       try {
-        const enhancedResult = await this.model.generateContent(enhancementPrompt);
-        return enhancedResult.response.text();
-      } catch (error) {
-        console.log("Enhancement failed, returning original analysis");
-        return analysisText;
-      }
-    } catch (error) {
-      console.error("Error in comprehensive analyzeData:", error);
-      return `Analysis could not be generated due to an error: ${error instanceof Error ? error.message : String(error)}. Please try a more specific query or check your internet connection.`;
+      console.log("[analyzeData] Generating final analysis...");
+      addLog("Generating final analysis report...");
+
+      // Check timeout signal before calling the model
+      if (overallAbortSignal.aborted) throw new Error("Timeout before final analysis generation.");
+
+      // Consider adding a timeout specifically for the generation call if possible/needed,
+      // although the overall timeout should cover it.
+      const generationConfig = {
+        maxOutputTokens: MAX_TOKEN_OUTPUT_TARGET,
+        temperature: 0.2, // Slightly higher for better synthesis flow, but still factual
+        // topP, topK (optional, for controlling output randomness)
+      };
+
+      // Use the model to generate content
+      // NOTE: Handling potential AbortSignal within the SDK call itself depends on the SDK version.
+      // We rely on the outer timeout check for now.
+      const result = await this.model.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+         generationConfig: generationConfig,
+         // Pass safetySettings if needed
+       });
+
+       // Check for cancellation *after* the call returns (if it's not inherently cancelable)
+       if (overallAbortSignal.aborted) throw new Error("Timeout occurred during final analysis generation.");
+
+      const analysisText = result.response.text();
+      console.log("[analyzeData] Analysis generation complete.");
+      addLog("Analysis report generated successfully.");
+
+      // Post-processing (like table fixing) can remain if needed
+       let processedText = analysisText;
+       // ... (optional table fixing logic) ...
+
+      return processedText;
+
+    } catch (error: any) {
+      // Check if the error is due to the overall timeout
+       if (error.message.includes("Timeout") || error.message.includes("aborted")) {
+         console.error("[analyzeData] Analysis generation failed due to timeout.");
+         addLog("Analysis generation stopped due to timeout.");
+         return `Research analysis could not be completed due to reaching the time limit. Partial data may have been collected from ${sources.length} sources.`;
+       }
+       // Handle other API errors (e.g., safety blocks, resource exhausted)
+       console.error("[analyzeData] Error during analysis generation:", error);
+       addLog(`Error during analysis generation: ${error.message}`);
+       // Provide a more informative error message if possible
+       const errorMessage = error.message.includes("SAFETY")
+         ? "Content generation blocked due to safety settings."
+         : error.message.includes("quota")
+           ? "API quota exceeded."
+           : `Analysis generation failed: ${error.message}`;
+       return `Analysis Error: ${errorMessage}`;
     }
   }
   
@@ -1620,604 +1502,184 @@ Please retry your query or contact support if this issue persists.
 
   async research(query: string): Promise<ResearchResult & {
     analysis: string;
-    researchPath: string[];
-    plan: ResearchPlan;
-    researchMetrics?: {
-      sourcesCount: number;
+    researchPath: string[]; // Keep track of the core queries
+    plan: ResearchPlan; // Keep the plan
+    researchMetrics: { // Non-optional
+      sourcesCount: number; // Actual sources in the final list
       domainsCount: number;
-      dataSize: string;
-      elapsedTime: number;
+      dataSize: string; // Size of the final analysis report
+      elapsedTime: number; // Total time in ms
     };
   }> {
     this.startTime = Date.now();
-    this.sourcesCollected = 0;
-    this.domainsCollected = new Set();
-    this.dataSize = 0;
+    const { addLog, clearLogs } = await import('../app/api/research/progress/route');
+    clearLogs();
 
-    // Import the addLog function
-    const { addLog } = await import('../app/api/research/progress/route');
+    addLog(`Research initialized for query: "${query}"`);
+    console.log(`[Research] Starting process for: "${query}" at ${new Date().toISOString()}`);
 
-    // Check cache first
-    const cachedResult = this.getCachedResult(query);
-    if (cachedResult) {
-      console.log(`Using cached research result for: "${query}"`);
-      addLog(`Using cached research result for: "${query}"`);
-      return cachedResult;
-    }
-    
-    console.log(`Starting deep research process for: "${query}"`);
-    addLog(`Starting deep research process for: "${query}"`);
+    // --- Setup Overall Timeout ---
+    // Ensure we use the globally available AbortController
+    const overallTimeoutController = new globalThis.AbortController();
+    const researchTimeout = setTimeout(() => {
+        console.warn(`[Research] Overall research timeout of ${MAX_OVERALL_RESEARCH_TIME_MS / 1000}s reached!`);
+        addLog(`WARN: Research time limit reached (${MAX_OVERALL_RESEARCH_TIME_MS / 1000}s). Attempting to finalize with collected data.`);
+        // Fix TS2554: Call abort() without arguments
+        overallTimeoutController.abort();
+    }, MAX_OVERALL_RESEARCH_TIME_MS);
+    // Fix TS2345: Ensure signal is compatible by using the one from the global controller
+    const overallAbortSignal = overallTimeoutController.signal;
+
+    let finalAnalysis = "Research did not complete."; // Default analysis
+    let finalSources: ResearchSource[] = []; // Initialize as empty
+    let researchPlan: ResearchPlan | null = null;
+    let researchPaths: string[] = [query]; // Start with the main query
+    let confidenceLevel: ResearchConfidenceLevel = "very low";
+    let finalMetrics: { sourcesCount: number; domainsCount: number; dataSize: string; elapsedTime: number; } | null = null;
+
 
     try {
-      // 1. Create research plan
-      console.log(`[1/7] Creating research plan for: "${query}"`);
-      addLog(`[1/7] Creating research plan for: "${query}"`);
-      addLog(`Analyzing research query: ${query}`);
-      addLog(`Creating structured research plan`);
+      // --- Check Cache ---
+    const cachedResult = this.getCachedResult(query);
+    if (cachedResult) {
+        clearTimeout(researchTimeout); // Cancel timeout if using cache
+        addLog(`Using cached result.`);
+        return cachedResult;
+      }
 
-      let researchPlan: ResearchPlan;
+      // --- Phase 1: Planning ---
+      addLog("Phase 1: Creating research plan...");
+      console.log("[Research] Phase 1: Planning...");
+       if (overallAbortSignal.aborted) throw new Error("Timeout during planning phase."); // Check before starting
       try {
         researchPlan = await this.createResearchPlan(query);
-        console.log(`Research plan created with ${researchPlan.subQueries?.length || 0} sub-queries`);
-        addLog(`Research plan created successfully`);
-        addLog(`Research plan created with ${researchPlan.subQueries?.length || 0} sub-queries`);
-      } catch (planError) {
+         researchPaths = [query, ...(researchPlan?.subQueries?.slice(0, 3) || [])]; // Track main + few sub-queries
+         addLog(`Research plan created with ${researchPlan?.subQueries?.length || 0} sub-queries.`);
+      } catch (planError: any) {
         console.error("Failed to create research plan:", planError);
-        addLog(`Error creating research plan, using fallback plan`);
-        // Create a basic fallback plan
-        researchPlan = {
-          mainQuery: query,
-          objective: `Gather comprehensive information about ${query}`,
-          subQueries: [
-            `What is ${query}?`,
-            `Latest ${query} features`,
-            `${query} documentation`,
-            `${query} examples`,
-            `${query} benefits and limitations`
-          ],
-          researchAreas: ["overview", "details", "applications"],
-          explorationStrategy: "broad to specific",
-          priorityOrder: ["official sources", "technical details", "examples"]
-        };
+         addLog(`Warning: Failed to create plan (${planError.message}). Using basic query.`);
+         researchPlan = { mainQuery: query, objective: `Gather information on ${query}`, subQueries: [query], researchAreas: [], explorationStrategy: '', priorityOrder: [] };
+         researchPaths = [query];
       }
 
-      // 2. Directly check authoritative sources first (major improvement)
-      console.log(`[2/7] Checking authoritative sources first`);
-      addLog(`[2/7] Checking authoritative sources first`);
-      const authoritativeSources = this.getAuthoritativeSources(query);
+      // --- Phase 2: Deep Crawling ---
+      addLog("Phase 2: Conducting deep web crawl...");
+      console.log("[Research] Phase 2: Deep Crawling...");
+      if (overallAbortSignal.aborted) throw new Error("Timeout before crawling phase."); // Check before starting
+      const crawlResult = await this.crawlWeb(query, overallAbortSignal);
+      finalSources = crawlResult.sources; // Get sources collected before potential timeout
+      addLog(`Crawling complete. Collected ${finalSources.length} sources. URLs attempted: ${crawlResult.crawledUrlCount}, Failed: ${crawlResult.failedUrlCount}.`);
+      console.log(`[Research] Crawling finished. Sources: ${finalSources.length}, Attempted: ${crawlResult.crawledUrlCount}, Failed: ${crawlResult.failedUrlCount}`);
 
-      let foundAuthoritativeData = false;
-      let authoritativeData = "";
-      let authoritativeSrcList: ResearchSource[] = [];
-      
-      if (authoritativeSources.length > 0) {
-        try {
-          const results = await Promise.all(authoritativeSources.map(async (source) => {
-            try {
-              console.log(`Checking authoritative source: ${source}`);
-              const controller = new AbortController();
-              const timeout = setTimeout(() => controller.abort(), 12000); // Increased from 8000ms to 12000ms
-              
-              const response = await fetch(source, {
-                signal: controller.signal,
-            headers: {
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36'
-                }
-              });
-              
-              clearTimeout(timeout);
-              
-              if (!response.ok) {
-                console.log(`Failed to fetch ${source}: ${response.status}`);
-                return null;
-              }
-              
-              const text = await response.text();
-              const extractedContent = this.extractRelevantContent(text, query, source);
-              
-              if (extractedContent.length > 500) {
-                // Extract title
-                let title = source;
-                const titleMatch = text.match(/<title[^>]*>(.*?)<\/title>/i);
-          if (titleMatch && titleMatch[1]) {
-            title = titleMatch[1].trim();
-          }
-          
-                // Check if this is highly relevant content
-                const relevanceScore = this.calculateRelevance(extractedContent, query);
-                
-                return this.createSourceObject({
-                  url: source,
-                  title,
-                  content: extractedContent,
-                  relevance: relevanceScore
-                });
-              }
-              return null;
-            } catch (e) {
-              console.error(`Error fetching authoritative source ${source}:`, e);
-              return null;
-            }
-          }));
-          
-          const validResults = results.filter(Boolean);
-          
-          if (validResults.length > 0) {
-            // Sort by relevance
-            validResults.sort((a, b) => (b?.relevance ?? 0) - (a?.relevance ?? 0));
-            
-            // Use the most relevant authoritative sources
-            authoritativeData = validResults.map(r => 
-              `### Source: ${r?.title || 'Unknown'} (${r?.url || '#'})\n${r?.content || ''}`
-            ).join('\n\n');
-            
-            authoritativeSrcList = validResults.map(r => this.createSourceObject({
-              url: r?.url || '#',
-              title: r?.title || 'Unknown Source',
-              relevance: r?.relevance || 0.5,
-              content: r?.content || '',
-              timestamp: r?.timestamp || new Date().toISOString()
-            }));
-            
-            if (authoritativeData.length > 2000) {
-              foundAuthoritativeData = true;
-              console.log(`Found ${validResults.length} relevant authoritative sources!`);
-            }
-          }
-        } catch (e) {
-          console.error("Error checking authoritative sources:", e);
-        }
+      // --- Phase 3: Analysis & Synthesis ---
+      addLog("Phase 3: Analyzing collected data and synthesizing report...");
+      console.log("[Research] Phase 3: Analysis & Synthesis...");
+      if (overallAbortSignal.aborted && finalSources.length === 0) {
+         // If timeout hit *before* any sources were collected
+         throw new Error("Timeout occurred before any sources could be analyzed.");
       }
-      
-      // 3. Conduct initial research using web crawling, NOT AI generation
-      console.log(`[3/7] Conducting initial research on ${researchPlan.subQueries.length} sub-queries`);
-      addLog(`[3/7] Conducting initial research on ${researchPlan.subQueries.length} sub-queries`);
+      // Proceed with analysis even if timeout hit during crawl, using whatever sources were found
+      finalAnalysis = await this.analyzeData(query, finalSources, overallAbortSignal); // Pass collected sources and signal
 
-      // Use real web crawling for each sub-query
-      const initialResultPromises = researchPlan.subQueries.map((q, index) => {
-        // Stagger requests to avoid rate limiting (200ms between requests)
-        return new Promise<{data: string, sources: ResearchSource[]}>(resolve => {
-          setTimeout(async () => {
-            try {
-              console.log(`Researching sub-query ${index + 1}/${researchPlan.subQueries.length}: "${q}"`);
-              addLog(`Researching sub-query ${index + 1}/${researchPlan.subQueries.length}: "${q}"`);
+      // --- Phase 4: Finalization ---
+      addLog("Phase 4: Finalizing report and metrics...");
+      console.log("[Research] Phase 4: Finalizing...");
+      // Calculate metrics based on the final state
+      const finalDomains = new Set(finalSources.map(s => { try { return new URL(s.url).hostname; } catch { return s.url; } }));
+      const elapsedTimeMs = Date.now() - this.startTime;
+      confidenceLevel = this.calculateConfidenceLevel(finalSources, query); // Calculate confidence
 
-              // Add more detailed logs
-              addLog(`Generated ${Math.floor(Math.random() * 5) + 1} search queries for "${q}"`);
-              addLog(`Identified ${Math.floor(Math.random() * 10) + 5} relevant domains for "${q}"`);
-              addLog(`Created ${Math.floor(Math.random() * 20) + 10} search URLs`);
-              addLog(`Executing web search with ${Math.floor(Math.random() * 30) + 10} URLs`);
-              addLog(`Processing batch 1/1 with ${Math.floor(Math.random() * 20) + 10} URLs`);
-
-              // Use web crawling, with fallback only as last resort
-              const result = await this.crawlWeb(q, 2);
-
-              // Add more logs after crawling
-              addLog(`Processing ${Math.floor(Math.random() * 400) + 300} additional sources for comprehensive research`);
-              addLog(`Web search complete. Found ${Math.floor(Math.random() * 400) + 300} sources.`);
-
-              resolve(result);
-            } catch (err) {
-              console.error(`Error in sub-query ${index + 1}:`, err);
-              addLog(`Error researching sub-query ${index + 1}: ${err instanceof Error ? err.message : String(err)}`);
-              resolve({
-                data: `Error researching "${q}": ${err instanceof Error ? err.message : String(err)}`,
-                sources: []
-              });
-            }
-          }, index * 200);
-        });
-      });
-      
-      const initialResults = await Promise.all(initialResultPromises);
-      console.log(`Initial research complete: ${initialResults.length} areas covered`);
-      
-      // Track research progress metrics
-      const dataStats = {
-        initialDataSize: 0,
-        initialSourceCount: 0,
-        refinedDataSize: 0,
-        refinedSourceCount: 0,
-        uniqueDomains: new Set<string>(),
-        authoritativeSourceCount: foundAuthoritativeData ? authoritativeSrcList.length : 0
+      finalMetrics = {
+         sourcesCount: finalSources.length,
+         domainsCount: finalDomains.size,
+         dataSize: `${Math.round(Buffer.byteLength(finalAnalysis || '', 'utf8') / 1024)}KB`,
+         elapsedTime: Math.min(elapsedTimeMs, MAX_OVERALL_RESEARCH_TIME_MS) // Cap elapsed time at max allowed
       };
-      
-      // Combine initial results with authoritative data if found
-      let initialData = initialResults.map(r => r.data).join('\n\n');
-      if (foundAuthoritativeData) {
-        initialData = authoritativeData + '\n\n' + initialData;
-      }
-      
-      // Combine and deduplicate sources
-      const initialSourceUrls = new Set<string>();
-      let initialSources: ResearchSource[] = [];
-      
-      // First add authoritative sources if found
-      if (foundAuthoritativeData) {
-        authoritativeSrcList.forEach(source => {
-          initialSources.push(source);
-          initialSourceUrls.add(source.url);
-          try {
-            // Ensure URL has protocol
-            let url = source.url || '';
-            if (!url.startsWith('http://') && !url.startsWith('https://')) {
-              url = 'https://' + url;
-            }
-            const domain = new URL(url).hostname;
-            dataStats.uniqueDomains.add(domain);
-          } catch (e) {}
-        });
-      }
-      
-      // Then add other sources, avoiding duplicates
-      initialResults.forEach(result => {
-        result.sources.forEach(source => {
-          if (!initialSourceUrls.has(source.url)) {
-            initialSources.push(source);
-            initialSourceUrls.add(source.url);
-            try {
-              // Ensure URL has protocol
-              let url = source.url || '';
-              if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                url = 'https://' + url;
-              }
-              const domain = new URL(url).hostname;
-              dataStats.uniqueDomains.add(domain);
-            } catch (e) {}
-          }
-        });
-      });
-      
-      // Update stats
-      dataStats.initialDataSize = initialData.length;
-      dataStats.initialSourceCount = initialSources.length;
-      
-      // 4. Fact validation step (new)
-      console.log(`[4/7] Validating facts from ${initialSources.length} sources`);
-      addLog(`[4/7] Validating facts from ${initialSources.length} sources`);
-      addLog(`Analyzing research data (${Math.floor(Math.random() * 400) + 100}KB)`);
-      addLog(`Extracting detailed facts from research data`);
 
-      // Group sources by domain to detect consensus
-      const domainGroups: Record<string, {count: number, sources: ResearchSource[]}> = {};
-      initialSources.forEach(source => {
-        try {
-          // Ensure URL has protocol
-          let url = source.url || '';
-          if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            url = 'https://' + url;
-          }
-          const domain = new URL(url).hostname;
-          if (!domainGroups[domain]) {
-            domainGroups[domain] = {count: 1, sources: [source]};
-          } else {
-            domainGroups[domain].count++;
-            domainGroups[domain].sources.push(source);
-          }
-        } catch (e) {}
-      });
-      
-      // Calculate credibility score for each source
-      initialSources = initialSources.map(source => {
-        try {
-          // Ensure URL has protocol
-          let url = source.url || '';
-          if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            url = 'https://' + url;
-          }
-          const domain = new URL(url).hostname;
-          const group = domainGroups[domain];
-          
-          // Calculate credibility factors:
-          // 1. Multiple sources from same domain indicate consistency
-          // 2. Official documentation domains are more credible
-          let credibilityBoost = 0;
-          
-          // More credibility for official docs
-          if (domain.includes('github.com') || 
-              domain.includes('docs.') || 
-              domain.includes('official') ||
-              domain.includes('.org') ||
-              domain.includes('stackoverflow.com')) {
-            credibilityBoost += 0.15;
-          }
-          
-          // More credibility for multiple sources from same domain
-          if (group && group.count > 1) {
-            credibilityBoost += Math.min(0.1 * group.count, 0.3);
-          }
-          
-          // Apply credibility adjustment to relevance
-          const adjustedRelevance = Math.min(source.relevance + credibilityBoost, 1.0);
-          
-          return this.createSourceObject({
-            ...source,
-            relevance: adjustedRelevance
-          });
-        } catch (e) {
-          return source;
-        }
-      });
-      
-      // 5. Initial analysis to identify knowledge gaps
-      console.log(`[5/7] Analyzing research data (${Math.round(initialData.length/1000)}KB)`);
-      let initialAnalysis = "";
-      try {
-        initialAnalysis = await this.analyzeData(query, initialData, initialSources);
-        console.log(`Initial analysis complete: ${Math.round(initialAnalysis.length/1000)}KB`);
-      } catch (analysisError) {
-        console.error("Initial analysis failed:", analysisError);
-        initialAnalysis = `Failed to analyze initial data: ${analysisError instanceof Error ? analysisError.message : String(analysisError)}`;
-      }
-      
-      // 6. Refine queries based on initial analysis
-      console.log(`[6/7] Refining research queries based on analysis`);
-      addLog(`[6/7] Refining research queries based on analysis`);
-      addLog(`Generating comprehensive research analysis`);
-      addLog(`Initial analysis complete: ${Math.floor(Math.random() * 20) + 5}KB`);
+      console.log(`[Research] Process completed in ${(finalMetrics.elapsedTime / 1000).toFixed(1)}s`);
+      addLog(`Research process finished in ${(finalMetrics.elapsedTime / 1000).toFixed(1)}s.`);
 
-      let refinedQueries: string[] = [];
-      try {
-        // Extract knowledge gaps from analysis
-        const gapMatch = initialAnalysis.match(/knowledge gaps:?([\s\S]*?)(?:\n\n|\n##|\n\*\*|$)/i);
-        const gapText = gapMatch ? gapMatch[1].trim() : '';
-
-        if (gapText) {
-          console.log("Identified knowledge gaps:", gapText);
-          addLog(`Identified knowledge gaps in research data`);
-
-          // Extract specific questions from gaps
-          const questions = gapText.split(/\n|\./).filter(line =>
-            line.trim().length > 10 &&
-            (line.includes('?') || /what|how|why|when|where|which|who/i.test(line))
-          );
-
-          if (questions.length > 0) {
-            // Use up to 3 specific gap questions
-            refinedQueries = questions.slice(0, 3).map(q => q.trim());
-            addLog(`Generated ${refinedQueries.length} targeted follow-up queries based on knowledge gaps`);
-          }
-        }
-
-        // If no specific gaps were found, use standard refinement
-        if (refinedQueries.length === 0) {
-          addLog(`No specific knowledge gaps identified, generating standard follow-up queries`);
-          refinedQueries = await this.refineQueries(query, initialData, researchPlan);
-        }
-
-        console.log(`Refined ${refinedQueries.length} follow-up queries: ${refinedQueries.join(', ')}`);
-        addLog(`Refined ${refinedQueries.length} follow-up queries`);
-        refinedQueries.forEach((q, i) => {
-          addLog(`Follow-up query ${i+1}: "${q.substring(0, 50)}${q.length > 50 ? '...' : ''}"`);
-        });
-      } catch (refineError) {
-        console.error("Query refinement failed:", refineError);
-        addLog(`Error during query refinement: ${refineError instanceof Error ? refineError.message : String(refineError)}`);
-        // Create basic follow-up queries if refinement fails
-        refinedQueries = [
-          `${query} latest information`,
-          `${query} pros and cons`,
-          `${query} alternatives`
-        ];
-        addLog(`Using fallback follow-up queries due to refinement error`);
-      }
-      
-      // 7. Build full research path
-      const researchPaths = [query, ...researchPlan.subQueries, ...refinedQueries];
-      
-      // 8. Deeper research on refined queries
-      console.log(`[7/7] Conducting deeper research on ${refinedQueries.length} refined queries`);
-      const refinedResultPromises = refinedQueries.map((q, index) => {
-        // Stagger requests further apart for follow-ups (300ms)
-        return new Promise<{data: string, sources: ResearchSource[]}>(resolve => {
-          setTimeout(async () => {
-            try {
-              console.log(`Researching refined query ${index + 1}/${refinedQueries.length}: "${q}"`);
-              const result = await this.crawlWeb(q, 3);
-              resolve(result);
-            } catch (err) {
-              console.error(`Error in refined query ${index + 1}:`, err);
-              resolve({
-                data: `Error researching refined query "${q}": ${err instanceof Error ? err.message : String(err)}`,
-                sources: []
-              });
-            }
-          }, index * 300);
-        });
-      });
-      
-      const refinedResults = await Promise.all(refinedResultPromises);
-      console.log(`Deeper research complete: ${refinedResults.length} refined areas covered`);
-      
-      // Extract and deduplicate refined data
-      const refinedData = refinedResults.map(r => r.data);
-      const refinedSources = refinedResults.flatMap(r => r.sources);
-      
-      // Update stats
-      dataStats.refinedDataSize = refinedData.join('\n\n').length;
-      dataStats.refinedSourceCount = refinedSources.length;
-      refinedSources.forEach(s => {
-        try {
-          const domain = new URL(s.url).hostname;
-          dataStats.uniqueDomains.add(domain);
-        } catch (e) {}
-      });
-      
-      // Combine all unique sources
-      const allSources = [...initialSources];
-      
-      // Add only new sources from refinedSources (avoid duplicates)
-      const existingUrls = new Set(initialSources.map(s => s.url));
-      refinedSources.forEach(source => {
-        // --- Check MAX_DATA_SOURCES before adding more ---
-        if (allSources.length >= this.MAX_DATA_SOURCES) {
-            return; // Stop adding if limit reached
-        }
-        // --- End check ---
-        if (!existingUrls.has(source.url)) {
-          allSources.push(source);
-          existingUrls.add(source.url);
-        }
-      });
-
-      // --- Final check and potential truncation before synthesis ---
-      let finalSynthesizedSources = allSources;
-      if (finalSynthesizedSources.length > this.MAX_DATA_SOURCES) {
-          console.warn(`Source count (${finalSynthesizedSources.length}) exceeds MAX_DATA_SOURCES (${this.MAX_DATA_SOURCES}). Truncating before synthesis.`);
-          // Ensure sources are sorted by relevance before slicing if not already done
-          // finalSynthesizedSources.sort((a, b) => (b.relevance || 0) - (a.relevance || 0)); // Assuming relevance exists and is meaningful
-          finalSynthesizedSources = finalSynthesizedSources.slice(0, this.MAX_DATA_SOURCES);
-      }
-      // --- End final check ---
-      
-      // 9. Final synthesis
-      console.log(`Synthesizing research from ${finalSynthesizedSources.length} sources across ${dataStats.uniqueDomains.size} domains`);
-      addLog(`[7/7] Synthesizing comprehensive research report`);
-      addLog(`Synthesizing research from ${finalSynthesizedSources.length} sources across ${dataStats.uniqueDomains.size} domains`);
-
-      // Add domain-specific logs based on query content
-      const queryLower = query.toLowerCase();
-      if (queryLower.includes('javascript') || queryLower.includes('js') || queryLower.includes('react') || queryLower.includes('node')) {
-        addLog(`Processing specialized JavaScript/web development sources`);
-        addLog(`Analyzing npm package data and GitHub repositories`);
-        addLog(`Extracting code examples and implementation patterns`);
-      } else if (queryLower.includes('python') || queryLower.includes('django') || queryLower.includes('flask')) {
-        addLog(`Processing specialized Python ecosystem sources`);
-        addLog(`Analyzing PyPI package data and documentation`);
-        addLog(`Extracting implementation examples and best practices`);
-      } else if (queryLower.includes('ai') || queryLower.includes('machine learning') || queryLower.includes('neural') || queryLower.includes('model')) {
-        addLog(`Processing specialized AI/ML research sources`);
-        addLog(`Analyzing research papers and technical implementations`);
-        addLog(`Extracting model architectures and performance metrics`);
-      }
-
-      // Add general synthesis logs
-      addLog(`Organizing research data into structured sections`);
-      addLog(`Validating factual consistency across sources`);
-      addLog(`Generating executive summary and key findings`);
-
-      let analysis;
-      try {
-        analysis = await this.synthesizeResearch(query, initialData, refinedData, finalSynthesizedSources, researchPaths); // Pass truncated list
-        addLog(`Research synthesis complete: ${Math.floor(Math.random() * 30) + 20}KB report generated`);
-        addLog(`Research complete in ${((Date.now() - this.startTime) / 1000).toFixed(1)}s`);
-      } catch (synthesisError) {
-        console.error("Research synthesis failed:", synthesisError);
-        addLog(`Error during research synthesis: ${synthesisError instanceof Error ? synthesisError.message : String(synthesisError)}`);
-        analysis = `Error synthesizing research: ${synthesisError instanceof Error ? synthesisError.message : String(synthesisError)}`;
-      }
-      
-      // Calculate confidence level based on source quality and quantity
-      const confidenceLevel = this.calculateConfidenceLevel(finalSynthesizedSources, query);
-      
-      // Update stored metrics
-      this.sourcesCollected = finalSynthesizedSources.length;
-      finalSynthesizedSources.forEach(source => {
-        try {
-          const domain = new URL(source.url).hostname;
-          this.domainsCollected.add(domain);
-        } catch (e) {
-          // Skip invalid URLs
-        }
-      });
-      this.dataSize = Buffer.byteLength(initialData + refinedData.join(''), 'utf8') / 1024;
-      this.elapsedTime = Date.now() - this.startTime;
-      
-      // Create the final research result
+      // Construct the final result object
       const result: ResearchResult & {
-        analysis: string;
-        researchPath: string[];
-        plan: ResearchPlan;
-        researchMetrics?: {
-          sourcesCount: number;
-          domainsCount: number;
-          dataSize: string;
-          elapsedTime: number;
-        };
+        analysis: string; researchPath: string[]; plan: ResearchPlan;
+        researchMetrics: { sourcesCount: number; domainsCount: number; dataSize: string; elapsedTime: number; };
       } = {
-        query,
-        findings: [
-          {
-            key: "Research Data",
-            details: initialData + '\n\n' + refinedData.join('\n\n')
-          }
-        ],
-        sources: finalSynthesizedSources,
-        confidenceLevel: confidenceLevel,
-        metadata: {
-          totalSources: finalSynthesizedSources.length,
-          qualitySources: finalSynthesizedSources.filter(s => s.validationScore && s.validationScore >= 0.6).length,
-          avgValidationScore: finalSynthesizedSources.reduce((sum, s) => sum + (s.validationScore || 0), 0) / Math.max(1, finalSynthesizedSources.length), // Avoid division by zero
-          executionTimeMs: Date.now() - this.startTime,
-          timestamp: new Date().toISOString()
-        },
-        // Add required properties for extended type
-        analysis: analysis,
-        researchPath: researchPaths,
-        plan: researchPlan,
-        // Add research metrics
-        researchMetrics: {
-          sourcesCount: this.sourcesCollected,
-          domainsCount: this.domainsCollected.size,
-          dataSize: `${this.dataSize.toFixed(2)}KB`,
-          elapsedTime: this.elapsedTime
-        }
+         query: query,
+         // Simplified findings - main content is in analysis
+         findings: [{ key: "Main Analysis", details: finalAnalysis.substring(0, 500) + (finalAnalysis.length > 500 ? "..." : "") }],
+         sources: finalSources, // The actual sources used/collected
+         confidenceLevel: confidenceLevel,
+         codeExamples: [], // Populate if analyzeData provides them separately
+         insights: [], // Populate if analyzeData provides them separately
+         metadata: { // Add more metadata if available
+             totalSources: finalMetrics.sourcesCount,
+             // Add missing properties with default values
+             qualitySources: 0, // Default value as validation isn't fully active
+             avgValidationScore: 0.0, // Default value
+             executionTimeMs: finalMetrics.elapsedTime,
+             timestamp: new Date().toISOString()
+         },
+         analysis: finalAnalysis,
+         researchPath: researchPaths, // Use the tracked paths
+         plan: researchPlan || { mainQuery: query, objective: '', subQueries: [], researchAreas: [], explorationStrategy: '', priorityOrder: [] }, // Ensure plan exists
+         researchMetrics: finalMetrics // Assign final metrics
       };
-      
-      // Calculate and log performance metrics
-      const duration = (Date.now() - this.startTime) / 1000; // in seconds
-      console.log(`Research complete in ${duration.toFixed(1)}s`);
-      console.log(`Data collected: ${(dataStats.initialDataSize + dataStats.refinedDataSize) / 1024}KB`);
-      console.log(`Sources: ${finalSynthesizedSources.length} from ${dataStats.uniqueDomains.size} domains`);
-      
-      // Cache the result
-      this.cache.set(query, {
-        data: result,
-        timestamp: Date.now()
-      });
-      
+
+      // Cache the successful result
+      this.cache.set(query, { data: result, timestamp: Date.now() });
+      clearTimeout(researchTimeout); // Clear timeout successfully
       return result;
-    } catch (error) {
-      console.error("Research process failed:", error);
-      throw new Error(`Research failed: ${error instanceof Error ? error.message : String(error)}`);
+
+    } catch (error: any) {
+        clearTimeout(researchTimeout); // MUST clear timeout in case of error
+        console.error(`[Research] CRITICAL ERROR for query "${query}":`, error);
+        addLog(`CRITICAL ERROR: ${error.message}`);
+
+        // If timeout occurred, analysis might still contain partial results or a timeout message
+        const isTimeoutError = error.message.includes("Timeout");
+        finalAnalysis = isTimeoutError
+            ? (finalAnalysis || `Research aborted due to time limit (${MAX_OVERALL_RESEARCH_TIME_MS / 1000}s).`) // Use existing analysis if available
+            : `Research failed critically: ${error.message}`;
+
+        // Calculate final metrics even on error, using potentially partial data
+        const finalDomainsOnError = new Set(finalSources.map(s => { try { return new URL(s.url).hostname; } catch { return s.url; } }));
+        const elapsedTimeMsOnError = Date.now() - this.startTime;
+        finalMetrics = {
+             sourcesCount: finalSources.length, // Sources collected before error
+             domainsCount: finalDomainsOnError.size,
+             dataSize: `${Math.round(Buffer.byteLength(finalAnalysis || '', 'utf8') / 1024)}KB`,
+             elapsedTime: Math.min(elapsedTimeMsOnError, MAX_OVERALL_RESEARCH_TIME_MS) // Cap time
+        };
+
+        // Return a structured error object compatible with the expected return type
+        // This allows the API route to potentially still show partial info if desired
+        return {
+            query: query,
+            findings: [{ key: "Error", details: error.message }],
+            sources: finalSources, // Return sources collected before error
+            confidenceLevel: "very low",
+            codeExamples: [],
+            insights: [],
+            metadata: {
+                totalSources: finalMetrics.sourcesCount,
+                // Add missing properties with default values
+                qualitySources: 0, // Default value
+                avgValidationScore: 0.0, // Default value
+                executionTimeMs: finalMetrics.elapsedTime,
+                timestamp: new Date().toISOString(),
+                error: error.message // Include error message in metadata
+            },
+            analysis: finalAnalysis, // Include the error message or timeout message in analysis
+            researchPath: researchPaths,
+            plan: researchPlan || { mainQuery: query, objective: '', subQueries: [], researchAreas: [], explorationStrategy: '', priorityOrder: [] },
+            researchMetrics: finalMetrics // Include metrics calculated up to the error point
+        };
+
+        // Or re-throw for the API route to handle as a 500 error (choose one approach)
+        // throw new Error(`Research failed: ${error.message}`);
     }
   }
-  
-  // New helper method to get authoritative sources based on query
-  private getAuthoritativeSources(query: string): string[] {
-    const authoritativeSources: string[] = [];
-    
-    // Extract key terms for better source matching
-    const queryLower = query.toLowerCase();
-    
-    // Check for Next.js specific queries
-    if (queryLower.includes('next.js') || queryLower.includes('nextjs')) {
-      // Version specific (extract version if present)
-      const versionMatch = queryLower.match(/next\.?js\s+(\d+(?:\.\d+)?(?:\.\d+)?)/i);
-      const version = versionMatch ? versionMatch[1] : '';
-      
-      if (version) {
-        const majorVersion = version.split('.')[0];
-        authoritativeSources.push(
-          `https://github.com/vercel/next.js/releases/tag/v${version}`,
-          `https://github.com/vercel/next.js/releases`,
-          `https://nextjs.org/blog/${majorVersion}`
-        );
-      } else {
-        authoritativeSources.push(
-          'https://nextjs.org/docs',
-          'https://github.com/vercel/next.js/releases',
-          'https://nextjs.org/blog'
-        );
-      }
-    }
-    
-    // Add more patterns here for other tech stacks, topics, etc.
-    // ...
-    
-    return authoritativeSources;
-  }
-  
+
   /**
    * Calculate relevance of content using semantic understanding
    */
@@ -2957,5 +2419,211 @@ Please retry your query or contact support if this issue persists.
     if (score >= 0.4) return "medium";
     if (score >= 0.25) return "low";
     return "very low";
+  }
+
+  // New helper method to get authoritative sources based on query
+  private getAuthoritativeSources(query: string): string[] {
+    const authoritativeSources: string[] = [];
+    
+    // Extract key terms for better source matching
+    const queryLower = query.toLowerCase();
+    
+    // Check for Next.js specific queries
+    if (queryLower.includes('next.js') || queryLower.includes('nextjs')) {
+      // Version specific (extract version if present)
+      const versionMatch = queryLower.match(/next\.?js\s+(\d+(?:\.\d+)?(?:\.\d+)?)/i);
+      const version = versionMatch ? versionMatch[1] : '';
+      
+      if (version) {
+        const majorVersion = version.split('.')[0];
+        authoritativeSources.push(
+          `https://github.com/vercel/next.js/releases/tag/v${version}`,
+          `https://github.com/vercel/next.js/releases`,
+          `https://nextjs.org/blog/${majorVersion}`
+        );
+      } else {
+        authoritativeSources.push(
+          'https://nextjs.org/docs',
+          'https://github.com/vercel/next.js/releases',
+          'https://nextjs.org/blog'
+        );
+      }
+    }
+    
+    // Add more patterns here for other tech stacks, topics, etc.
+    // ...
+    
+    return authoritativeSources;
+  }
+
+  // --- URL Generation Focused on Search Engines ---
+  private createSearchEngineUrls(query: string): string[] {
+    const urls: string[] = [];
+    const encodedQuery = encodeURIComponent(query);
+
+    // Prioritize search engines known to be less restrictive if possible
+    urls.push(`https://search.brave.com/search?q=${encodedQuery}&source=web`);
+    urls.push(`https://duckduckgo.com/?q=${encodedQuery}&ia=web`);
+    urls.push(`https://www.bing.com/search?q=${encodedQuery}&form=QBLH`);
+    // Google is often blocked, put it last or handle failures gracefully
+    urls.push(`https://www.google.com/search?q=${encodedQuery}&hl=en`);
+    // urls.push(`https://www.google.com/search?q=${encodeURIComponent(query)}&tbm=nws`); // News search
+    // Add other engines if desired: Ecosia, etc.
+
+    console.log(`Generated ${urls.length} search engine URLs for query: "${query}"`);
+    return urls;
+  }
+
+  // --- Simple Link Extraction (Needs Improvement for Real-World HTML) ---
+  // This is a basic example. Robust parsing requires a proper HTML parsing library (like cheerio)
+  // which might not be available/ideal in all edge runtimes. This regex approach is fragile.
+  private extractLinksFromHtml(html: string, baseUrl: string): string[] {
+    const links: Set<string> = new Set();
+    // Basic regex to find href attributes in <a> tags
+    const linkRegex = /<a\s+(?:[^>]*?\s+)?href="([^"]+)"/gi;
+    let match;
+
+    while ((match = linkRegex.exec(html)) !== null) {
+      let href = match[1];
+
+      // Clean up common tracking/junk parameters (simplified example)
+      href = href.replace(/&?utm_.+?(&|$)/g, '$1').replace(/&?ref=.+?(&|$)/g, '$1');
+      href = href.replace(/&$/, '').replace(/\?$/, '');
+
+      // Skip anchor links, javascript links, etc.
+      if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('javascript:')) {
+        continue;
+      }
+
+      try {
+        // Resolve relative URLs
+        const absoluteUrl = new URL(href, baseUrl).toString();
+
+        // Basic filtering: avoid search engine domains, social media, etc. (customize as needed)
+        const parsedUrl = new URL(absoluteUrl);
+        const domain = parsedUrl.hostname.toLowerCase();
+        if (domain.includes('google.') || domain.includes('bing.') || domain.includes('duckduckgo.') ||
+            domain.includes('brave.') || domain.includes('facebook.') || domain.includes('twitter.') ||
+            domain.includes('linkedin.') || domain.includes('youtube.') || domain.includes('pinterest.')) {
+             continue;
+        }
+
+        // Add valid, absolute URL
+        links.add(absoluteUrl);
+      } catch (e) {
+        // Ignore invalid URLs
+      }
+    }
+
+    // Add specific patterns for common search engines if regex fails
+    // Example for Google (highly likely to change/break):
+    // const googleLinkRegex = /<a\s+href="\/url\?q=([^&"]+)[^>]*><h3/gi;
+    // ... extract and decodeURIComponent($1) ...
+
+    return Array.from(links);
+  }
+
+  // --- Robust Fetch Function with Retries and Timeout ---
+  // Ensure the options object expects the native AbortSignal type if passed directly
+  private async fetchWithRetry(url: string, options: RequestInit, retries: number = MAX_FETCH_RETRIES): Promise<Response> {
+    // Use globalThis.AbortController here too for consistency
+    const controller = new globalThis.AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    // Assign the signal from the *local* controller for *this specific fetch timeout*
+    const localSignal = controller.signal;
+    // Combine the local signal with the overall signal if provided
+    const combinedSignal = this.combineSignals(localSignal, options.signal); // Helper needed
+
+    const fetchOptions: RequestInit = {
+      ...options,
+      signal: combinedSignal, // Use the combined signal
+      headers: { // Ensure headers are correctly typed
+          ...options.headers,
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Connection': 'keep-alive',
+          'DNT': '1'
+      }
+    };
+
+
+    try {
+      // The native fetch function expects a standard RequestInit object
+      const response = await fetch(url, fetchOptions);
+      clearTimeout(timeout); // Clear local timeout
+
+      if (!response.ok) {
+        // Retry on specific server errors or rate limiting
+        if ((response.status === 429 || response.status >= 500) && retries > 0) {
+          console.warn(`Fetch failed for ${url} with status ${response.status}. Retrying (${retries} left)...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (MAX_FETCH_RETRIES - retries + 1))); // Exponential backoff
+          // Important: Check overall timeout before retrying - use options.signal directly here
+          if (options.signal?.aborted) throw new Error('Overall research timeout exceeded during retry wait.');
+          return this.fetchWithRetry(url, options, retries - 1); // Pass original options for overall signal tracking
+        }
+        // Throw error for non-retryable status codes
+        throw new Error(`Fetch failed for ${url} with status ${response.status}`);
+      }
+
+      // Check content type - only process HTML/XML/Text for content extraction
+      const contentType = response.headers.get('content-type');
+      if (contentType && !/(text\/html|application\/xhtml\+xml|application\/xml|text\/plain)/i.test(contentType)) {
+         console.log(`Skipping non-text content (${contentType}) from ${url}`);
+         // Return a minimal response or throw an error to skip processing
+         throw new Error(`Skipping non-text content type: ${contentType}`);
+      }
+
+      return response; // Success
+    } catch (error: any) {
+      clearTimeout(timeout); // Clear local timeout
+      // If it's an AbortError, check which signal caused it
+      if (error.name === 'AbortError') {
+          // Check if it was the overall research timeout first
+          if (options.signal?.aborted) { // Check the *overall* signal passed in options
+               console.log(`Fetch aborted for ${url} due to overall research timeout.`);
+               throw new Error('Overall research timeout exceeded');
+          } else { // Otherwise, it was the local fetch timeout
+              console.warn(`Fetch timed out for ${url} after ${FETCH_TIMEOUT_MS}ms.`);
+              throw new Error(`Fetch timed out for ${url}`);
+          }
+      }
+      // Handle retry logic for other fetch errors
+      if (retries > 0 && error.name !== 'AbortError') {
+        // ... retry logic ...
+        // Important: Check overall timeout before retrying
+        if (options.signal?.aborted) throw new Error('Overall research timeout exceeded during retry wait.');
+        return this.fetchWithRetry(url, options, retries - 1); // Pass original options
+      }
+      console.error(`Fetch failed permanently for ${url}: ${error.message}`);
+      throw error;
+    }
+  }
+
+  // Helper function to combine AbortSignals
+  private combineSignals(...signals: (AbortSignal | null | undefined)[]): AbortSignal | null {
+      const validSignals = signals.filter((s): s is AbortSignal => s != null);
+      if (validSignals.length === 0) return null;
+      if (validSignals.length === 1) return validSignals[0];
+
+      // If multiple signals, create a new controller that aborts when any signal aborts
+      const combinedController = new globalThis.AbortController();
+      const onAbort = () => {
+          combinedController.abort();
+          // Clean up listeners
+          validSignals.forEach(signal => signal.removeEventListener('abort', onAbort));
+      };
+
+      for (const signal of validSignals) {
+          if (signal.aborted) {
+              // If any signal is already aborted, abort immediately
+              combinedController.abort();
+              break;
+          }
+          signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      return combinedController.signal;
   }
 }

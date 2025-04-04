@@ -1,4 +1,3 @@
-
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @next/next/no-img-element */
 'use client';
@@ -19,69 +18,65 @@ import {
   DatabaseIcon,
   RefreshCwIcon,
   FileTextIcon,
-  ImageIcon
+  ImageIcon,
+  ServerCrashIcon
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { atomDark } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import { vscDarkPlus, prism as lightStyle } from 'react-syntax-highlighter/dist/cjs/styles/prism';
+import { useTheme } from 'next-themes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuroraText } from '@/components/magicui/aurora-text';
-
-
+import { ResearchError } from '@/lib/types';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
   try {
-    const domain = new URL(url).hostname;
-    return domain.replace('www.', '');
+    // Ensure URL has a protocol for parsing
+    let urlToParse = url;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      urlToParse = 'https://' + url;
+    }
+    const domain = new URL(urlToParse).hostname;
+    return domain.replace(/^www\./, ''); // Remove www.
   } catch (e) {
-    return url;
+    // Fallback for invalid URLs: try to extract domain-like pattern
+    const domainMatch = url.match(/([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z0-9][-a-zA-Z0-9.]+)/);
+    return domainMatch ? domainMatch[0] : url; // Return matched pattern or original string
   }
 };
 
-// Function to get favicon URL
+// Function to get favicon URL using Google's service
 const getFaviconUrl = (domain: string) => {
+  // Use a reliable proxy or service if direct Google access is blocked/unreliable
+  // For simplicity, we keep Google's service here.
+  // Consider adding error handling for the image itself in the component.
   return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
 };
 
+// Define the structure for research metrics more explicitly
+interface ResearchMetrics {
+  sourcesCount: number;
+  domainsCount: number;
+  dataSize: string; // e.g., "123.45KB"
+  elapsedTime: number; // in milliseconds
+}
+
 export default function Home() {
   const [query, setQuery] = useState('');
-  const [report, setReport] = useState('');
+  const [report, setReport] = useState<string | null>(null); // Use null for initial state
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState<ResearchError | null>(null); // Use specific error type
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
-  const [researchStage, setResearchStage] = useState('');
-  const [estimatedTime, setEstimatedTime] = useState(0);
-  const [countdown, setCountdown] = useState(0);
-  const [activeUrls, setActiveUrls] = useState<string[]>([]);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [researchStats, setResearchStats] = useState<{
-    sourcesCount: number;
-    domainsCount: number;
-    dataSize: string;
-    elapsedTime: number;
-    status: string;
-    completedSteps: string[];
-    liveLogs: string[];
-  }>({
-    sourcesCount: 0,
-    domainsCount: 0,
-    dataSize: '0KB',
-    elapsedTime: 0,
-    status: '',
-    completedSteps: [],
-    liveLogs: []
-  });
   const [showLiveLogs, setShowLiveLogs] = useState(false);
-  const [realStats, setRealStats] = useState<{
-    sourcesCount: number;
-    domainsCount: number;
-    dataSize: string;
-    elapsedTime: number;
-  } | null>(null);
+  const [liveLogs, setLiveLogs] = useState<string[]>([]);
+  const [currentProgress, setCurrentProgress] = useState<ResearchMetrics | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<string>(''); // For displaying current step/status
   const progressPollRef = useRef<NodeJS.Timeout | null>(null);
+  const { theme } = useTheme(); // Get current theme
 
   useEffect(() => {
     // Load search history from localStorage
@@ -91,789 +86,12 @@ export default function Home() {
         setSearchHistory(JSON.parse(savedHistory));
       } catch (e) {
         console.error('Failed to parse search history', e);
+        localStorage.removeItem('searchHistory'); // Clear corrupted history
       }
     }
   }, []);
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (loading && countdown > 0) {
-      timer = setTimeout(() => {
-        setCountdown(prev => Math.max(0, prev - 1));
-
-        // Update progress states if research is in progress
-        if (loading) {
-          if (realStats) {
-            // Use real data from backend
-            setResearchStats(prev => {
-              const progress = Math.min(0.99, realStats.elapsedTime / (estimatedTime * 1000));
-              return {
-                ...prev,
-                sourcesCount: realStats.sourcesCount,
-                domainsCount: realStats.domainsCount,
-                dataSize: realStats.dataSize,
-                elapsedTime: realStats.elapsedTime / 1000, // Convert ms to s
-                status: getResearchStatus(progress, realStats.sourcesCount, realStats.domainsCount)
-              };
-            });
-          } else {
-            // Fallback to simulated data only if no real stats are available
-            setResearchStats(prev => {
-              const progress = 1 - (countdown / estimatedTime);
-              const targetSources = 4500; // Target 4500+ sources based on real data observed
-              const targetDomains = 90;
-
-              return {
-                ...prev,
-                sourcesCount: Math.min(targetSources, Math.floor(targetSources * progress)),
-                domainsCount: Math.min(targetDomains, Math.floor(targetDomains * progress)),
-                dataSize: `${(610 * progress).toFixed(2)}KB`,
-                elapsedTime: estimatedTime - countdown,
-                status: getResearchStatus(progress, prev.sourcesCount, prev.domainsCount)
-              };
-            });
-          }
-        }
-      }, 1000);
-    }
-    return () => clearTimeout(timer);
-  }, [loading, countdown, estimatedTime, realStats]);
-
-  // Get research status based on progress and actual metrics
-  const getResearchStatus = (progress: number, sourcesCount: number, domainsCount: number): string => {
-    if (progress < 0.2) return 'Initializing research plan...';
-    if (progress < 0.3) return 'Exploring initial sources...';
-    if (progress < 0.4) return 'Web crawling in progress...';
-    if (progress < 0.5) return `Completed web crawling with ${sourcesCount} sources`;
-    if (progress < 0.6) return `Deeper research complete: ${Math.floor(progress * 10)} refined areas covered`;
-    if (progress < 0.8) return `Synthesizing research from ${sourcesCount} sources across ${domainsCount} domains`;
-    if (progress < 0.9) return `Synthesizing comprehensive research with ${sourcesCount} sources across ${domainsCount} domains`;
-    return `Research complete in ${researchStats.elapsedTime.toFixed(1)}s`;
-  };
-
-  // Update completed steps based on progress
-  useEffect(() => {
-    if (loading) {
-      const progress = realStats 
-        ? Math.min(0.99, realStats.elapsedTime / (estimatedTime * 1000)) 
-        : 1 - (countdown / estimatedTime);
-      
-      const sourcesCount = realStats?.sourcesCount || researchStats.sourcesCount;
-      const domainsCount = realStats?.domainsCount || researchStats.domainsCount;
-      const dataSize = realStats?.dataSize || researchStats.dataSize;
-      
-      const newSteps: string[] = [];
-
-      if (progress > 0.2) newSteps.push('Research plan created');
-      if (progress > 0.3) newSteps.push('Initial sources identified');
-      if (progress > 0.4) newSteps.push(`Crawled ${Math.floor(sourcesCount * 0.5)} websites`);
-      if (progress > 0.5) newSteps.push(`Analyzed ${Math.floor(sourcesCount * 0.7)} sources`);
-      if (progress > 0.6) newSteps.push(`Refined search with ${Math.floor(domainsCount * 0.8)} domains`);
-      if (progress > 0.7) newSteps.push(`Collected ${dataSize} of research data`);
-      if (progress > 0.8) newSteps.push(`Synthesizing ${sourcesCount} sources`);
-      if (progress > 0.9) newSteps.push('Generating final report');
-
-      setResearchStats(prev => ({
-        ...prev,
-        completedSteps: newSteps
-      }));
-    }
-  }, [countdown, estimatedTime, loading, researchStats.sourcesCount, researchStats.domainsCount, researchStats.dataSize, realStats]);
-
-  // Track active URLs during research
-  useEffect(() => {
-    if (!loading) {
-      setActiveUrls([]);
-      return;
-    }
-
-    const domains = [
-      'scholar.google.com',
-      'wikipedia.org',
-      'github.com',
-      'stackoverflow.com',
-      'medium.com',
-      'arxiv.org',
-      'researchgate.net',
-      'ieee.org',
-      'nature.com',
-      'sciencedirect.com',
-      'springer.com',
-      'acm.org',
-      'jstor.org',
-      'pubmed.ncbi.nlm.nih.gov',
-      'semanticscholar.org',
-      'dev.to',
-      'npmjs.com',
-      'typescriptlang.org',
-      'microsoft.com',
-      'mozilla.org',
-      'youtube.com',
-      'reddit.com',
-      'hackernoon.com',
-      'freecodecamp.org',
-      'digitalocean.com',
-      'blogs.msdn.microsoft.com'
-    ];
-
-    // Generate realistic URL activity based on research progress
-    const updateUrls = () => {
-      const progress = 1 - (countdown / estimatedTime);
-      const numUrls = Math.floor(Math.random() * 4) + 2; // 2-5 URLs at a time
-      const newUrls = [];
-
-      // As research progresses, show more specialized domains
-      const availableDomains = progress < 0.5
-        ? domains.slice(0, Math.floor(domains.length * 0.7))
-        : domains;
-
-      for (let i = 0; i < numUrls; i++) {
-        const randomIndex = Math.floor(Math.random() * availableDomains.length);
-        newUrls.push(availableDomains[randomIndex]);
-      }
-
-      setActiveUrls(newUrls);
-    };
-
-    // Update URLs more frequently as research progresses
-    const interval = setInterval(() => {
-      updateUrls();
-    }, Math.max(500, 2000 - (estimatedTime - countdown) * 20));
-
-    // Initial update
-    updateUrls();
-
-    return () => clearInterval(interval);
-  }, [loading, countdown, estimatedTime]);
-
-  // Poll for progress updates during research
-  const pollResearchProgress = useCallback(async () => {
-    try {
-      if (!loading) return;
-
-      const res = await fetch('/api/research/progress', {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache'
-        }
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.metrics && data.metrics.sourcesCount > 0) {
-          setRealStats(data.metrics);
-
-          // Capture live logs if available
-          if (data.logs && Array.isArray(data.logs)) {
-            // Filter out duplicate logs and add timestamps
-            const newLogs = data.logs.filter((log: string) =>
-              !researchStats.liveLogs.includes(log)
-            );
-
-            if (newLogs.length > 0) {
-              // Add timestamps to new logs for more realistic display
-              const timestampedLogs = newLogs.map((log: string) => {
-                const timestamp = new Date().toISOString().substring(11, 19); // HH:MM:SS format
-                return `[${timestamp}] ${log}`;
-              });
-
-              setResearchStats(prev => ({
-                ...prev,
-                liveLogs: [...prev.liveLogs, ...timestampedLogs]
-              }));
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.log('Progress poll error:', error);
-    }
-  }, [loading, researchStats.liveLogs]);
-
-  const saveHistory = (newHistory: string[]) => {
-    setSearchHistory(newHistory);
-    localStorage.setItem('searchHistory', JSON.stringify(newHistory));
-  };
-
-  const handleResearch = async () => {
-    if (!query.trim()) return;
-
-    setLoading(true);
-    setError('');
-    setReport('');
-    setRealStats(null);
-    setShowLiveLogs(false);
-    setResearchStats(prev => ({...prev, liveLogs: []}));
-
-    // Estimate research time - roughly 20s + 5s per word in query
-    // Reduced from 30s + 10s to reflect faster processing
-    const wordCount = query.split(' ').length;
-    const timeEstimate = 20 + wordCount * 5;
-    setEstimatedTime(timeEstimate);
-    setCountdown(timeEstimate);
-
-    // Simulate the research stages
-    const stages = [
-      'Planning research approach...',
-      'Exploring initial sources...',
-      'Analyzing preliminary data...',
-      'Refining research parameters...',
-      'Conducting deeper investigation...',
-      'Synthesizing findings...',
-      'Generating comprehensive report...'
-    ];
-
-    // Update research stage at intervals
-    let stageIndex = 0;
-    setResearchStage(stages[stageIndex]);
-
-    const stageInterval = Math.floor(timeEstimate / stages.length);
-    const stageTimer = setInterval(() => {
-      stageIndex = Math.min(stageIndex + 1, stages.length - 1);
-      setResearchStage(stages[stageIndex]);
-
-      // Add simulated logs for testing
-      const simulatedLogs = [
-        `Starting deep research on: "${query}"`,
-        `Starting deep research process for: "${query}"`,
-        `[${stageIndex + 1}/${stages.length}] ${stages[stageIndex]}`,
-        `Analyzing research query: ${query}`,
-        `Creating structured research plan`,
-        `Research plan created successfully`,
-        `Research plan created with ${Math.floor(Math.random() * 5) + 5} sub-queries`,
-        `Checking authoritative sources first`,
-        `Conducting initial research on ${Math.floor(Math.random() * 5) + 5} sub-queries`,
-        `Processing batch ${stageIndex + 1}/${stages.length} with ${Math.floor(Math.random() * 30) + 10} URLs`,
-        `Processing ${Math.floor(Math.random() * 300) + 100} additional sources for comprehensive research`,
-        `Web search complete. Found ${Math.floor(Math.random() * 300) + 100} sources.`,
-        `Initial research complete: ${stageIndex + 1} areas covered`,
-        `Validating facts from ${Math.floor(Math.random() * 3000) + 1000} sources`,
-        `Analyzing research data (${Math.floor(Math.random() * 400) + 100}KB)`,
-        `Extracting detailed facts from research data`,
-        `Generating comprehensive research analysis`,
-        `Initial analysis complete: ${Math.floor(Math.random() * 20) + 5}KB`,
-        `Refining research queries based on analysis`,
-        `Refined ${Math.floor(Math.random() * 3) + 1} follow-up queries`,
-        `Conducting deeper research on ${Math.floor(Math.random() * 3) + 1} refined queries`,
-        `Deeper research complete: ${Math.floor(Math.random() * 3) + 1} refined areas covered`,
-        `Synthesizing research from ${Math.floor(Math.random() * 4000) + 1000} sources across ${Math.floor(Math.random() * 20) + 5} domains`,
-        `Research complete in ${(Math.random() * 100).toFixed(1)}s`
-      ];
-
-      // Add a random log from the simulated logs
-      const randomLog = simulatedLogs[Math.floor(Math.random() * simulatedLogs.length)];
-      setResearchStats(prev => ({
-        ...prev,
-        liveLogs: [...prev.liveLogs, randomLog]
-      }));
-    }, stageInterval * 1000);
-
-    // Start polling for real progress
-    if (progressPollRef.current) {
-      clearInterval(progressPollRef.current);
-    }
-    progressPollRef.current = setInterval(pollResearchProgress, 2000); // Poll every 2 seconds
-
-    try {
-      const res = await fetch('/api/research', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
-
-      clearInterval(stageTimer);
-      // Stop polling for progress
-      if (progressPollRef.current) {
-        clearInterval(progressPollRef.current);
-        progressPollRef.current = null;
-      }
-
-      const data = await res.json();
-
-      if (data.error) {
-        setError(data.error.message);
-        setReport('');
-      } else {
-        setReport(data.report);
-        // Set final metrics if available
-        if (data.metrics) {
-          setRealStats(data.metrics);
-          // Set final research stats
-          setResearchStats(prev => ({
-            ...prev,
-            sourcesCount: data.metrics.sourcesCount,
-            domainsCount: data.metrics.domainsCount,
-            dataSize: data.metrics.dataSize,
-            elapsedTime: data.metrics.elapsedTime / 1000,
-            status: `Research complete in ${(data.metrics.elapsedTime / 1000).toFixed(1)}s`
-          }));
-        }
-        const newHistory = [query, ...searchHistory.filter(q => q !== query)].slice(0, 5);
-        saveHistory(newHistory);
-      }
-    } catch (error) {
-      clearInterval(stageTimer);
-      // Stop polling for progress
-      if (progressPollRef.current) {
-        clearInterval(progressPollRef.current);
-        progressPollRef.current = null;
-      }
-      setError('An error occurred during research');
-      setReport('');
-    }
-    setLoading(false);
-    setResearchStage('');
-  };
-
-  const clearHistory = () => {
-    saveHistory([]);
-  };
-
-  const handleCopyCode = useCallback((code: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
-  }, []);
-
-  // Custom renderers for React Markdown
-  const renderers = {
-    // Custom code block renderer with syntax highlighting and copy button
-    code({ node, inline, className, children, ...props }: any) {
-      const match = /language-(\w+)/.exec(className || '');
-      const code = String(children).replace(/\n$/, '');
-
-      // Very strict code detection logic to prevent false positives
-
-      // Only treat as code block if it meets one of these strict criteria
-      const isCodeBlock = !inline && (
-        // 1. Has explicit language specified (most reliable indicator)
-        match ||
-
-        // 2. Contains multiple lines AND has clear code syntax
-        (code.includes('\n') &&
-         // Must have brackets AND either semicolons or assignments
-         /[{}]/.test(code) &&
-         /[;=]/.test(code)) ||
-
-        // 3. Contains specific programming keywords AND syntax
-        (/\b(function|const|let|var|if|else|for|while|return|import|export|class)\b/.test(code) &&
-         // Must have both brackets and parentheses
-         /[{}]/.test(code) &&
-         /[\(\)]/.test(code))
-      );
-
-      // Check for common false positives (text that looks like code but isn't)
-      const isProbablyText =
-        // Long paragraphs without code syntax
-        (code.length > 100 && !code.includes('\n') && !code.includes(';') && !code.includes('{}')) ||
-        // Contains many spaces between words (natural language)
-        (code.split(' ').length > 15 && !/[{}[\]();]/.test(code));
-
-      if (isCodeBlock && !isProbablyText) {
-        return (
-          <div className="group relative my-6">
-            <div className="top-2 right-2 z-10 absolute">
-              <button
-                onClick={() => handleCopyCode(code)}
-                className="bg-primary/10 hover:bg-primary/20 p-1 rounded text-primary transition-colors dark:text-white"
-                aria-label="Copy code"
-              >
-                {copiedCode === code ? (
-                  <CheckIcon className="w-4 h-4" />
-                ) : (
-                  <CopyIcon className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <SyntaxHighlighter
-              style={atomDark}
-              language={match ? match[1] : 'text'}
-              PreTag="div"
-              className="!bg-zinc-900 dark:!bg-zinc-900 !mt-0 rounded-lg !text-sm text-white"
-              showLineNumbers
-              wrapLongLines={false}
-              customStyle={{
-                backgroundColor: '#18181b', // zinc-900
-                color: 'white',
-                borderRadius: '0.5rem',
-                padding: '1rem',
-                fontSize: '0.875rem',
-              }}
-              {...props}
-            >
-              {code}
-            </SyntaxHighlighter>
-          </div>
-        );
-      } else if (!inline) {
-        // Generic code block without specified language
-        return (
-          <div className="group relative my-6">
-            <div className="top-2 right-2 z-10 absolute">
-              <button
-                onClick={() => handleCopyCode(code)}
-                className="bg-primary/10 hover:bg-primary/20 p-1 rounded text-primary transition-colors dark:text-white"
-                aria-label="Copy code"
-              >
-                {copiedCode === code ? (
-                  <CheckIcon className="w-4 h-4" />
-                ) : (
-                  <CopyIcon className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <SyntaxHighlighter
-              style={atomDark}
-              language="text"
-              PreTag="div"
-              className="!bg-zinc-900 dark:!bg-zinc-900 !mt-0 rounded-lg !text-sm text-white"
-              wrapLongLines={false}
-              customStyle={{
-                backgroundColor: '#18181b', // zinc-900
-                color: 'white',
-                borderRadius: '0.5rem',
-                padding: '1rem',
-                fontSize: '0.875rem',
-              }}
-              {...props}
-            >
-              {code}
-            </SyntaxHighlighter>
-          </div>
-        );
-      }
-
-      // Inline code - this is where the hydration error occurs
-      // We need to ensure this doesn't get rendered inside a <p> tag
-      // by the parent component
-      return (
-        <span className="inline-code">
-          <code className="bg-muted px-1.5 py-0.5 rounded font-serif text-sm" {...props}>
-            {children}
-          </code>
-        </span>
-      );
-    },
-
-    // Custom table renderer to improve table appearance
-    table: ({ node, ...props }: any) => (
-      <div className="my-6 border border-border rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse" {...props} />
-        </div>
-      </div>
-    ),
-    
-    tableHead: ({ node, ...props }: any) => (
-      <thead className="bg-primary/10 text-primary" {...props} />
-    ),
-    
-    tableRow: ({ node, isHeader, ...props }: any) => (
-      <tr className={`border-b border-border ${isHeader ? "" : "hover:bg-muted/30"}`} {...props} />
-    ),
-    
-    tableCell: ({ node, isHeader, ...props }: any) => {
-      if (isHeader) {
-        return <th className="px-4 py-3 font-medium text-left" {...props} />;
-      }
-      return <td className="px-4 py-3" {...props} />;
-    },
-
-    // Custom heading renderer
-    h1: ({ children }: any) => <h1 className="mt-8 mb-4 font-bold text-foreground text-3xl font-serif">{children}</h1>,
-    h2: ({ children }: any) => {
-      // Special formatting for section headers
-      const text = String(children);
-
-      // Apply special styling for research sections
-      if (
-        text.includes('Research Path') ||
-        text.includes('Top Sources') ||
-        text.includes('Comparative Assessment')
-      ) {
-        // Determine which icon to show based on the section
-        let SectionIcon = BookOpenIcon;
-        if (text.includes('Research Path')) SectionIcon = ArrowRightIcon;
-        else if (text.includes('Top Sources')) SectionIcon = GlobeIcon;
-        else if (text.includes('Comparative Assessment')) SectionIcon = RefreshCwIcon;
-
-        return (
-          <h2 className="flex items-center mt-10 mb-6 pb-3 border-blue-200 dark:border-blue-800/30 border-b font-bold text-blue-700 dark:text-blue-400 text-2xl font-serif">
-            <div className="mr-3 p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-md">
-              <SectionIcon className="w-5 h-5" />
-            </div>
-            {text}
-          </h2>
-        );
-      }
-
-      return <h2 className="mt-8 mb-4 font-bold text-foreground text-2xl font-serif">{children}</h2>;
-    },
-    h3: ({ children }: any) => {
-      // Special formatting for section headers
-      const text = String(children);
-      if (
-        text.includes('Executive Summary') ||
-        text.includes('Key Findings') ||
-        text.includes('Detailed Analysis') ||
-        text.includes('Research Methodology') ||
-        text.includes('Code Examples') ||
-        text.includes('Key Insights') ||
-        text.includes('Confidence Level')
-      ) {
-        // Determine which icon to show based on the section
-        let SectionIcon = BookOpenIcon;
-        if (text.includes('Executive Summary')) SectionIcon = BookOpenIcon;
-        else if (text.includes('Key Findings')) SectionIcon = CheckIcon;
-        else if (text.includes('Detailed Analysis')) SectionIcon = SearchIcon;
-        else if (text.includes('Research Methodology')) SectionIcon = BrainIcon;
-        else if (text.includes('Code Examples')) SectionIcon = CopyIcon;
-        else if (text.includes('Key Insights')) SectionIcon = AlertCircleIcon;
-        else if (text.includes('Confidence Level')) SectionIcon = CheckIcon;
-
-        return (
-          <h3 className="flex items-center mt-8 mb-5 pb-2 border-blue-100 dark:border-blue-900/20 border-b font-semibold text-blue-600 dark:text-blue-400 text-xl font-serif">
-            <div className="mr-2 p-1 bg-blue-50 dark:bg-blue-900/20 rounded-md">
-              <SectionIcon className="w-4 h-4" />
-            </div>
-            {text}
-          </h3>
-        );
-      }
-      return <h3 className="mt-6 mb-4 font-semibold text-foreground text-xl font-serif">{children}</h3>;
-    },
-
-    // Custom link renderer
-    a: ({ node, href, children, ...props }: any) => {
-      const isExternal = href?.startsWith('http');
-      const domain = isExternal ? extractDomain(href) : '';
-      const isImage = href?.match(/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i);
-
-      // If it's an image link, render the image
-      if (isImage) {
-        return (
-          <div className="my-6 overflow-hidden rounded-lg border border-blue-100 dark:border-blue-900/20 shadow-md">
-            <a
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block"
-              {...props}
-            >
-              <img
-                src={href}
-                alt={String(children) || "Research image"}
-                className="w-full h-auto object-cover max-h-[400px]"
-                onError={(e) => {
-                  // Hide image on error
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </a>
-          </div>
-        );
-      }
-
-      if (isExternal) {
-        return (
-          <a
-            href={href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline transition-colors"
-            {...props}
-          >
-            <span className="border-b border-blue-300 dark:border-blue-600 pb-0.5">{children}</span>
-            <ExternalLinkIcon className="ml-1 w-3 h-3" />
-          </a>
-        );
-      }
-
-      return (
-        <a
-          href={href}
-          className="font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 border-b border-blue-300 dark:border-blue-600 pb-0.5 transition-colors"
-          {...props}
-        >
-          {children}
-        </a>
-      );
-    },
-
-    // Custom list item renderer for sources and research path
-    li: ({ node, children, ...props }: any) => {
-      const childrenStr = String(children);
-
-      // Check if this is a source item with URL (new format with domain/URL)
-      if (childrenStr.includes('Relevance:') && (childrenStr.includes('](http') || childrenStr.includes('](#'))) {
-        // Extract title, relevance and URL
-        const titleMatch = childrenStr.match(/\*\*(.*?)\*\*/);
-        const title = titleMatch ? titleMatch[1] : 'Unknown Source';
-        
-        const relevanceMatch = childrenStr.match(/Relevance: ([^)]+)/);
-        const relevance = relevanceMatch ? relevanceMatch[1].trim() : '';
-        
-        const domainMatch = childrenStr.match(/\[(.*?)\]/);
-        const domain = domainMatch ? domainMatch[1] : '';
-        
-        const urlMatch = childrenStr.match(/\((https?:\/\/[^)]+)\)/);
-        const url = urlMatch ? urlMatch[1] : '#';
-        
-        const faviconUrl = domain ? getFaviconUrl(domain) : '';
-
-        return (
-          <li className="flex items-start mb-3" {...props}>
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 bg-card p-3 border hover:border-blue-400/50 dark:hover:border-blue-500/50 border-border rounded-lg w-full transition-all duration-200 hover:shadow-md group"
-            >
-              {faviconUrl && (
-                <div className="flex-shrink-0 w-8 h-8 rounded-md overflow-hidden bg-blue-100 dark:bg-blue-900/30 p-1.5 flex items-center justify-center">
-                  <img
-                    src={faviconUrl}
-                    alt={domain}
-                    className="w-full h-full object-contain"
-                    onError={(e) => {
-                      // Show domain first letter if favicon fails to load
-                      const target = e.target as HTMLImageElement;
-                      target.style.display = 'none';
-                      target.parentElement!.innerHTML = `<span class="text-blue-500 dark:text-blue-400 font-bold text-sm">${domain.charAt(0).toUpperCase()}</span>`;
-                    }}
-                  />
-                </div>
-              )}
-              <div className="flex-grow min-w-0">
-                <div className="font-medium text-foreground truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                  {title}
-                </div>
-                <div className="text-muted-foreground text-xs truncate flex items-center gap-1">
-                  <GlobeIcon className="w-3 h-3" />
-                  {domain}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full text-blue-600 dark:text-blue-400 text-xs font-medium">
-                  {relevance}
-                </div>
-                <div className="bg-blue-100 dark:bg-blue-900/30 p-1.5 rounded-full text-blue-600 dark:text-blue-400 transition-colors group-hover:bg-blue-500 group-hover:text-white">
-                  <ExternalLinkIcon className="w-3.5 h-3.5" />
-                </div>
-              </div>
-            </a>
-          </li>
-        );
-      }
-
-      // Check if this is a research path item
-      if (childrenStr.includes('Initial:') || childrenStr.includes('Plan ') || childrenStr.includes('Refinement ')) {
-        // Extract the query part
-        const queryMatch = childrenStr.match(/"([^"]+)"/);
-        const query = queryMatch ? queryMatch[1] : '';
-        const prefix = childrenStr.split('"')[0];
-
-        return (
-          <li className="mb-3 group" {...props}>
-            <div className="flex items-center py-2 pl-4 border-blue-400/30 dark:border-blue-500/30 hover:border-blue-500 dark:hover:border-blue-400 border-l-2 transition-colors">
-              <div className="mr-2 text-blue-500 dark:text-blue-400">
-                {prefix.includes('Initial') ? (
-                  <SearchIcon className="w-4 h-4" />
-                ) : prefix.includes('Plan') ? (
-                  <BrainIcon className="w-4 h-4" />
-                ) : (
-                  <ArrowRightIcon className="w-4 h-4" />
-                )}
-              </div>
-              <div>
-                <span className="text-muted-foreground font-medium">{prefix}</span>
-                <span className="text-foreground font-medium group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">&quot;{query}&quot;</span>
-              </div>
-            </div>
-          </li>
-        );
-      }
-
-      // Regular list item
-      return (
-        <li className="flex items-start mb-3" {...props}>
-          <span className="mt-1 mr-2 text-blue-500 dark:text-blue-400">
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="mt-1.5">
-              <circle cx="4" cy="4" r="4" fill="currentColor" />
-            </svg>
-          </span>
-          <span className="text-card-foreground">{children}</span>
-        </li>
-      );
-    },
-
-    // Custom paragraph renderer
-    p: ({ node, children, ...props }: any) => {
-      // Check if paragraph contains an image URL
-      const childrenStr = String(children);
-      const imageUrlMatch = childrenStr.match(/https?:\/\/\S+\.(jpg|jpeg|png|gif|webp)(\?\S+)?/i);
-
-      if (imageUrlMatch) {
-        const imageUrl = imageUrlMatch[0];
-        // Replace the image URL with actual image
-        return (
-          <div className="my-6">
-            <p className="mb-4 text-card-foreground leading-relaxed" {...props}>
-              {childrenStr.replace(imageUrl, '')}
-            </p>
-            <div className="overflow-hidden rounded-lg border border-border shadow-md">
-              <img
-                src={imageUrl}
-                alt="Research visual"
-                className="w-full h-auto object-cover max-h-[400px]"
-                onError={(e) => {
-                  // Hide image on error
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
-            </div>
-          </div>
-        );
-      }
-
-      // Check if children contains any React elements that might cause hydration issues
-      // If children is an array and contains objects (React elements), we need to handle it differently
-      if (Array.isArray(children) && children.some(child => typeof child === 'object')) {
-        return (
-          <div className="mb-4 text-card-foreground leading-relaxed">
-            {children}
-          </div>
-        );
-      }
-
-      return <p className="mb-4 text-card-foreground leading-relaxed" {...props}>{children}</p>;
-    }
-  };
-
-  // Process the report to ensure proper markdown formatting
-  const processReportForMarkdown = (text: string) => {
-    if (!text) return '';
-
-    // Ensure code blocks are properly formatted
-    let processed = text.replace(/```([\s\S]*?)```/g, (match, code) => {
-      // Check if the code block already has a language specified
-      if (!/```\w+/.test(match)) {
-        return '```text\n' + code + '\n```';
-      }
-      return match;
-    });
-
-    // Fix table formatting issues if any remain
-    processed = processed.replace(/\|\s*---+\s*\|/g, '| --- |');
-    processed = processed.replace(/\|[-\s|]+\n/g, '| --- | --- | --- |\n');
-
-    // Ensure proper spacing around headings
-    processed = processed.replace(/(\n#+\s.*?)(\n[^#\n])/g, '$1\n$2');
-
-    return processed;
-  };
-
-  // Cleanup interval on unmount
+  // Cleanup polling interval on component unmount
   useEffect(() => {
     return () => {
       if (progressPollRef.current) {
@@ -882,93 +100,617 @@ export default function Home() {
     };
   }, []);
 
+  const saveHistory = (newHistory: string[]) => {
+    setSearchHistory(newHistory);
+    localStorage.setItem('searchHistory', JSON.stringify(newHistory));
+  };
+
+  // Function to poll for progress updates
+  const pollResearchProgress = useCallback(async () => {
+    // Removed dependency on loading state here, as the interval clearing handles it
+    try {
+      console.log('[Poll] Fetching progress...'); // Add log
+      const res = await fetch('/api/research/progress', {
+        cache: 'no-store', // Ensure fresh data
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        console.log('[Poll] Received data:', data); // Add log to see the raw data
+
+        // Update progress metrics if available
+        if (data.metrics) {
+           console.log('[Poll] Updating progress state:', data.metrics); // Add log before state update
+           // Ensure we are setting a valid metrics object
+           setCurrentProgress(prev => ({
+                sourcesCount: data.metrics.sourcesCount ?? prev?.sourcesCount ?? 0,
+                domainsCount: data.metrics.domainsCount ?? prev?.domainsCount ?? 0,
+                dataSize: data.metrics.dataSize ?? prev?.dataSize ?? '0KB',
+                elapsedTime: data.metrics.elapsedTime ?? prev?.elapsedTime ?? 0,
+           }));
+           // Optional: Update status based on metrics
+           // setCurrentStatus(deriveStatusFromMetrics(data.metrics));
+        } else {
+            console.log('[Poll] No metrics data in response.'); // Add log if metrics are missing
+        }
+
+        // Update live logs
+        if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
+           console.log('[Poll] Updating logs...'); // Add log
+           setLiveLogs(prevLogs => {
+             const existingLogsSet = new Set(prevLogs.map(log => log.substring(log.indexOf(']') + 2))); // Compare content only
+             const newLogs = data.logs
+               .filter((logContent: string) => !existingLogsSet.has(logContent)) // Filter by content
+               .map((logContent: string) => `[${new Date().toLocaleTimeString()}] ${logContent}`); // Add timestamp
+             return [...prevLogs, ...newLogs];
+           });
+           // Update current status with the latest log message
+           if(data.logs.length > 0) {
+               const latestLog = data.logs[data.logs.length - 1];
+               const simplifiedStatus = latestLog
+                    .replace(/\[\d+\/\d+\]\s*/, '')
+                    .replace(/:\s*".*?"$/, '');
+               setCurrentStatus(simplifiedStatus);
+           }
+        } else {
+            console.log('[Poll] No logs data in response.'); // Add log if logs are missing
+        }
+
+      } else {
+         console.warn('[Poll] Progress poll failed:', res.status);
+      }
+    } catch (error) {
+      console.error('[Poll] Progress poll fetch error:', error);
+    }
+  }, []); // Remove loading dependency, useCallback will use the latest state via refs implicitly if needed, or pass state setters if absolutely required
+
+  const handleResearch = async () => {
+    if (!query.trim() || loading) return;
+
+    setLoading(true);
+    setError(null);
+    setReport(null);
+    setCurrentProgress(null); // Explicitly reset progress
+    setLiveLogs([]);
+    setCurrentStatus('Initializing research...');
+    setShowLiveLogs(false);
+
+    // Start polling for progress immediately
+    if (progressPollRef.current) clearInterval(progressPollRef.current);
+    // Poll immediately once and then set interval
+    pollResearchProgress();
+    progressPollRef.current = setInterval(pollResearchProgress, 2500);
+
+    try {
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+
+      // Stop polling once the main request is finished (success or failure)
+      if (progressPollRef.current) clearInterval(progressPollRef.current);
+      progressPollRef.current = null; // Clear the ref
+
+      if (!res.ok) {
+          let errorData: ResearchError = { code: 'FETCH_FAILED', message: `Request failed with status ${res.status}` };
+          try {
+              // Try to parse specific error from backend
+              const jsonError = await res.json();
+              if (jsonError.error) {
+                  errorData = jsonError.error;
+              }
+          } catch (parseError) {
+              // Ignore if response is not JSON
+          }
+          throw errorData; // Throw the structured error
+      }
+
+      const data = await res.json();
+
+      // Backend should ideally return an error object if something failed internally
+      if (data.error) {
+          throw data.error as ResearchError;
+      }
+
+      // Success
+      console.log('[Research] Success. Final data:', data); // Log final data
+      setReport(data.report);
+      // Ensure final metrics are set correctly
+      if (data.metrics) {
+         setCurrentProgress(data.metrics);
+         setCurrentStatus(`Research complete in ${(data.metrics.elapsedTime / 1000).toFixed(1)}s`);
+      } else {
+         // Fallback status if metrics missing in final response (shouldn't happen ideally)
+         setCurrentStatus('Research complete');
+      }
+
+      // Update history only on successful research
+        const newHistory = [query, ...searchHistory.filter(q => q !== query)].slice(0, 5);
+        saveHistory(newHistory);
+
+    } catch (err) {
+      console.error("Research handling error:", err);
+      // Stop polling on error
+      if (progressPollRef.current) clearInterval(progressPollRef.current);
+      progressPollRef.current = null; // Clear the ref
+
+      // Set the error state with the caught error object
+      if (typeof err === 'object' && err !== null && 'message' in err) {
+          setError(err as ResearchError);
+      } else {
+          setError({ code: 'UNKNOWN_CLIENT_ERROR', message: 'An unexpected client-side error occurred.' });
+      }
+      setReport(null); // Clear any partial report
+      setCurrentStatus('Research failed'); // Update status
+    } finally {
+      setLoading(false);
+      // Defensive clear just in case
+      if (progressPollRef.current) {
+        clearInterval(progressPollRef.current);
+        progressPollRef.current = null;
+      }
+    }
+  };
+
+
+  const clearHistory = () => {
+    saveHistory([]);
+  };
+
+  const handleCopyCode = useCallback((code: string) => {
+    navigator.clipboard.writeText(code).then(() => {
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
+    }).catch(err => {
+      console.error('Failed to copy code:', err);
+      // Optionally show an error message to the user
+    });
+  }, []);
+
+  // Enhanced renderers for React Markdown
+  const renderers = {
+    // --- Code Block Renderer ---
+    code({ node, inline, className, children, ...props }: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      const codeString = String(children).replace(/\n$/, '');
+      const language = match ? match[1] : 'text'; // Default to 'text' if no language detected
+
+      // Determine if it should be rendered as a block or inline
+      // Render as block if it's not inline OR if it contains newline characters
+      const isBlock = !inline || codeString.includes('\n');
+
+      if (isBlock) {
+        // Choose syntax highlighter style based on theme
+        const style = theme === 'dark' ? vscDarkPlus : lightStyle;
+
+        return (
+          <div className="group code-block relative my-4"> {/* Added class */}
+            {/* Language Tag - Optional */}
+             {language !== 'text' && (
+               <div className="top-0 right-12 z-10 absolute bg-gray-200 dark:bg-zinc-800 px-2 py-0.5 rounded-bl font-mono text-gray-600 dark:text-zinc-300 text-xs select-none">
+                {language}
+              </div>
+            )}
+            {/* Copy Button - Always visible on hover/focus within */}
+              <button
+              onClick={() => handleCopyCode(codeString)}
+              className="top-2 right-2 z-10 absolute bg-gray-100 hover:bg-gray-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 p-1.5 rounded transition-opacity duration-150"
+                aria-label="Copy code"
+              >
+              {copiedCode === codeString ? (
+                <CheckIcon className="w-4 h-4 text-green-600 dark:text-green-400" />
+                ) : (
+                <CopyIcon className="w-4 h-4 text-gray-700 dark:text-gray-300" />
+                )}
+              </button>
+            <SyntaxHighlighter
+              style={style}
+              language={language}
+              PreTag="div"
+              className="!bg-gray-50 dark:!bg-zinc-900 shadow-inner !mt-0 border border-gray-200 dark:border-zinc-700 rounded-lg !text-sm !leading-relaxed"
+              showLineNumbers={codeString.split('\n').length > 1} // Show line numbers for multi-line blocks
+              wrapLongLines={true}
+              customStyle={{ // Consistent padding and base styling
+                margin: 0,
+                borderRadius: '0.5rem',
+                padding: '1rem',
+                fontSize: '0.875rem', // text-sm
+                lineHeight: '1.6',   // leading-relaxed
+              }}
+              {...props}
+            >
+              {codeString}
+            </SyntaxHighlighter>
+          </div>
+        );
+      }
+
+      // --- Inline Code Renderer ---
+      // Render simple inline code
+      return (
+        <code className="bg-gray-100 dark:bg-zinc-700/50 mx-[0.2em] px-[0.4em] py-[0.2em] rounded font-mono text-[0.85em] text-gray-800 dark:text-pink-400 break-words" {...props}>
+            {children}
+          </code>
+      );
+    },
+
+    // --- Table Renderer ---
+    // Improved table styling for better readability and responsiveness
+    table: ({ node, ...props }: any) => (
+      <div className="shadow-sm my-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto"> {/* Enable horizontal scroll on small screens */}
+          <table className="w-full min-w-[600px] text-sm border-collapse" {...props} /> {/* min-w ensures table doesn't break too easily */}
+        </div>
+      </div>
+    ),
+    tableHead: ({ node, ...props }: any) => (
+      <thead className="bg-gray-100 dark:bg-gray-800/80 border-gray-300 dark:border-gray-600 border-b text-gray-700 dark:text-gray-200" {...props} />
+    ),
+    tableRow: ({ node, isHeader, ...props }: any) => (
+      <tr className={`border-b border-gray-200 dark:border-gray-700 ${!isHeader ? "hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors" : ""}`} {...props} />
+    ),
+    tableCell: ({ node, isHeader, style, ...props }: any) => {
+       // Check for alignment style from remark-gfm
+      const align = style?.textAlign as 'left' | 'right' | 'center' | undefined;
+      const cellProps = {
+        className: `px-4 py-3 ${align ? `text-${align}` : 'text-left'}`, // Apply text alignment class
+        ...props,
+      };
+      return isHeader ? <th {...cellProps} /> : <td {...cellProps} />;
+    },
+
+    // --- Heading Renderers ---
+    // Consistent heading styles
+    h1: ({ children }: any) => <h1 className="mt-8 mb-4 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl">{children}</h1>,
+    h2: ({ children }: any) => {
+      const text = String(children);
+      // Keep the icon mapping for specific section headers
+      const sectionIconMap: Record<string, React.ElementType> = {
+        'Research Path': ArrowRightIcon, 'Top Sources Sample': GlobeIcon, 'Source Analysis Overview': DatabaseIcon,
+        'Comparative Assessment': RefreshCwIcon, 'Executive Summary': BookOpenIcon, 'Key Findings': CheckIcon,
+        'Detailed Analysis': SearchIcon, 'Technical Details': FileTextIcon, 'Research Methodology': BrainIcon,
+        'Code Examples': CopyIcon, 'Visual References': ImageIcon, 'Key Insights': AlertCircleIcon,
+        'Confidence Level Assessment': DatabaseIcon, 'Conclusions': CheckIcon, 'References': BookOpenIcon,
+         // Add more specific headers if needed
+      };
+      const matchingSection = Object.keys(sectionIconMap).find(section => text.startsWith(section));
+
+      if (matchingSection) {
+        const SectionIcon = sectionIconMap[matchingSection];
+        return (
+          <h2 className="flex items-center mt-10 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/50 font-serif font-bold text-blue-700 dark:text-blue-300 text-2xl">
+            <div className="bg-blue-100 dark:bg-blue-900/50 mr-3 p-1.5 rounded-md">
+              <SectionIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            {text}
+          </h2>
+        );
+      }
+      // Default H2 style
+      return <h2 className="mt-8 mb-5 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-bold text-gray-800 dark:text-gray-200 text-2xl">{children}</h2>;
+    },
+    h3: ({ children }: any) => <h3 className="mt-6 mb-4 font-serif font-semibold text-gray-800 dark:text-gray-300 text-xl">{children}</h3>,
+    // Add h4, h5, h6 if needed
+
+    // --- Link Renderer ---
+    a: ({ node, href, children, ...props }: any) => {
+      const url = href || '';
+      const isExternal = url.startsWith('http');
+      const textContent = Array.isArray(children) ? children.join('') : String(children);
+
+      // Handle image links (if the link itself is the image URL)
+      if (url.match(/\.(jpg|jpeg|png|gif|webp|svg)(\?.*)?$/i)) {
+        return (
+           <a href={url} target="_blank" rel="noopener noreferrer" className="block shadow-sm hover:shadow-md my-4 border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden transition-shadow">
+             <img src={url} alt={textContent || 'Linked image'} className="max-w-full h-auto" loading="lazy" />
+           </a>
+         );
+       }
+
+       // Handle cases where the child is an image (common markdown pattern ![alt](src))
+      if (node?.children?.[0]?.tagName === 'img') {
+          // Render the image directly, possibly wrapped in a link if desired
+          const imgNode = node.children[0];
+        return (
+              <a href={url} target="_blank" rel="noopener noreferrer" className="block my-4">
+                  <img
+                      src={imgNode.properties.src}
+                      alt={imgNode.properties.alt || 'Embedded image'}
+                      className="shadow-sm hover:shadow-md mx-auto border border-gray-200 dark:border-gray-700 rounded-md max-w-full h-auto transition-shadow"
+                loading="lazy"
+              />
+            </a>
+        );
+      }
+
+      // Render normal links
+      if (isExternal) {
+        const domain = extractDomain(url);
+        const faviconUrl = getFaviconUrl(domain); // Keep using favicon service
+        return (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group inline-flex items-center font-medium text-blue-600 hover:text-blue-800 dark:hover:text-blue-300 dark:text-blue-400 hover:underline underline-offset-2 transition-colors"
+            {...props}
+          >
+            {domain && ( // Show favicon only if domain is valid
+              <img
+                src={faviconUrl}
+                alt={`${domain} favicon`}
+                className="inline-block opacity-80 group-hover:opacity-100 mr-1.5 rounded-sm w-4 h-4 align-middle transition-opacity"
+                loading="lazy"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} // Hide on error
+              />
+            )}
+            <span className="inline-block align-middle">{children}</span>
+            <ExternalLinkIcon className="inline-block opacity-70 group-hover:opacity-100 ml-1 w-3.5 h-3.5 align-middle transition-opacity" />
+          </a>
+        );
+      }
+
+      // Internal links (if any)
+      return (
+        <a href={url} className="font-medium text-blue-600 dark:text-blue-400 hover:underline underline-offset-2" {...props}>
+          {children}
+        </a>
+      );
+    },
+
+    // --- List Item Renderer ---
+    // Updated to parse the new source format: "- **[Title](URL)** (Domain: ..., Relevance: ...)"
+    li: ({ node, children, ordered, ...props }: any) => {
+       const contentString = node.children?.map((child: any) => {
+          if (child.type === 'text') return child.value;
+          if (child.tagName === 'a') return child.children?.[0]?.value; // Get text from link if possible
+          if (child.tagName === 'strong') return child.children?.[0]?.value; // Get text from strong tag
+          return '';
+        }).join('');
+
+      // Regex to match the source format: **[Title](URL)** (Domain: ..., Relevance: ...)
+      const sourceMatch = contentString?.match(/^\s*\[(.*?)\]\(.*?\) \(Domain: (.*?), Relevance: (.*?)\)\s*$/);
+
+      if (sourceMatch && !ordered) { // Check if it's an unordered list item matching the source pattern
+         const title = sourceMatch[1];
+         const domain = sourceMatch[2];
+         const relevance = sourceMatch[3];
+         const url = node.children?.[0]?.children?.[0]?.properties?.href || '#'; // Extract URL from the nested 'a' tag
+
+         const faviconUrl = getFaviconUrl(domain);
+
+        return (
+          <li className="group flex items-start mb-4" {...props}>
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 bg-white dark:bg-gray-800/70 hover:shadow-lg p-3 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
+            >
+              {faviconUrl && (
+                <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1.5 border border-gray-200 dark:border-gray-600 rounded-md w-8 h-8 overflow-hidden">
+                  <img
+                    src={faviconUrl}
+                    alt={domain}
+                    className="w-full h-full object-contain"
+                    loading="lazy"
+                    onError={(e) => {
+                      const target = e.target as HTMLImageElement;
+                       const parent = target.parentElement;
+                       if (parent) {
+                         parent.innerHTML = `<span class="font-bold text-blue-500 dark:text-blue-400 text-sm">${domain.charAt(0).toUpperCase()}</span>`;
+                       }
+                      target.style.display = 'none';
+                    }}
+                  />
+                </div>
+              )}
+              <div className="flex-grow min-w-0">
+                <div className="font-medium text-gray-900 dark:group-hover:text-blue-400 dark:text-gray-100 group-hover:text-blue-600 text-sm truncate transition-colors">
+                  {title}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
+                  <GlobeIcon className="w-3 h-3" />
+                  {domain}
+                </div>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-2 ml-2">
+                <div className="bg-blue-50 dark:bg-blue-900/40 px-2 py-0.5 rounded-full font-medium text-blue-600 dark:text-blue-300 text-xs whitespace-nowrap">
+                  {relevance}
+                </div>
+                <ExternalLinkIcon className="w-4 h-4 text-gray-400 dark:group-hover:text-blue-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors" />
+              </div>
+            </a>
+          </li>
+        );
+      }
+
+       // --- Research Path Item Renderer ---
+       // Detect research path items based on keywords
+       const pathKeywords = ['Initial query:', 'Research area', 'Follow-up query', 'Step '];
+       const isPathItem = pathKeywords.some(keyword => contentString?.startsWith(keyword));
+
+       if (isPathItem && !ordered) {
+           const queryMatch = contentString?.match(/"([^"]+)"/);
+           const queryText = queryMatch ? queryMatch[1] : contentString;
+           const prefix = contentString?.split('"')[0] || '';
+
+           let PathIcon = ArrowRightIcon; // Default
+           if (prefix.includes('Initial')) PathIcon = SearchIcon;
+           else if (prefix.includes('area')) PathIcon = BrainIcon;
+
+        return (
+               <li className="group mb-2" {...props}>
+                   <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-1.5 pl-3 border-blue-300 hover:border-blue-500 dark:border-blue-700 dark:hover:border-blue-500 border-l-2 rounded-r-md transition-colors">
+                       <div className="flex-shrink-0 mr-2 text-blue-500 dark:text-blue-400">
+                           <PathIcon className="w-4 h-4" />
+              </div>
+                       <div className="text-sm">
+                           {prefix && <span className="mr-1 text-gray-500 dark:text-gray-400">{prefix}</span>}
+                           <span className="font-medium text-gray-800 dark:group-hover:text-blue-400 dark:text-gray-200 group-hover:text-blue-600 transition-colors">
+                               {queryMatch ? `"${queryText}"` : queryText}
+                           </span>
+              </div>
+            </div>
+          </li>
+        );
+      }
+
+      // --- Default List Item Renderer ---
+      return (
+        <li className="group flex items-start mb-2" {...props}>
+          <span className={`mt-1 mr-3 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium' : 'text-blue-500 dark:text-blue-400 flex-shrink-0'}`}>
+            {ordered ? `${props.index + 1}.` : (
+            <svg width="6" height="6" viewBox="0 0 6 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="group-hover:scale-125 transition-transform">
+              <circle cx="3" cy="3" r="3" fill="currentColor" />
+            </svg>
+            )}
+          </span>
+          <span className="text-gray-700 dark:text-gray-300 leading-relaxed">{children}</span>
+        </li>
+      );
+    },
+
+     // --- Paragraph Renderer ---
+     // Handle potential hydration issues with nested components/links
+    p: ({ node, children, ...props }: any) => {
+         // Check if paragraph only contains whitespace or is empty
+         if (node.children.every((child: any) => child.type === 'text' && /^\s*$/.test(child.value))) {
+             return null; // Render nothing for empty paragraphs
+         }
+
+         // Check if the paragraph seems to only contain a link (potential source reference)
+         const containsOnlyLink = node.children.length === 1 && node.children[0].tagName === 'a';
+         if (containsOnlyLink) {
+            // Render the link directly without the <p> wrapper if it's a source/citation
+            const linkNode = node.children[0];
+            const linkText = linkNode.children?.[0]?.value || '';
+             if (linkText.toLowerCase().includes('source:')) {
+                 // Render the link standalone, the 'a' renderer will handle it
+                 return <>{children}</>;
+             }
+         }
+
+         // Check if paragraph contains an image tag generated by markdown (e.g., ![alt](src))
+         const containsImageTag = node.children.some((child: any) => child.tagName === 'img');
+         if (containsImageTag) {
+             // Render the paragraph content, the 'a' or 'img' renderer will handle the image
+             return <div className="my-4">{children}</div>; // Use div for potentially block-level images
+         }
+
+         // Default paragraph rendering
+      return <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed" {...props}>{children}</p>;
+     },
+
+     // --- Image Renderer ---
+     img: ({ node, src, alt, ...props }: any) => (
+       <span className="block my-6 text-center"> {/* Center the image block */}
+         <img
+           src={src}
+           alt={alt || 'Research image'}
+           className="shadow-md hover:shadow-lg mx-auto border border-gray-200 dark:border-gray-700 rounded-lg max-w-full h-auto transition-shadow cursor-pointer"
+           loading="lazy"
+           onClick={() => window.open(src, '_blank')} // Open image in new tab on click
+           {...props}
+         />
+         {alt && <figcaption className="mt-2 text-gray-500 dark:text-gray-400 text-xs italic">{alt}</figcaption>}
+       </span>
+     ),
+  };
+
+  // --- Component Return ---
   return (
-    <div className="bg-background min-h-screen font-serif">
-    
-
-
+    // Apply bg-black for dark mode
+    <div className="bg-gray-50 dark:bg-black min-h-screen font-sans"> {/* Changed font-serif to font-sans for better readability */}
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
-        <div className="space-y-8 mx-auto max-w-3xl">
+        {/* Title and Description */}
+        <div className="space-y-8 mx-auto mb-12 max-w-3xl">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="space-y-4"
+             className="space-y-4 text-center"
           >
-         <h1 className=" flex justify-center items-center text-4xl font-serif font-bold tracking-tighter md:text-5xl lg:text-7xl">
-         <AuroraText>Deep Research Engine</AuroraText>
-    </h1>
-
-            <p className="text-muted-foreground text-base text-center">
-            An agent that processes over 4,000 sources across 20+ domains, using reasoning to synthesize vast amounts of online information and complete multi-step research tasks for you.
+            <h1 className="flex justify-center items-center font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
+              <AuroraText>Deep Research Engine</AuroraText>
+            </h1>
+             <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg">
+              Enter a query to initiate AI-powered deep research, synthesizing information from thousands of sources.
             </p>
           </motion.div>
 
+          {/* Search Input and History */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
             className="space-y-4"
           >
+            {/* Input Field */}
             <div className="relative">
+              <div className="left-0 absolute inset-y-0 flex items-center pl-4 pointer-events-none">
+                <SearchIcon className="w-5 h-5 text-gray-400" />
+              </div>
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Enter your research query..."
-                className="bg-background/50 shadow-sm backdrop-blur-sm px-5 py-4 border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 w-full text-foreground text-lg transition-all duration-200"
+                placeholder="e.g., Latest advancements in serverless computing for Next.js"
+                className="bg-white dark:bg-gray-900/80 shadow-sm py-4 pr-32 pl-12 border border-gray-300 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/60 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
                 disabled={loading}
               />
               <button
                 onClick={handleResearch}
                 disabled={loading || !query.trim()}
-                className="top-1/2 right-3 absolute bg-primary hover:bg-primary/90 disabled:opacity-50 shadow-md hover:shadow-lg p-3 rounded-lg text-primary-foreground transition-all -translate-y-1/2 duration-200"
-                aria-label="Search"
+                className="top-1/2 right-3 absolute bg-blue-600 hover:bg-blue-700 disabled:opacity-50 shadow-md hover:shadow-lg px-5 py-2 rounded-lg font-medium text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
+                aria-label="Start Research"
               >
                 {loading ? (
-                  <Loader2Icon className="w-5 h-5 animate-spin" />
+                  <div className="flex justify-center items-center w-[96px]"> {/* Fixed width */}
+                    <Loader2Icon className="w-5 h-5 animate-spin" />
+                  </div>
                 ) : (
-                  <SearchIcon className="w-5 h-5" />
+                   <div className="flex justify-center items-center w-[96px]"> {/* Fixed width */}
+                  <span>Research</span>
+                  </div>
                 )}
               </button>
             </div>
 
+            {/* Search History */}
             {searchHistory.length > 0 && (
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2 pb-2 overflow-x-auto text-muted-foreground text-sm">
-                  <HistoryIcon className="flex-shrink-0 w-4 h-4" />
-                  <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap justify-between items-center gap-3 bg-white dark:bg-gray-900/50 shadow-sm p-3 border border-gray-200 dark:border-gray-800 rounded-lg">
+                 <div className="flex items-center gap-2 overflow-x-auto text-gray-600 dark:text-gray-400">
+                    <HistoryIcon className="flex-shrink-0 w-4 h-4" />
+                  <span className="mr-1 font-medium text-xs">Recent:</span>
                     {searchHistory.map((q, i) => (
-                      <motion.button
+                    <button
                         key={i}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.2, delay: i * 0.05 }}
-                        onClick={() => {
-                          if (!loading) {
-                            setQuery(q);
-                            setTimeout(() => handleResearch(), 100);
-                          }
-                        }}
+                      onClick={() => { if (!loading) setQuery(q); }}
                         disabled={loading}
-                        className="bg-secondary hover:bg-secondary/80 shadow-sm hover:shadow px-3 py-1.5 rounded-full text-secondary-foreground text-xs whitespace-nowrap transition-colors"
+                      className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700/80 disabled:opacity-60 shadow-sm hover:shadow px-2.5 py-1 rounded-full text-gray-700 dark:text-gray-300 text-xs whitespace-nowrap transition-all duration-150"
+                      title={q} // Show full query on hover
                       >
-                        {q.length > 30 ? q.substring(0, 30) + '...' : q}
-                      </motion.button>
+                      {q.length > 35 ? q.substring(0, 32) + '...' : q}
+                    </button>
                     ))}
-                  </div>
                 </div>
                 <button
                   onClick={clearHistory}
-                  className="text-muted-foreground hover:text-destructive text-xs transition-colors"
+                  disabled={loading}
+                  className="disabled:opacity-60 pr-1 font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-500 dark:text-gray-400 text-xs transition-colors"
+                  aria-label="Clear search history"
                 >
-                  Clear
+                  Clear All
                 </button>
               </div>
             )}
           </motion.div>
+        </div>
 
+        {/* Loading State */}
           <AnimatePresence>
             {loading && (
               <motion.div
@@ -976,223 +718,207 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="space-y-6 bg-card shadow-lg p-6 border border-border rounded-xl"
+              className="space-y-6 bg-white dark:bg-gray-900/70 shadow-lg backdrop-blur-sm p-6 border border-gray-200 dark:border-gray-800 rounded-xl"
               >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <Loader2Icon className="w-5 h-5 text-primary animate-spin" />
-                    <h3 className="font-semibold text-card-foreground text-xl">
-                    <AuroraText>Researching...</AuroraText>
+              {/* Header */}
+              <div className="flex justify-between items-center pb-4 border-gray-200 dark:border-gray-700 border-b">
+                  <div className="flex items-center gap-3">
+                      <Loader2Icon className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-xl">
+                    Researching...
                     </h3>
                   </div>
-                  <div className=" text-muted-foreground text-sm font-serif">
-                    {countdown > 0 ? `~${countdown}s remaining` : '✨Almost done...'}
+                {currentProgress && (
+                  <div className="bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full font-medium text-gray-500 dark:text-gray-400 text-sm">
+                    {`${(currentProgress.elapsedTime / 1000).toFixed(1)}s`}
                   </div>
+                )}
                 </div>
 
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-2">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2 font-medium text-foreground">
-                        <BrainIcon className="w-4 h-4 text-primary" />
-                        <span>{researchStats.status || researchStage}</span>
-                      </div>
-                      <div className="text-muted-foreground text-xs">
-                        {researchStats.elapsedTime > 0 ? `${researchStats.elapsedTime.toFixed(1)}s elapsed` : ''}
+              {/* Current Status */}
+              <div className="bg-gray-50 dark:bg-gray-800/60 p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div className="flex items-center gap-2 font-medium text-gray-800 dark:text-gray-200 text-sm">
+                  <BrainIcon className="flex-shrink-0 w-4 h-4 text-blue-500 dark:text-blue-400" />
+                  <span className="truncate">{currentStatus || 'Starting research...'}</span>
                       </div>
                     </div>
 
-                    <div className="gap-3 grid grid-cols-3 mt-2">
-                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
-                          <GlobeIcon className="mr-1 w-3 h-3" />
-                          Sources
+              {/* Metrics */}
+              <div className="gap-3 grid grid-cols-1 sm:grid-cols-3">
+                {/* Sources */}
+                <div className="bg-gradient-to-br from-blue-50 dark:from-gray-800 to-blue-100 dark:to-blue-900/30 shadow-sm p-3 border border-blue-200 dark:border-blue-800/50 rounded-lg">
+                        <div className="flex items-center mb-1 font-medium text-blue-700 dark:text-blue-400 text-xs">
+                    <GlobeIcon className="mr-1.5 w-3.5 h-3.5" /> Sources Found
                         </div>
-                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.sourcesCount.toLocaleString()}</div>
-                      </div>
-                      <div className="bg-blue-100 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
-                          <DatabaseIcon className="mr-1 w-3 h-3" />
-                          Domains
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 text-lg">
+                    {currentProgress?.sourcesCount.toLocaleString() ?? '...'}
                         </div>
-                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.domainsCount}</div>
                       </div>
-                      <div className="bg-blue-50 dark:bg-blue-900/10 p-3 border border-blue-100 dark:border-blue-900/20 rounded-lg shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex items-center mb-1 text-gray-900 font-serif dark:text-blue-700 text-xs font-medium">
-                          <FileTextIcon className="mr-1 w-3 h-3" />
-                          Data Size
+                {/* Domains */}
+                <div className="bg-gradient-to-br from-green-50 dark:from-gray-800 to-green-100 dark:to-green-900/30 shadow-sm p-3 border border-green-200 dark:border-green-800/50 rounded-lg">
+                   <div className="flex items-center mb-1 font-medium text-green-700 dark:text-green-400 text-xs">
+                    <DatabaseIcon className="mr-1.5 w-3.5 h-3.5" /> Unique Domains
                         </div>
-                        <div className="font-serif font-medium text-foreground text-lg">{researchStats.dataSize}</div>
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 text-lg">
+                    {currentProgress?.domainsCount.toLocaleString() ?? '...'}
+                        </div>
                       </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-muted/30 p-4 border border-border rounded-lg">
-                    <h4 className="flex items-center  font-serif mb-3 font-medium text-gray-900 dark:text-blue-700 text-sm">
-                      <GlobeIcon className="mr-1.5 w-3.5 h-3.5" />
-                      Active Research Sources:
-                    </h4>
-                    <div className="space-y-2 pr-1 max-h-[120px] overflow-y-auto scrollbar-thin">
-                      {activeUrls.map((url, index) => (
-                        <motion.div
-                          key={`${url}-${index}`}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: 10 }}
-                          transition={{ duration: 0.3 }}
-                          className="flex items-center gap-2 p-2 rounded-md hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-colors"
-                        >
-                          <div className="flex-shrink-0 w-6 h-6 rounded-md overflow-hidden bg-blue-100 dark:bg-blue-900/30 p-1 flex items-center justify-center">
-                            <img
-                              src={getFaviconUrl(url)}
-                              alt={url}
-                              className="w-full h-full object-contain"
-                              onError={(e) => {
-                                // Show domain first letter if favicon fails to load
-                                const target = e.target as HTMLImageElement;
-                                target.style.display = 'none';
-                                target.parentElement!.innerHTML = `<span class="text-blue-500 dark:text-blue-400 font-bold text-xs">${url.charAt(0).toUpperCase()}</span>`;
-                              }}
-                            />
-                          </div>
-                          <span className="text-foreground text-sm flex-1 truncate">{url}</span>
-                          <div className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                            <ArrowRightIcon className="w-3 h-3 text-blue-500 dark:text-blue-400 animate-pulse" />
-                          </div>
-                        </motion.div>
-                      ))}
+                {/* Data Size */}
+                <div className="bg-gradient-to-br from-purple-50 dark:from-gray-800 to-purple-100 dark:to-purple-900/30 shadow-sm p-3 border border-purple-200 dark:border-purple-800/50 rounded-lg">
+                   <div className="flex items-center mb-1 font-medium text-purple-700 dark:text-purple-400 text-xs">
+                    <FileTextIcon className="mr-1.5 w-3.5 h-3.5" /> Data Size
+                        </div>
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 text-lg">
+                    {currentProgress?.dataSize ?? '...KB'}
+                      </div>
                     </div>
                   </div>
 
+              {/* Live Logs Toggle & Display */}
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <h4 className="flex items-center font-medium text-gray-900 dark:text-blue-700 text-sm">
-                        <CheckIcon className="mr-1.5 w-3.5 h-3.5" />
-                        Research Progress:
-                      </h4>
+                <div className="flex justify-end items-center">
                       <button
                         onClick={() => setShowLiveLogs(!showLiveLogs)}
-                        className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                     className="flex items-center gap-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 px-3 py-1 rounded-full font-medium text-blue-600 dark:text-blue-400 text-xs transition-colors"
                       >
-                        {showLiveLogs ? 'Hide Logs' : 'Show More'}
+                     <FileTextIcon className="w-3 h-3" />
+                     {showLiveLogs ? 'Hide Logs' : 'Show Live Logs'}
                       </button>
                     </div>
-                    <div className="space-y-2 bg-blue-50 dark:bg-blue-900/10 p-3 rounded-lg border border-blue-100 dark:border-blue-900/20">
-                      {researchStats.completedSteps.map((step, index) => {
-                        // Determine which icon to show based on the step content
-                        let StepIcon = CheckIcon;
-                        if (step.includes('plan')) StepIcon = BrainIcon;
-                        else if (step.includes('sources')) StepIcon = GlobeIcon;
-                        else if (step.includes('Crawled')) StepIcon = SearchIcon;
-                        else if (step.includes('Analyzed')) StepIcon = BookOpenIcon;
-                        else if (step.includes('Refined')) StepIcon = ArrowRightIcon;
-                        else if (step.includes('Collected')) StepIcon = DatabaseIcon;
-                        else if (step.includes('Synthesizing')) StepIcon = RefreshCwIcon;
-                        else if (step.includes('Generating')) StepIcon = FileTextIcon;
 
-                        return (
-                          <motion.div
-                            key={index}
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.2, delay: index * 0.05 }}
-                            className="flex items-center gap-2 text-sm"
-                          >
-                            <div className="flex justify-center items-center bg-blue-100 dark:bg-blue-800/30 text-blue-600 dark:text-blue-400 rounded-full w-5 h-5">
-                              <StepIcon className="w-3 h-3" />
-                            </div>
-                            <span className="text-foreground">{step}</span>
-                          </motion.div>
-                        );
-                      })}
-
-                      {/* Live logs section */}
-                      {showLiveLogs && researchStats.liveLogs.length > 0 && (
+                <AnimatePresence>
+                      {showLiveLogs && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
+                       exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.3 }}
-                          className="mt-4 pt-4 border-t border-blue-100 dark:border-blue-900/20"
-                        >
-                          <h5 className="text-xs  font-serif text-gray-900 dark:text-blue-700 mb-2 ">Live Research Logs:</h5>
-                          <div className="bg-white font-serif font-medium dark:bg-zinc-900 p-3 rounded-md border border-blue-100 dark:border-blue-900/20 max-h-[200px] overflow-y-auto scrollbar-thin text-xs ">
-                            {researchStats.liveLogs.map((log, index) => (
-                              <div key={index} className="mb-1 text-foreground">
-                                {log}
-                              </div>
-                            ))}
+                       className="mt-2 pt-2"
+                     >
+                       <div className="bg-gray-50 dark:bg-black/50 p-3 border border-gray-200 dark:border-gray-700 rounded-md max-h-[250px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800">
+                         {liveLogs.length > 0 ? (
+                           liveLogs.map((log, index) => (
+                             <div key={index} className="mb-1 text-gray-600 dark:text-gray-400 break-words whitespace-pre-wrap">
+                                  {log}
+                                </div>
+                              ))
+                            ) : (
+                           <div className="p-2 text-gray-500 dark:text-gray-400 italic">Waiting for research logs...</div>
+                            )}
                           </div>
                         </motion.div>
                       )}
-                    </div>
-                  </div>
+                 </AnimatePresence>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
+        {/* Error Display */}
           <AnimatePresence>
-            {error && (
+          {error && !loading && ( // Only show error if not loading
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="flex items-start gap-3 bg-destructive/10 p-5 border border-destructive rounded-xl text-destructive"
+              className="flex items-start gap-4 bg-red-50 dark:bg-red-900/20 shadow-md p-5 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-300"
               >
-                <AlertCircleIcon className="flex-shrink-0 mt-0.5 w-5 h-5" />
-                <div>
-                  <p className="font-semibold">Research Error</p>
-                  <p>{error}</p>
+              <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/40 mt-0.5 p-2 rounded-full">
+                 <ServerCrashIcon className="w-5 h-5 text-red-500" /> {/* More specific icon */}
+                </div>
+              <div className="flex-grow">
+                <p className="mb-1 font-semibold text-red-800 dark:text-red-200">Research Failed ({error.code || 'Error'})</p>
+                <p className="text-sm">{error.message || 'An unknown error occurred.'}</p>
+                  <button
+                  onClick={() => setError(null)} // Clear error on dismiss
+                  className="bg-red-100 hover:bg-red-200 dark:bg-red-900/50 dark:hover:bg-red-800/60 mt-3 px-3 py-1 rounded-md font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
+        {/* Report Display */}
           <AnimatePresence>
-            {report && (
+          {report && !loading && ( // Only show report if not loading
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
+              exit={{ opacity: 0 }} // Fade out directly
                 transition={{ duration: 0.5 }}
-                className="bg-card shadow-xl p-8 border border-border rounded-xl"
+              className="bg-white dark:bg-gray-800/50 shadow-xl backdrop-blur-md mt-8 p-6 md:p-8 border border-gray-200 dark:border-gray-700/80 rounded-xl" // Added margin top
               >
-                <div className="flex items-center justify-between mb-6 pb-4 border-b border-blue-100 dark:border-blue-900/20">
-                  <h3 className="flex items-center font-serif font-semibold text-card-foreground text-2xl">
-                    <div className="mr-3 p-2 bg-blue-100 dark:bg-blue-900/30 rounded-full">
+              {/* Report Header */}
+                <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-6 pb-4 border-gray-200 dark:border-gray-700 border-b">
+                <h2 className="flex items-center font-semibold text-gray-900 dark:text-gray-100 text-2xl">
+                  <div className="bg-blue-100 dark:bg-blue-900/40 mr-3 p-2 rounded-full">
                       <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </div>
-                    Research Results
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        if (report) {
-                          navigator.clipboard.writeText(report);
-                          // You could add a toast notification here
-                        }
-                      }}
-                      className="flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 hover:bg-blue-200 dark:hover:bg-blue-800/40 px-3 py-1.5 rounded-full text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
-                    >
-                      <CopyIcon className="w-3.5 h-3.5" />
-                      Copy
-                    </button>
-                  </div>
+                  Research Report
+                </h2>
+                {/* Final Metrics Display */}
+                {currentProgress && (
+                    <div className="flex flex-wrap items-center gap-2 bg-gray-50 dark:bg-gray-700/60 p-2 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
+                        <div className="flex items-center gap-1" title="Sources Consulted">
+                            <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
+                            <span className="font-medium">{currentProgress.sourcesCount.toLocaleString()}</span> src
+                        </div>
+                        <div className="flex items-center gap-1" title="Unique Domains">
+                            <DatabaseIcon className="w-3.5 h-3.5 text-green-500" />
+                            <span className="font-medium">{currentProgress.domainsCount}</span> dom
+                        </div>
+                         <div className="flex items-center gap-1" title="Data Analyzed">
+                            <FileTextIcon className="w-3.5 h-3.5 text-purple-500" />
+                            <span className="font-medium">{currentProgress.dataSize}</span>
+                        </div>
+                        <div className="flex items-center gap-1" title="Execution Time">
+                            <RefreshCwIcon className="w-3.5 h-3.5 text-orange-500" />
+                            <span className="font-medium">{(currentProgress.elapsedTime / 1000).toFixed(1)}s</span>
+                        </div>
+                      </div>
+                    )}
                 </div>
-                <div className="dark:prose-invert max-w-none prose-headings:font-serif prose-headings:font-medium dark:prose-a:text-blue-400 prose-a:text-blue-500 prose prose-blue">
+
+              {/* Markdown Report Content */}
+              <div className="prose-img:shadow-md dark:prose-invert prose-img:rounded-lg max-w-none prose-headings:font-semibold dark:prose-a:text-blue-400 prose-a:text-blue-600 prose-table:text-sm prose-code:before:content-none prose-code:after:content-none prose prose-gray">
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={renderers}
-                  >
-                    {processReportForMarkdown(report)}
+                  remarkPlugins={[remarkGfm]} // Github Flavored Markdown (tables, strikethrough, etc.)
+                  rehypePlugins={[rehypeRaw]} // Allow HTML rendering (use with caution if content isn't trusted)
+                  components={renderers} // Use our custom renderers
+                >
+                  {report}
                   </ReactMarkdown>
+                </div>
+
+              {/* Report Footer */}
+              <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-8 pt-6 border-gray-200 dark:border-gray-700 border-t">
+                  <button
+                    onClick={() => {
+                     if (report) {
+                       navigator.clipboard.writeText(report)
+                         .then(() => alert('Report copied to clipboard!')) // Simple confirmation
+                         .catch(err => console.error('Failed to copy report:', err));
+                     }
+                   }}
+                   className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/40 dark:hover:bg-blue-800/60 px-3 py-1.5 rounded-md font-medium text-blue-600 dark:text-blue-300 text-sm transition-colors"
+                 >
+                   <CopyIcon className="w-4 h-4" />
+                   Copy Full Report
+                 </button>
+                 <button
+                  onClick={() => { setQuery(''); setReport(null); setError(null); }}
+                  className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 px-3 py-1.5 rounded-md font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
+                >
+                  <SearchIcon className="w-4 h-4" />
+                    New Research
+                  </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
-        </div>
       </main>
     </div>
   );
