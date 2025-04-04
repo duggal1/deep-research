@@ -1,36 +1,65 @@
 import { NextResponse } from 'next/server';
-import { ResearchEngine } from '@/lib/research';
+// Remove direct ResearchEngine import if getCurrentProgress is removed from it
+// import { ResearchEngine } from '@/lib/research';
 
-// Use the same research engine instance as the main route
-const researchEngine = new ResearchEngine();
+// Define the structure for metrics explicitly, mirroring ResearchMetrics in page.tsx
+interface CurrentMetrics {
+  sourcesCount: number;
+  domainsCount: number;
+  dataSize: string; // e.g., "123.45KB"
+  elapsedTime: number; // in milliseconds
+}
 
-// Store research logs
+// --- Centralized State ---
 let researchLogs: string[] = [];
+let currentMetrics: CurrentMetrics = { // Initialize with defaults
+  sourcesCount: 0,
+  domainsCount: 0,
+  dataSize: '0KB',
+  elapsedTime: 0
+};
+// ---
 
-// Add log entry
+// --- State Update Functions ---
 export function addLog(log: string) {
   researchLogs.push(log);
-  // Keep only the last 100 logs to prevent memory issues
   if (researchLogs.length > 100) {
     researchLogs = researchLogs.slice(-100);
   }
 }
 
-// Clear logs when research is complete
 export function clearLogs() {
   researchLogs = [];
 }
+
+// New function to update metrics
+export function updateMetrics(newMetrics: Partial<CurrentMetrics>) {
+  currentMetrics = { ...currentMetrics, ...newMetrics };
+  // Optional: Log metric updates for debugging
+  // console.log('[Progress State] Metrics updated:', currentMetrics);
+}
+
+// New function to clear metrics
+export function clearMetrics() {
+  currentMetrics = {
+    sourcesCount: 0,
+    domainsCount: 0,
+    dataSize: '0KB',
+    elapsedTime: 0
+  };
+   // Optional: Log metric clearing
+   // console.log('[Progress State] Metrics cleared.');
+}
+// ---
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
 
 export async function GET() {
   try {
-    // Get current research progress
-    const metrics = researchEngine.getCurrentProgress();
-
+    // Directly return the current module-level state
     return NextResponse.json({
-      metrics,
+      metrics: currentMetrics, // Return the shared metrics object
       logs: researchLogs,
       timestamp: Date.now()
     }, {

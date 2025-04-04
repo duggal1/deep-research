@@ -31,7 +31,7 @@ const AuthCallbackPage = async () => {
         });
         
         // Redirect to dashboard after user creation
-        return redirect("/dashboard");
+        return redirect("/main");
     }
 
     // User exists, update their details

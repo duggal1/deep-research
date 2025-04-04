@@ -60,13 +60,18 @@ export interface ResearchResult {
     executionTimeMs: number;
     timestamp: string;
     error?: string;
+    crawlAttempted?: number;
+    crawlFailed?: number;
   };
-  researchMetrics?: {
+  researchMetrics: {
     sourcesCount: number;
     domainsCount: number;
     dataSize: string;
     elapsedTime: number;
   };
+  analysis: string;
+  researchPath: string[];
+  plan: ResearchPlan;
 }
 
 export interface ResearchError {
