@@ -109,7 +109,7 @@ ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${pat
 
     // Format Top Sources Sample
     const formattedTopSources = `
-## Top Sources Sample (Max 60 Shown)
+## Top Sources Sample 
 ${formattedSources.map(s => `- **[${s.title}](${s.url})** (Domain: ${s.domain}, Relevance: ${s.relevance})`).join('\n')}
     `;
 

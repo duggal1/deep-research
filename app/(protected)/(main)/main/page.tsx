@@ -31,6 +31,7 @@ import { useTheme } from 'next-themes';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuroraText } from '@/components/magicui/aurora-text';
 import { ResearchError } from '@/lib/types';
+import React from 'react';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -79,6 +80,9 @@ export default function Home() {
   const progressPollRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme(); // Get current theme
 
+  // Define pathKeywords here so it's accessible to both li and ul renderers
+  const pathKeywords = ['Initial query:', 'Research area', 'Follow-up query', 'Step ', '- Step '];
+
   useEffect(() => {
     // Load search history from localStorage
     const savedHistory = localStorage.getItem('searchHistory');
@@ -109,13 +113,14 @@ export default function Home() {
   // Function to poll for progress updates
   const pollResearchProgress = useCallback(async () => {
     try {
-      // console.log('[Poll] Fetching progress...'); // Keep if needed for debugging
+      // console.log('[Poll] Fetching progress...');
       const res = await fetch('/api/research/progress', { cache: 'no-store' });
 
       if (res.ok) {
         const data = await res.json();
-        // console.log('[Poll] Received data:', data); // Keep if needed
+        // console.log('[Poll] Received data:', data);
 
+        // Update metrics only if data.metrics is present
         if (data.metrics) {
           // console.log('[Poll] Updating progress state:', data.metrics);
           setCurrentProgress(prev => ({
@@ -124,42 +129,45 @@ export default function Home() {
                 dataSize: data.metrics.dataSize ?? prev?.dataSize ?? '0KB',
                 elapsedTime: data.metrics.elapsedTime ?? prev?.elapsedTime ?? 0,
            }));
-        } else {
-            // console.log('[Poll] No metrics data in response.');
         }
 
-        if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
-           // console.log('[Poll] Updating logs...');
-           const newLogsToAdd = data.logs
-             .map((logContent: string) => `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${logContent}`); // Standard timestamp
+        // Update logs if present
+         if (data.logs && Array.isArray(data.logs)) {
+           const newLogsWithTimestamp = data.logs
+             .map((logContent: string) => `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${logContent}`);
 
            setLiveLogs(prevLogs => {
-               // Efficiently add only unique new logs based on timestamp + content
                const existingLogEntries = new Set(prevLogs);
-               const uniqueNewLogs = newLogsToAdd.filter(log => !existingLogEntries.has(log));
-               // Keep max 100 logs, add new ones to the end
-               return [...prevLogs, ...uniqueNewLogs].slice(-100);
+               const uniqueNewLogs = newLogsWithTimestamp.filter((log: string) => !existingLogEntries.has(log));
+               if (uniqueNewLogs.length > 0) {
+                   return [...prevLogs, ...uniqueNewLogs].slice(-100);
+               }
+               return prevLogs;
            });
 
-           if(newLogsToAdd.length > 0) {
-               const latestLog = data.logs[data.logs.length - 1]; // Get original log content
-                // Simplify status more effectively
-                const simplifiedStatus = latestLog
+           // Update current status based on the *latest* log received
+            if (data.logs.length > 0) {
+               const latestLogContent = data.logs[data.logs.length - 1];
+               const simplifiedStatus = latestLogContent
                     .replace(/^Phase \d+(\.\d+)*:\s*/, '') // Remove Phase prefix
                     .replace(/\[\d+\/\d+\]\s*/, '') // Remove batch numbers
-                    .replace(/Crawling (Level \d Batch \d+\/\d+).*/, 'Crawling...') // Simplify crawling logs
-                    .replace(/Fetching initial results.*/, 'Fetching search results...')
-                    .replace(/Extracting links from top \d+ sources.*/, 'Extracting links for deep crawl...')
-                    .replace(/Starting Level \d crawl.*/, 'Crawling sources...')
-                    .replace(/Prioritizing all \d+ collected sources.*/, 'Prioritizing sources...')
-                    .replace(/Analyzing data from top \d+ sources.*/, 'Analyzing data...')
+                    // More specific status messages
+                    .replace(/Fetching SERP: (.*)/, 'Searching: $1...')
+                    .replace(/Extracted (\d+) links from (.*)\./, 'Found $1 links on $2')
+                    .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*Added (\d+) sources.*/, 'Crawling L$1 ($2/$3): +$4 sources')
+                    .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*sources$/, 'Crawling L$1 ($2/$3)...') // Fallback if no sources added yet
+                    .replace(/Prioritizing (\d+) sources\.\.\./, 'Prioritizing $1 sources...')
+                    .replace(/Analyzing data from top (\d+) sources.*/, 'Analyzing $1 sources...')
                     .replace(/Generating final analysis report.*/, 'Generating report...')
+                    .replace(/Research process finished.*/, 'Finalizing report...')
                     .replace(/Finalizing report and metrics.*/, 'Finalizing...')
-                    .replace(/:\s*".*?"$/, ''); // Remove trailing query in quotes
-               setCurrentStatus(simplifiedStatus.trim());
+                    .replace(/Crawl Phase Complete\. Final Sources: (\d+)\..*/, '$1 sources analyzed')
+                    .replace(/:\s*".*?"$/, '');
+               setCurrentStatus(prevStatus => {
+                   const newStatus = simplifiedStatus.trim();
+                   return newStatus && newStatus !== prevStatus ? newStatus : prevStatus;
+               });
            }
-        } else {
-            // console.log('[Poll] No logs data in response.');
         }
 
       } else {
@@ -167,8 +175,13 @@ export default function Home() {
       }
     } catch (error) {
       console.error('[Poll] Progress poll fetch error:', error);
+       if (progressPollRef.current) {
+           clearInterval(progressPollRef.current);
+           progressPollRef.current = null;
+           console.log('[Poll] Polling stopped due to fetch error.');
+       }
     }
-  }, []); // pollResearchProgress dependencies remain empty
+  }, []);
 
   const handleResearch = async () => {
     if (!query.trim() || loading) return;
@@ -176,13 +189,25 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setReport(null);
-    setCurrentProgress(null);
-    setLiveLogs(['[' + new Date().toLocaleTimeString('en-US', { hour12: false }) + '] Initializing research...']); // Start with an initial log
+    setCurrentProgress(null); // Start progress as null
+    const initialLog = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] Initializing research for: "${query}"...`;
+    setLiveLogs([initialLog]); // Set initial log immediately
     setCurrentStatus('Initializing research...');
-    setShowLiveLogs(false); // Keep logs collapsed initially
+    setShowLiveLogs(false);
 
-    if (progressPollRef.current) clearInterval(progressPollRef.current);
-    pollResearchProgress(); // Poll immediately
+    // Clear any existing interval *before* starting new ones
+    if (progressPollRef.current) {
+        clearInterval(progressPollRef.current);
+        progressPollRef.current = null;
+    }
+
+    // Start polling immediately and set interval
+    // Wrap in try/catch in case initial poll fails instantly
+    try {
+       await pollResearchProgress();
+    } catch (pollError) {
+       console.error("Initial poll failed:", pollError)
+    }
     progressPollRef.current = setInterval(pollResearchProgress, 2500); // Poll every 2.5 seconds
 
     try {
@@ -192,39 +217,52 @@ export default function Home() {
         body: JSON.stringify({ query }),
       });
 
-      if (progressPollRef.current) clearInterval(progressPollRef.current);
-      progressPollRef.current = null;
+      // Stop polling AFTER the main fetch is complete (success or error)
+      if (progressPollRef.current) {
+          clearInterval(progressPollRef.current);
+          progressPollRef.current = null;
+          console.log('[Poll] Polling stopped after research fetch completed.');
+      }
 
+      // Check response status FIRST
       if (!res.ok) {
           let errorData: ResearchError = { code: 'FETCH_FAILED', message: `Request failed with status ${res.status}` };
+          let errorJson = null;
           try {
-              const jsonError = await res.json();
-              if (jsonError.error) errorData = jsonError.error;
-              // If report exists in error response, show it (e.g., partial analysis on timeout)
-              if (jsonError.report) setReport(jsonError.report);
-               // Set metrics even on error if available
-               if (jsonError.metrics) setCurrentProgress(jsonError.metrics);
-          } catch (parseError) { }
-          throw errorData;
+              errorJson = await res.json(); // Try parsing error response
+              if (errorJson.error) errorData = errorJson.error;
+          } catch (parseError) {
+              console.warn("Could not parse error response JSON:", parseError);
+          }
+          // If report/metrics exist in error response, set them before throwing
+          if (errorJson?.report) setReport(errorJson.report);
+          if (errorJson?.metrics) setCurrentProgress(errorJson.metrics);
+          throw errorData; // Throw the extracted/created error object
       }
 
       const data = await res.json();
 
+      // Check for error *within* the successful response
       if (data.error) {
-          // If report exists in error response, show it
           if (data.report) setReport(data.report);
-           // Set metrics even on error if available
-           if (data.metrics) setCurrentProgress(data.metrics);
-          throw data.error as ResearchError;
+          if (data.metrics) setCurrentProgress(data.metrics);
+          throw data.error as ResearchError; // Throw the error object from the response body
       }
 
-      // Success
+      // --- Success Case ---
       // console.log('[Research] Success. Final data:', data);
       setReport(data.report);
       if (data.metrics) {
          setCurrentProgress(data.metrics);
          setCurrentStatus(`Research complete in ${(data.metrics.elapsedTime / 1000).toFixed(1)}s`);
       } else {
+          // Fallback if metrics somehow missing (shouldn't happen with backend changes)
+          setCurrentProgress(prev => ({ // Update based on previous state if possible
+               sourcesCount: prev?.sourcesCount ?? 0,
+               domainsCount: prev?.domainsCount ?? 0,
+               dataSize: prev?.dataSize ?? 'N/A',
+               elapsedTime: prev?.elapsedTime ?? 0
+           }));
          setCurrentStatus('Research complete');
       }
 
@@ -233,26 +271,33 @@ export default function Home() {
 
     } catch (err) {
       console.error("Research handling error:", err);
-      if (progressPollRef.current) clearInterval(progressPollRef.current);
-      progressPollRef.current = null;
+      // Ensure polling is stopped on error
+      if (progressPollRef.current) {
+          clearInterval(progressPollRef.current);
+          progressPollRef.current = null;
+          console.log('[Poll] Polling stopped due to research handling error.');
+      }
 
-      if (typeof err === 'object' && err !== null && 'message' in err) {
-          setError(err as ResearchError);
+      // Set error state using the caught error object
+      if (typeof err === 'object' && err !== null && 'message' in err && 'code' in err) {
+          setError(err as ResearchError); // Assume it matches ResearchError structure
+      } else if (typeof err === 'object' && err !== null && 'message' in err) {
+           setError({ code: 'UNKNOWN_API_ERROR', message: (err as Error).message });
       } else {
           setError({ code: 'UNKNOWN_CLIENT_ERROR', message: 'An unexpected client-side error occurred.' });
       }
-      // Don't clear report if it was set during error handling above
-      // setReport(null);
+      // Don't clear report if it was potentially set during error handling
       setCurrentStatus('Research failed');
     } finally {
       setLoading(false);
+      // Final check to ensure polling is stopped
       if (progressPollRef.current) {
         clearInterval(progressPollRef.current);
         progressPollRef.current = null;
+        console.log('[Poll] Polling stopped in finally block.');
       }
     }
   };
-
 
   const clearHistory = () => {
     saveHistory([]);
@@ -270,6 +315,12 @@ export default function Home() {
 
   // Enhanced renderers for React Markdown
   const renderers = {
+    // --- Horizontal Rule Renderer ---
+    hr: () => (
+      <div className="flex justify-center items-center my-10">
+        <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
+      </div>
+    ),
     // --- Code Block Renderer ---
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
@@ -277,30 +328,31 @@ export default function Home() {
       const language = match ? match[1] : 'text'; // Default to 'text' if no language detected
 
       // Determine if it should be rendered as a block or inline
-      // Render as block if it's explicitly not inline OR if it contains newline characters
-      // OR if it's language-text but looks like a block (> 60 chars, maybe?)
        const isBlock = !inline || codeString.includes('\n') || (language === 'text' && codeString.length > 60);
 
 
       // --- BLOCK CODE ---
+       // Style adjustments for better visual hierarchy and theme consistency
       if (isBlock && language !== 'text') { // Only apply syntax highlighting if language is detected
         const style = theme === 'dark' ? oneDark : oneLight; // Use better themes
 
         return (
-          <div className="group code-block relative mb-6 shadow-md rounded-lg border border-gray-200 dark:border-gray-700/80"> {/* Increased bottom margin */}
-            {/* Header Bar */}
-            <div className="flex items-center justify-between bg-gray-100 dark:bg-gray-800/80 px-4 py-2 border-b border-gray-200 dark:border-gray-700/80 rounded-t-lg">
-                <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 text-xs font-medium">
+           // Added slight shadow, refined border colors
+          <div className="group code-block relative shadow-md dark:shadow-gray-900/50 dark:shadow-lg mb-6 border border-gray-200 dark:border-gray-700 rounded-lg">
+            {/* Header Bar Styling Adjustment */}
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/60 px-4 py-2 border-gray-200 dark:border-gray-700 border-b rounded-t-lg">
+                <div className="flex items-center gap-2 font-medium text-gray-500 dark:text-gray-400 text-xs">
                     <TerminalIcon className="w-4 h-4" />
                     <span>{language.toUpperCase()}</span>
                 </div>
               <button
                 onClick={() => handleCopyCode(codeString)}
-                className="flex items-center gap-1 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 px-2 py-1 rounded text-gray-700 dark:text-gray-300 text-xs font-medium transition-colors duration-150"
+                 // Slightly softer button style
+                 className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600/80 px-2.5 py-1 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-gray-700 dark:text-gray-300 text-xs transition-colors duration-150"
                 aria-label="Copy code"
               >
                 {copiedCode === codeString ? (
-                   <> <CheckIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> Copied </>
+                   <> <CheckIcon className="w-3.5 h-3.5 text-green-500 dark:text-green-400" /> Copied </>
                 ) : (
                    <> <CopyIcon className="w-3.5 h-3.5" /> Copy </>
                 )}
@@ -310,17 +362,20 @@ export default function Home() {
               style={style}
               language={language}
               PreTag="div"
-              className="!bg-white dark:!bg-gray-900 !py-4 !px-0 rounded-b-lg !text-sm !leading-relaxed overflow-x-auto" // Improved background, padding, overflow
+               // Removed specific bg-white/dark:bg-gray-900 to inherit from style, adjusted padding
+               className="!px-4 !py-4 rounded-b-lg overflow-x-auto !text-sm !leading-relaxed scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50"
               showLineNumbers={codeString.split('\n').length > 3} // Show line numbers for more than 3 lines
               wrapLongLines={false} // Disable wrapping for code blocks
-              lineNumberStyle={{ color: theme === 'dark' ? '#6b7280' : '#9ca3af', fontSize: '0.8em', paddingRight: '1em', userSelect: 'none' }} // Subtle line numbers
+               // Adjusted line number style for subtlety
+              lineNumberStyle={{ color: theme === 'dark' ? '#555e6e' : '#a0aec0', fontSize: '0.8em', paddingRight: '1.2em', userSelect: 'none' }}
               customStyle={{
                 margin: 0,
                 borderRadius: '0 0 0.5rem 0.5rem', // Only bottom corners rounded
                 // padding: '1rem', // Padding handled by className
                 fontSize: '0.875rem', // text-sm
                 lineHeight: '1.6',
-                backgroundColor: theme === 'dark' ? '#111827' /* gray-900 */ : '#ffffff', // Ensure bg matches theme
+                 // Ensure background from theme is applied
+                 backgroundColor: theme === 'dark' ? style['pre[class*="language-"]'].backgroundColor : style['pre[class*="language-"]'].backgroundColor,
               }}
               codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }} // Ensure monospace font
               {...props}
@@ -332,35 +387,47 @@ export default function Home() {
       }
 
       // --- INLINE CODE ---
-      // Handle inline code or code blocks without a specific language (render as simple pre/code)
+       // Enhanced inline code styling
       return (
-         // If it was determined to be a block (e.g., long text), render in a basic block format
          isBlock ? (
-             <pre className="block bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700/50 shadow-sm rounded-md p-3 mb-4 overflow-x-auto text-sm text-gray-800 dark:text-gray-200 font-mono whitespace-pre-wrap break-words">
+              // Basic block format for text/long inline code - improved styling
+             <pre className="block bg-gray-100 dark:bg-gray-800/70 shadow-sm mb-4 p-3.5 border border-gray-200 dark:border-gray-700 rounded-md overflow-x-auto font-mono text-gray-800 dark:text-gray-200 text-sm break-words whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-200 dark:scrollbar-track-gray-700">
                  <code>{children}</code>
              </pre>
          ) : (
-            // Otherwise, render inline
-            <code className="bg-gray-100 dark:bg-gray-700/50 text-gray-800 dark:text-pink-400 font-mono text-[0.875em] px-[0.5em] py-[0.15em] mx-[0.1em] rounded-sm break-words" {...props}>
+            // Inline code styling - more distinct
+            <code className="bg-blue-100/50 dark:bg-blue-900/30 mx-[0.1em] px-[0.5em] py-[0.2em] border border-blue-200/80 dark:border-blue-800/50 rounded-md font-mono text-[0.875em] text-blue-800 dark:text-blue-300 break-words" {...props}>
               {children}
             </code>
          )
       );
     },
 
-    // --- Table Renderer ---
+    // --- Table Renderer --- V3 - Ultra Modern Styling ---
     table: ({ node, ...props }: any) => (
-      <div className="shadow-md my-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-        <div className="overflow-x-auto">
-           <table className="w-full min-w-[600px] text-sm border-collapse divide-y divide-gray-200 dark:divide-gray-700" {...props} />
+      // Enhanced container with glass effect and stronger shadow
+      <div className="bg-white/50 dark:bg-gray-900/50 shadow-xl dark:shadow-2xl dark:shadow-blue-900/10 backdrop-blur-sm my-10 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+          {/* Added subtle border styling and spacing */}
+          <table className="w-full text-sm border-separate border-spacing-0" {...props} />
         </div>
       </div>
     ),
     tableHead: ({ node, ...props }: any) => (
-      <thead className="bg-gray-100 dark:bg-gray-800/80" {...props} />
+      // Gradient header background with stronger visual hierarchy
+      <thead className="top-0 z-10 sticky bg-gradient-to-br from-blue-50 dark:from-gray-800 to-gray-50 dark:to-gray-900 backdrop-blur-sm border-b-2 border-blue-200 dark:border-blue-800/60" {...props} />
     ),
     tableRow: ({ node, isHeader, ...props }: any) => (
-      <tr className={`border-b border-gray-200 dark:border-gray-700/80 ${!isHeader ? "odd:bg-white even:bg-gray-50 dark:odd:bg-gray-800/40 dark:even:bg-gray-800/60 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors" : ""}`} {...props} />
+      // Enhanced hover effects and more distinct alternating rows
+      <tr
+        className={`
+          border-b border-gray-200/60 dark:border-gray-700/50
+          ${!isHeader ?
+            "odd:bg-white dark:odd:bg-gray-800/30 even:bg-blue-50/30 dark:even:bg-blue-900/10 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-all duration-200"
+            : ""}
+        `}
+        {...props}
+      />
     ),
     tableCell: ({ node, isHeader, style, ...props }: any) => {
       const align = style?.textAlign as 'left' | 'right' | 'center' | undefined;
@@ -368,15 +435,32 @@ export default function Home() {
       if (align === 'right') alignClass = 'text-right';
       if (align === 'center') alignClass = 'text-center';
 
+      // Determine if this is a numeric cell for special formatting
+      const content = node.children?.map((c: any) => c.value || '').join('') || '';
+      const isNumeric = !isHeader && /^[\d.,]+%?$/.test(content.trim());
+
       const cellProps = {
-        className: `px-4 py-3 ${alignClass} ${isHeader ? 'font-semibold text-gray-700 dark:text-gray-200' : 'text-gray-600 dark:text-gray-300'}`, // Improved styling and alignment
+        // Enhanced padding and typography with special handling for numeric cells
+        className: `
+          px-6 py-4 ${alignClass}
+          ${isHeader
+            ? 'font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider'
+            : isNumeric
+              ? 'text-blue-700 dark:text-blue-300 font-medium tabular-nums'
+              : 'text-gray-700 dark:text-gray-300'
+          }
+        `,
         ...props,
       };
-      return isHeader ? <th {...cellProps} /> : <td {...cellProps} />;
+
+      return isHeader
+        ? <th scope="col" {...cellProps} />
+        : <td {...cellProps} />;
     },
 
     // --- Heading Renderers ---
-    h1: ({ node, children, ...props }: any) => <h1 className="mt-10 mb-6 pb-3 border-b border-gray-300 dark:border-gray-600/80 font-sans font-bold text-gray-900 dark:text-gray-100 text-3xl tracking-tight" {...props}>{children}</h1>,
+    h1: ({ node, children, ...props }: any) => <h1 className="mt-10 mb-6 pb-4 border-gray-300 dark:border-gray-600/80 border-b font-sans font-bold text-gray-900 dark:text-gray-100 text-3xl md:text-4xl tracking-tight" {...props}>{children}</h1>,
+    // H2 styling refined
     h2: ({ node, children, ...props }: any) => {
       const text = String(children);
       const sectionIconMap: Record<string, React.ElementType> = {
@@ -386,6 +470,8 @@ export default function Home() {
         'Code Examples': TerminalIcon, 'Visual References': ImageIcon, 'Key Insights': AlertCircleIcon,
         'Confidence Level Assessment': CheckIcon, 'Conclusions': CheckIcon, 'References': BookOpenIcon,
         'Limitations': AlertCircleIcon, 'Future Directions': ArrowRightIcon, 'Introduction': BookOpenIcon,
+        // Added from synthesis prompt
+        'Methodology': BrainIcon, 'Technical Detail': FileTextIcon, 'Future Direction': ArrowRightIcon, 'Comprehensive Analysis': SearchIcon, 'Key Findings & Detailed Breakdown': FileTextIcon, 'Comparison & Nuances': RefreshCwIcon, 'Technical Deep Dive & Code Examples': TerminalIcon, 'Conclusion from Research Data': CheckIcon
       };
        // Find best matching section using startsWith
       const matchingSection = Object.keys(sectionIconMap).find(section => text.trim().startsWith(section));
@@ -393,192 +479,250 @@ export default function Home() {
       if (matchingSection) {
         const SectionIcon = sectionIconMap[matchingSection];
         return (
-          <h2 className="flex items-center mt-12 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/50 font-sans font-semibold text-blue-700 dark:text-blue-300 text-2xl tracking-tight" {...props}>
-            <div className="bg-blue-100 dark:bg-blue-900/50 mr-3 p-2 rounded-lg shadow-sm"> {/* Slightly larger icon background */}
+           // Use theme-consistent border, refined icon background
+          <h2 className="flex items-center mt-12 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/60 font-sans font-semibold text-blue-700 dark:text-blue-300 text-2xl md:text-3xl tracking-tight" {...props}>
+             {/* Softer icon background */}
+            <div className="bg-gradient-to-br from-blue-50 dark:from-blue-900/40 to-blue-100 dark:to-blue-800/60 shadow mr-3.5 p-2.5 rounded-lg">
               <SectionIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             {text}
           </h2>
         );
       }
-      // Default H2 style
-      return <h2 className="mt-10 mb-5 pb-2 border-b border-gray-200 dark:border-gray-700 font-sans font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>{children}</h2>;
+      // Default H2 style improved
+      return <h2 className="mt-10 mb-5 pb-2 border-gray-200 dark:border-gray-700 border-b font-sans font-semibold text-gray-800 dark:text-gray-200 text-2xl md:text-3xl tracking-tight" {...props}>{children}</h2>;
     },
-    h3: ({ node, children, ...props }: any) => <h3 className="mt-8 mb-4 font-sans font-semibold text-gray-800 dark:text-gray-300 text-xl" {...props}>{children}</h3>,
-    // Add h4, h5, h6 if needed with decreasing font size and margin
+    h3: ({ node, children, ...props }: any) => <h3 className="mt-8 mb-4 font-sans font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl" {...props}>{children}</h3>,
+    h4: ({ node, children, ...props }: any) => <h4 className="mt-6 mb-3 font-sans font-semibold text-gray-700 dark:text-gray-300 text-lg md:text-xl" {...props}>{children}</h4>,
+    // Add h5, h6 if needed
 
-    // --- Link Renderer ---
+    // --- Link Renderer V3 (Enhanced Universal Application) ---
     a: ({ node, href, children, ...props }: any) => {
       const url = href || '';
-      // Basic check for external links
       const isExternal = url.startsWith('http://') || url.startsWith('https://');
       const textContent = Array.isArray(children) ? children.join('') : String(children);
 
-      // Handle image links (link IS the image)
-      if (url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i)) {
-         return (
-           <a href={url} target="_blank" rel="noopener noreferrer" className="block shadow-md hover:shadow-lg my-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden transition-shadow duration-200">
-             <img src={url} alt={textContent || 'Linked image'} className="max-w-full h-auto block" loading="lazy" />
-           </a>
-         );
+      // Skip rendering specific list item links here, handled by 'li' renderer
+      if (node?.parent?.tagName === 'li') {
+        const parentText = node.parent.children?.map((c: any) => c.value || '').join('');
+        if (parentText.includes('(Domain:') && parentText.includes(', Relevance:')) {
+          // Let the 'li' renderer handle the full component for source items
+          return <>{children}</>; // Render children (the title text) as-is within the li's anchor
+        }
       }
 
-       // Handle images wrapped in links (![alt](src))
-      if (node?.children?.[0]?.tagName === 'img') {
-        const imgNode = node.children[0];
+      // Handle image links
+      if (url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i)) {
         return (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="block my-4">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block shadow-lg hover:shadow-xl my-6 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden transition-all duration-300"
+          >
             <img
-              src={imgNode.properties.src}
-              alt={imgNode.properties.alt || 'Embedded image'}
-              className="shadow-md hover:shadow-lg mx-auto border border-gray-200 dark:border-gray-700 rounded-lg max-w-full h-auto transition-shadow duration-200"
+              src={url}
+              alt={textContent || 'Linked image'}
+              className="block group-hover:opacity-90 max-w-full h-auto transition-opacity"
               loading="lazy"
             />
           </a>
         );
       }
 
-      // Normal External links
-      if (isExternal) {
-        let domain = '';
-        let faviconUrl = '';
-        try {
-          domain = extractDomain(url);
-          faviconUrl = getFaviconUrl(domain);
-        } catch (e) {
-             console.warn("Could not parse domain for favicon:", url);
-        }
-
+      // Handle images wrapped in links
+      if (node?.children?.[0]?.tagName === 'img') {
+        const imgNode = node.children[0];
         return (
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="group inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline underline-offset-4 decoration-blue-500/50 hover:decoration-blue-500 transition-all duration-150 break-words" // Added break-words
-            {...props}
+            className="group block my-6"
           >
-            {faviconUrl && domain && ( // Only show favicon if URL is valid and domain parsed
-              <img
-                src={faviconUrl}
-                alt={`${domain} favicon`}
-                className="inline-block mr-0.5 rounded-sm w-4 h-4 align-text-bottom transition-opacity" // Removed opacity for always visible
-                loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-            )}
-            <span>{children}</span>
-            <ExternalLinkIcon className="inline-block opacity-70 group-hover:opacity-100 ml-0.5 w-3.5 h-3.5 align-text-bottom transition-opacity" />
+            <img
+              src={imgNode.properties.src}
+              alt={imgNode.properties.alt || 'Embedded image'}
+              className="group-hover:opacity-90 shadow-lg hover:shadow-xl mx-auto border border-gray-200 dark:border-gray-700 rounded-xl max-w-full h-auto transition-all duration-300"
+              loading="lazy"
+            />
           </a>
         );
       }
 
-      // Internal/Relative links (if any)
+      // --- Enhanced Universal Link Styling (External/Internal) ---
+      let domain = '';
+      let faviconUrl = '';
+      if (isExternal) {
+        try {
+          domain = extractDomain(url);
+          faviconUrl = getFaviconUrl(domain);
+        } catch (e) {
+          console.warn("Could not parse domain for favicon:", url);
+        }
+      }
+
+      // Determine if the link text itself is a URL (common in markdown)
+      const isLinkTextUrl = textContent === url;
+
+      // Check if this is a code-like link (e.g., nextjs.org/docs)
+      const isCodeLink = textContent.match(/^`[^`]+`$/);
+      const codeContent = isCodeLink ? textContent.replace(/^`|`$/g, '') : '';
+
+      // Special styling for code-like links
+      if (isCodeLink) {
+        return (
+          <a
+            href={url}
+            target={isExternal ? '_blank' : undefined}
+            rel={isExternal ? 'noopener noreferrer' : undefined}
+            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow px-3 py-1.5 border border-blue-200 dark:border-blue-700/50 rounded-md font-mono text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200"
+            {...props}
+          >
+            {isExternal && faviconUrl && domain && (
+              <img
+                src={faviconUrl}
+                alt={`${domain} favicon`}
+                className="inline-block mr-2 rounded-sm w-4 h-4"
+                loading="lazy"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+            <span>{codeContent}</span>
+            {isExternal && (
+              <ExternalLinkIcon className="inline-block opacity-70 group-hover:opacity-100 ml-1.5 w-3.5 h-3.5 transition-opacity shrink-0" />
+            )}
+          </a>
+        );
+      }
+
+      // Standard link styling (enhanced)
       return (
-        <a href={url} className="font-medium text-blue-600 dark:text-blue-400 hover:underline underline-offset-2 decoration-blue-500/50 hover:decoration-blue-500 transition-colors" {...props}>
-          {children}
+        <a
+          href={url}
+          target={isExternal ? '_blank' : undefined}
+          rel={isExternal ? 'noopener noreferrer' : undefined}
+          className="group inline-flex items-center gap-1.5 hover:bg-blue-50/50 dark:hover:bg-blue-900/30 -mx-1 -my-0.5 px-1 py-0.5 rounded-md font-medium text-blue-600 hover:text-blue-800 dark:hover:text-blue-300 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-200"
+          {...props}
+        >
+          {isExternal && faviconUrl && domain && (
+            <img
+              src={faviconUrl}
+              alt={`${domain} favicon`}
+              className="inline-block shadow-sm mr-0.5 rounded-sm w-4 h-4 align-text-bottom"
+              loading="lazy"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+          <span className={isLinkTextUrl ? 'truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px]' : ''}>
+            {isLinkTextUrl ? url.replace(/^(https?:|)\/\//, '').replace(/\/$/, '') : children}
+          </span>
+          {isExternal && (
+            <ExternalLinkIcon className="inline-block opacity-60 group-hover:opacity-100 ml-0.5 w-3.5 h-3.5 align-text-bottom transition-opacity shrink-0" />
+          )}
         </a>
       );
     },
 
     // --- List Item Renderer ---
-    // Updated to parse the new source format AND make the entire item clickable
     li: ({ node, children, ordered, ...props }: any) => {
        // Get text content cleanly, handling nested strong/a tags
        let textContent = '';
        node.children?.forEach((child: any) => {
            if (child.type === 'text') textContent += child.value;
-           else if (child.children && child.children.length > 0) {
-               child.children.forEach((grandChild: any) => {
+           else if (child.tagName === 'strong' || child.tagName === 'a') { // Look inside strong/a tags
+               child.children?.forEach((grandChild: any) => {
                    if (grandChild.type === 'text') textContent += grandChild.value;
                });
+           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') { // Handle simple nested text
+               textContent += child.children[0].value;
            }
        });
        textContent = textContent.trim();
 
-       // Regex to match the source format: [Title](URL) (Domain: ..., Relevance: ...)
-       // Note: The URL is inside the link tag, not directly in textContent
-       const sourceMatch = textContent.match(/^\[(.*?)\]\s*\(Domain: (.*?), Relevance: (.*?)\)\s*$/);
-       // Attempt to extract URL from the first 'a' tag child
+       // Try matching source pattern first
+       const sourceMatch = textContent.match(/^(.*?)\s*\(Domain: (.*?), Relevance: (.*?)\)\s*$/);
        const linkNode = node.children?.find((child: any) => child.tagName === 'a');
        const url = linkNode?.properties?.href || '#';
+       const title = linkNode?.children?.find((c:any) => c.type === 'text')?.value || sourceMatch?.[1] || '';
 
-       // Check if it's an unordered list item matching the source pattern AND has a valid URL
-      if (sourceMatch && !ordered && url !== '#') {
-         const title = sourceMatch[1];
-         const domain = sourceMatch[2];
-         const relevance = sourceMatch[3];
-         const faviconUrl = getFaviconUrl(domain);
+       if (sourceMatch && !ordered && url !== '#') {
+          const domain = sourceMatch[2];
+          const relevance = sourceMatch[3];
+          const faviconUrl = getFaviconUrl(domain);
 
-         // *** RENDER THE ENTIRE LIST ITEM AS A CLICKABLE LINK ***
-        return (
-          <li className="group list-none p-0 m-0 mb-3" {...props}> {/* Reset list style, add bottom margin */}
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 bg-white dark:bg-gray-800/60 hover:bg-blue-50 dark:hover:bg-blue-900/40 p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200 shadow-sm hover:shadow-md"
-            >
-              {faviconUrl && (
-                <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1 border border-gray-200 dark:border-gray-600 rounded-md w-9 h-9 overflow-hidden"> {/* Slightly larger favicon area */}
-                  <img
-                    src={faviconUrl}
-                    alt={domain}
-                    className="w-5 h-5 object-contain" // Favicon size
-                    loading="lazy"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                       const parent = target.parentElement;
-                       if (parent) { // Fallback to initial letter
-                         parent.innerHTML = `<span class="font-bold text-blue-500 dark:text-blue-400 text-md">${domain.charAt(0).toUpperCase()}</span>`;
-                       }
-                      target.style.display = 'none';
-                    }}
-                  />
-                </div>
-              )}
-              <div className="flex-grow min-w-0">
-                <div className="font-medium text-gray-800 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300 text-sm leading-snug line-clamp-2 transition-colors"> {/* Allow 2 lines for title */}
-                  {title}
-                </div>
-                <div className="flex items-center gap-1 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
-                  <GlobeIcon className="w-3 h-3 flex-shrink-0" />
-                  <span className="truncate">{domain}</span>
-                </div>
-              </div>
-              <div className="flex flex-shrink-0 items-center gap-2 ml-3">
-                <div className="bg-blue-100 dark:bg-blue-900/50 px-2.5 py-1 rounded-full font-semibold text-blue-700 dark:text-blue-300 text-xs whitespace-nowrap shadow-inner">
-                  {relevance}
-                </div>
-                <ExternalLinkIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors" />
-              </div>
-            </a>
-          </li>
-        );
-      }
+          return (
+             <li className="group m-0 mb-3 p-0 list-none" {...props}>
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                 // Keep this enhanced styling for source links
+                 className="flex items-center gap-3 bg-white hover:bg-blue-50 dark:bg-gray-800/60 dark:hover:bg-blue-900/40 shadow-sm hover:shadow-md p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
+              >
+                {faviconUrl && (
+                  <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1 border border-gray-200 dark:border-gray-600 rounded-md w-9 h-9 overflow-hidden">
+                    <img
+                      src={faviconUrl}
+                      alt={domain}
+                      className="w-5 h-5 object-contain"
+                      loading="lazy"
+                      onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                         const parent = target.parentElement;
+                         if (parent) {
+                           parent.innerHTML = `<span class="font-bold text-blue-500 text-md dark:text-blue-400">${domain.charAt(0).toUpperCase()}</span>`;
+                         }
+                        target.style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
+                <div className="flex-grow min-w-0">
+                   <div className="font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 text-sm line-clamp-2 leading-snug transition-colors">
+                     {title}
+                   </div>
+                   <div className="flex items-center gap-1 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
+                     <GlobeIcon className="flex-shrink-0 w-3 h-3" />
+                     <span className="truncate">{domain}</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-shrink-0 items-center gap-2 ml-3">
+                    <div className="bg-blue-100 dark:bg-blue-900/50 shadow-inner px-2.5 py-1 rounded-full font-semibold text-blue-700 dark:text-blue-300 text-xs whitespace-nowrap">
+                      {relevance}
+                    </div>
+                    <ExternalLinkIcon className="w-4 h-4 text-gray-400 dark:group-hover:text-blue-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors" />
+                  </div>
+              </a>
+            </li>
+          );
+       }
 
-       // --- Research Path Item Renderer ---
-       const pathKeywords = ['Initial query:', 'Research area', 'Follow-up query', 'Step '];
-       const isPathItem = pathKeywords.some(keyword => textContent?.startsWith(keyword));
-
-       if (isPathItem && !ordered) {
-           const queryMatch = textContent?.match(/"([^"]+)"/);
-           const queryText = queryMatch ? queryMatch[1] : textContent;
-           const prefix = textContent?.split('"')[0] || '';
+       // Check for path item
+       const startsWithPathKeyword = pathKeywords.some(keyword =>
+           textContent?.trim().startsWith(keyword) ||
+           (node.children?.[0]?.type === 'text' && node.children[0].value?.trim().startsWith(keyword))
+       );
+       if (startsWithPathKeyword && !ordered) {
+           // Extract step number and query text more robustly
+           const stepMatch = textContent?.match(/^- Step (\d+):\s*"(.*)"$/) || textContent?.match(/^(.*?):\s*"(.*)"$/);
+           const prefix = stepMatch ? (stepMatch[0].includes("Step") ? `Step ${stepMatch[1]}` : stepMatch[1]) : textContent?.split('"')[0] || '';
+           const queryText = stepMatch ? stepMatch[2] : textContent?.match(/"([^"]+)"/)?.[1] || textContent;
 
            let PathIcon = ArrowRightIcon;
-           if (prefix.includes('Initial')) PathIcon = SearchIcon;
-           else if (prefix.includes('area')) PathIcon = BrainIcon;
+           if (prefix.includes('Initial') || prefix.includes('Step 1')) PathIcon = SearchIcon;
+           else if (prefix.includes('area') || prefix.includes('Step')) PathIcon = BrainIcon;
 
         return (
-           <li className="group list-none p-0 m-0 mb-1.5" {...props}> {/* Reset list style */}
-               <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-1.5 pl-3 pr-2 border-gray-300 hover:border-gray-400 dark:border-gray-700 dark:hover:border-gray-500 border-l-2 rounded-r-md transition-colors">
+           <li className="group m-0 mb-1.5 p-0 list-none" {...props}>
+               <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-1.5 pr-2 pl-3 border-gray-300 hover:border-gray-400 dark:border-gray-700 dark:hover:border-gray-500 border-l-2 rounded-r-md transition-colors">
                    <div className="flex-shrink-0 mr-2 text-gray-500 dark:text-gray-400">
                        <PathIcon className="w-4 h-4" />
                    </div>
-                   <div className="text-sm text-gray-600 dark:text-gray-300">
-                       {prefix && <span className="mr-1 text-gray-500 dark:text-gray-400">{prefix.replace(':', '').trim()}:</span>}
-                       <span className="font-medium text-gray-800 dark:text-gray-200 group-hover:text-black dark:group-hover:text-white transition-colors">
-                           {queryMatch ? `"${queryText}"` : queryText}
+                   <div className="text-gray-600 dark:text-gray-300 text-sm">
+                       {prefix && <span className="mr-1.5 font-medium text-gray-500 dark:text-gray-400">{prefix.replace(':', '').trim()}:</span>}
+                       <span className="font-medium text-gray-800 dark:group-hover:text-white dark:text-gray-200 group-hover:text-black transition-colors">
+                           {stepMatch ? `"${queryText}"` : queryText}
                        </span>
                    </div>
                </div>
@@ -588,94 +732,77 @@ export default function Home() {
 
       // --- Default List Item Renderer ---
       return (
-        <li className="group flex items-start mb-2 ml-1" {...props}> {/* Added small left margin */}
-           <span className={`mt-1 mr-2.5 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400 flex-shrink-0'}`}> {/* Adjusted spacing */}
-            {ordered ? `${(props.index ?? 0) + 1}.` : ( // Ensure index is defined
-            <svg width="6" height="6" viewBox="0 0 6 6" fill="none" xmlns="http://www.w3.org/2000/svg" className="group-hover:scale-125 transition-transform">
-              <circle cx="3" cy="3" r="3" fill="currentColor" />
+        <li className="group flex items-start mb-2.5 ml-1" {...props}>
+           <span className={`flex-shrink-0 mt-1 mr-3 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
+            {ordered ? `${(props.index ?? 0) + 1}.` : (
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="group-hover:scale-110 transition-transform">
+               <circle cx="4" cy="4" r="3" fill="currentColor" />
+               <circle cx="4" cy="4" r="3.75" stroke="currentColor" strokeOpacity="0.3" strokeWidth="0.5"/>
             </svg>
             )}
           </span>
-           <span className="text-gray-700 dark:text-gray-300 leading-relaxed">{children}</span> {/* Standard text */}
+           {/* Render children; the 'a' renderer handles link styling */}
+           <span className="text-gray-700 dark:text-gray-300 leading-relaxed">{children}</span>
         </li>
       );
     },
 
-     // --- Paragraph Renderer ---
-    p: ({ node, children, ...props }: any) => {
-       // Simple check for empty paragraphs
-       if (node.children.every((child: any) => child.type === 'text' && /^\s*$/.test(child.value))) {
-         return null; // Render nothing
-       }
-
-       // Check if paragraph only contains an image (common in markdown)
-       const containsOnlyImage = node.children.length === 1 && (node.children[0].tagName === 'img' || (node.children[0].tagName === 'a' && node.children[0].children?.[0]?.tagName === 'img'));
-       if (containsOnlyImage) {
-         // Render children directly, the 'a' or 'img' renderer will handle it
-         return <>{children}</>;
-       }
-
-       // Default paragraph rendering
-      return <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed" {...props}>{children}</p>;
-     },
-
-     // --- Image Renderer ---
-     img: ({ node, src, alt, ...props }: any) => (
-       <span className="block my-6 text-center">
-         <a href={src} target="_blank" rel="noopener noreferrer" title="Click to view full image"> {/* Wrap in link */}
-           <img
-             src={src}
-             alt={alt || 'Research image'}
-             className="shadow-lg hover:shadow-xl mx-auto border border-gray-200 dark:border-gray-700 rounded-lg max-w-full h-auto transition-all duration-200 cursor-pointer"
-             loading="lazy"
-             {...props}
-           />
-         </a>
-         {alt && <figcaption className="mt-2 text-gray-500 dark:text-gray-400 text-xs italic">{alt}</figcaption>}
-       </span>
-     ),
-
-     // --- Custom List Container Renderers ---
-     // Apply specific styling to lists containing our custom source/path items
+    // ... other renderers (p, img, ul, ol, hr, blockquote) ...
+    // Ensure 'ul' and 'ol' provide adequate spacing for nested items including links
      ul: ({ node, children, className, ...props }: any) => {
          // Check if this list contains our custom source or path list items
          const containsCustomItems = node.children.some((child: any) => {
-             if (child.tagName !== 'li') return false;
-             // Rough check based on the expected structure in custom li renderers
-             return child.children?.some((grandChild: any) =>
-                 grandChild.tagName === 'a' || // Source item has 'a' tag wrapper
-                 grandChild.children?.some((greatGrandChild: any) => greatGrandChild.tagName === 'svg') // Default li has svg
-             );
+              if (child.tagName !== 'li') return false;
+              const childText = child.children?.map((c:any) => c.value || '').join('');
+              const isSourceItem = childText.includes('(Domain:') && childText.includes(', Relevance:');
+              const isPathItem = pathKeywords.some((keyword: any) => childText.trim().startsWith(keyword));
+              return isSourceItem || isPathItem;
          });
 
-         // Apply specific class if it's a list of sources or paths to remove default padding/margins
+         // Apply specific class if it's a list of sources or paths
          if (containsCustomItems) {
-             return <ul className="list-none p-0 m-0 space-y-1" {...props}>{children}</ul>; // Remove list styles, add vertical space
+             return <ul className="m-0 p-0 list-none" {...props}>{children}</ul>;
          }
          // Default list styling
-         return <ul className="list-disc space-y-2 pl-6 mb-4 text-gray-700 dark:text-gray-300" {...props}>{children}</ul>;
+         return <ul className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-disc" {...props}>{children}</ul>;
      },
      ol: ({ node, children, className, ...props }: any) => (
-         <ol className="list-decimal space-y-2 pl-6 mb-4 text-gray-700 dark:text-gray-300" {...props}>{children}</ol>
+         <ol className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-decimal" {...props}>{children}</ol>
      ),
+      // --- Paragraph Renderer ---
+     p: ({ node, children, ...props }: any) => {
+        // Simple check for empty paragraphs
+        if (React.Children.count(children) === 0 || (typeof children[0] === 'string' && children[0].trim() === '')) {
+          return null; // Render nothing for empty paragraphs
+        }
 
-     // --- Horizontal Rule ---
-     hr: ({ node, ...props }: any) => (
-         <hr className="my-8 border-gray-200 dark:border-gray-700/60" {...props} />
-     ),
+        // Check if paragraph contains only "---" (which should be rendered as hr)
+        if (node.children.length === 1 &&
+            node.children[0].type === 'text' &&
+            node.children[0].value.trim() === '---') {
+          // Render a custom horizontal rule instead
+          return (
+            <div className="flex justify-center items-center my-10">
+              <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
+            </div>
+          );
+        }
 
-     // --- Blockquote ---
-     blockquote: ({ node, children, ...props }: any) => (
-         <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 pr-2 py-2 my-4 italic text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-r-md shadow-inner" {...props}>
-             {children}
-         </blockquote>
-     ),
+        // Check if paragraph only contains an image
+        const containsOnlyImage = node.children.length === 1 && (node.children[0].tagName === 'img' || (node.children[0].tagName === 'a' && node.children[0].children?.[0]?.tagName === 'img'));
+        if (containsOnlyImage) {
+          // Render children directly, the 'a' or 'img' renderer will handle it
+          return <>{children}</>;
+        }
+
+        // Default paragraph rendering with slightly more space
+        return <p className="mb-5 text-gray-700 dark:text-gray-300 leading-relaxed" {...props}>{children}</p>;
+     },
 
   };
 
   // --- Component Return ---
   return (
-    // Changed background, added font-sans
     <div className="bg-gray-50 dark:bg-gradient-to-br dark:from-gray-950 dark:to-black min-h-screen font-sans text-gray-800 dark:text-gray-200">
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
         {/* Title and Description */}
@@ -703,8 +830,8 @@ export default function Home() {
             className="space-y-4"
           >
             {/* Input Field */}
-            <div className="relative group"> {/* Added group for focus-within styling */}
-              <div className="absolute left-0 inset-y-0 flex items-center pl-4 pointer-events-none text-gray-400 group-focus-within:text-blue-500 transition-colors">
+            <div className="group relative"> {/* Added group for focus-within styling */}
+              <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none">
                 <SearchIcon className="w-5 h-5" />
               </div>
               <input
@@ -713,7 +840,7 @@ export default function Home() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="e.g., Latest advancements in serverless computing for Next.js"
                 // Updated styling for modern look
-                className="block w-full bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+                className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
                 disabled={loading}
               />
@@ -721,7 +848,7 @@ export default function Home() {
                 onClick={handleResearch}
                 disabled={loading || !query.trim()}
                  // Updated button styling
-                className="absolute top-1/2 right-3 -translate-y-1/2 flex items-center justify-center bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:from-gray-500 disabled:to-gray-600 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 h-[75%] rounded-lg font-semibold text-white text-base transition-all duration-200 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 dark:focus:ring-offset-gray-900"
+                className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
                 aria-label="Start Research"
               >
                 {loading ? (
@@ -729,7 +856,7 @@ export default function Home() {
                 ) : (
                    <>
                      <span className="hidden sm:inline">Research</span>
-                     <SearchIcon className="w-5 h-5 sm:hidden" /> {/* Icon for small screens */}
+                     <SearchIcon className="sm:hidden w-5 h-5" /> {/* Icon for small screens */}
                    </>
                 )}
               </button>
@@ -737,7 +864,7 @@ export default function Home() {
 
             {/* Search History */}
             {searchHistory.length > 0 && (
-              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 bg-white dark:bg-gray-900/50 shadow-sm p-3 border border-gray-200 dark:border-gray-800 rounded-lg">
+              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 bg-white dark:bg-gray-900/50 shadow-sm p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                  <div className="flex items-center gap-2 overflow-x-auto text-gray-600 dark:text-gray-400 text-sm">
                     <HistoryIcon className="flex-shrink-0 w-4 h-4" />
                     <span className="mr-1 font-medium text-xs uppercase tracking-wider">Recent:</span>
@@ -746,7 +873,7 @@ export default function Home() {
                         key={i}
                         onClick={() => { if (!loading) setQuery(q); }}
                         disabled={loading}
-                        className="bg-gray-100 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-blue-900/50 disabled:opacity-60 shadow-sm hover:shadow px-3 py-1 rounded-full text-gray-700 dark:text-gray-300 hover:text-blue-700 dark:hover:text-blue-300 text-xs whitespace-nowrap transition-all duration-150"
+                        className="bg-gray-100 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-blue-900/50 disabled:opacity-60 shadow-sm hover:shadow px-3 py-1 rounded-full text-gray-700 dark:text-gray-300 text-xs whitespace-nowrap transition-colors"
                         title={q}
                       >
                       {q.length > 35 ? q.substring(0, 32) + '...' : q}
@@ -766,7 +893,7 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* Loading State */}
+        {/* Loading State V3 - Remove Placeholders */}
           <AnimatePresence>
             {loading && (
               <motion.div
@@ -774,7 +901,6 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                 // Updated loading state styling
                 className="space-y-5 bg-white dark:bg-gray-900/80 shadow-xl backdrop-blur-lg p-6 border border-gray-200 dark:border-gray-700/80 rounded-xl"
               >
               {/* Header */}
@@ -785,22 +911,23 @@ export default function Home() {
                     Researching...
                     </h3>
                   </div>
-                {currentProgress && (
-                  <div className="bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full font-medium text-gray-500 dark:text-gray-400 text-sm shadow-inner">
-                    {`${(currentProgress.elapsedTime / 1000).toFixed(1)}s`}
-                  </div>
-                )}
+                 {/* Display elapsed time: show 0.0s initially, then update */}
+                <div className="bg-gray-100 dark:bg-gray-800 shadow-inner px-3 py-1 rounded-full font-medium tabular-nums text-gray-500 dark:text-gray-400 text-sm">
+                   {/* Show live value or 0.0s as initial state */}
+                   {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
+                </div>
                 </div>
 
               {/* Current Status */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-indigo-900/30 p-4 border border-blue-200 dark:border-blue-800/50 rounded-lg shadow-sm">
+              <div className="bg-gradient-to-r from-blue-50 dark:from-gray-800 to-indigo-50 dark:to-indigo-900/30 shadow-sm p-4 border border-blue-200 dark:border-blue-800/50 rounded-lg">
                 <div className="flex items-center gap-2.5 font-medium text-gray-800 dark:text-gray-200 text-sm">
                   <BrainIcon className="flex-shrink-0 w-4 h-4 text-blue-500 dark:text-blue-400" />
-                  <span className="truncate">{currentStatus || 'Starting research...'}</span>
-                      </div>
-                    </div>
+                  {/* Show current status, default to 'Initializing...' */}
+                  <span className="truncate">{currentStatus || 'Initializing research...'}</span>
+                </div>
+              </div>
 
-              {/* Metrics Grid */}
+              {/* Metrics Grid V3 - Show 0 or live values, no '...' */}
               <div className="gap-4 grid grid-cols-1 sm:grid-cols-3">
                   {/* Sources */}
                   <div className="flex items-center gap-3 bg-gradient-to-br from-blue-50 dark:from-gray-800/70 to-blue-100 dark:to-blue-900/40 shadow-md p-4 border border-blue-200 dark:border-blue-700/50 rounded-lg">
@@ -809,8 +936,9 @@ export default function Home() {
                       </div>
                       <div>
                           <div className="mb-0.5 font-medium text-blue-800 dark:text-blue-300 text-xs uppercase tracking-wider">Sources Found</div>
-                          <div className="font-bold text-gray-900 dark:text-gray-100 text-xl">
-                              {currentProgress?.sourcesCount.toLocaleString() ?? <Loader2Icon className="inline w-4 h-4 animate-spin" />}
+                          {/* Show live value or 0 */}
+                          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                              {(currentProgress?.sourcesCount ?? 0).toLocaleString()}
                           </div>
                       </div>
                   </div>
@@ -821,8 +949,9 @@ export default function Home() {
                        </div>
                        <div>
                            <div className="mb-0.5 font-medium text-green-800 dark:text-green-300 text-xs uppercase tracking-wider">Unique Domains</div>
-                           <div className="font-bold text-gray-900 dark:text-gray-100 text-xl">
-                               {currentProgress?.domainsCount.toLocaleString() ?? <Loader2Icon className="inline w-4 h-4 animate-spin" />}
+                           {/* Show live value or 0 */}
+                           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                               {(currentProgress?.domainsCount ?? 0).toLocaleString()}
                            </div>
                        </div>
                    </div>
@@ -833,19 +962,20 @@ export default function Home() {
                        </div>
                        <div>
                            <div className="mb-0.5 font-medium text-purple-800 dark:text-purple-300 text-xs uppercase tracking-wider">Data Size</div>
-                           <div className="font-bold text-gray-900 dark:text-gray-100 text-xl">
-                               {currentProgress?.dataSize ?? <Loader2Icon className="inline w-4 h-4 animate-spin" />}
+                           {/* Show live value or 0KB */}
+                           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                               {currentProgress?.dataSize ?? '0KB'}
                            </div>
                        </div>
                    </div>
               </div>
 
-              {/* Live Logs */}
+              {/* Live Logs V3 - Show initial log immediately */}
                   <div className="space-y-2">
                      <div className="flex justify-end items-center">
                       <button
                         onClick={() => setShowLiveLogs(!showLiveLogs)}
-                        className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors shadow-sm"
+                        className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
                       >
                          <FileTextIcon className="w-3.5 h-3.5" />
                          {showLiveLogs ? 'Hide Logs' : 'Show Logs'}
@@ -856,22 +986,20 @@ export default function Home() {
                       {showLiveLogs && (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto', maxHeight: '250px' }} // Added max height
+                          animate={{ opacity: 1, height: 'auto', maxHeight: '300px' }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.3 }}
-                          className="overflow-hidden" // Prevents content spill during animation
+                          className="overflow-hidden"
                         >
-                          <div className="bg-gray-50 dark:bg-black/60 p-4 border border-gray-200 dark:border-gray-700/80 rounded-lg max-h-[250px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50 shadow-inner">
-                            {liveLogs.length > 1 ? ( // Show logs if more than the initial one
-                              liveLogs.map((log, index) => (
-                                <div key={index} className="mb-1.5 text-gray-600 dark:text-gray-400/90 break-words whitespace-pre-wrap leading-relaxed last:mb-0">
-                                  {log}
-                                </div>
-                              ))
-                            ) : (
-                              <div className="p-2 text-gray-500 dark:text-gray-400 italic">Waiting for research logs...</div>
-                            )}
-                          </div>
+                           <div className="bg-gradient-to-br from-gray-50 dark:from-black/70 to-gray-100 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/80 rounded-lg max-h-[300px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50">
+                             {/* Render logs directly; if empty, it will just be empty */}
+                             {/* liveLogs is guaranteed to have at least the initial log */}
+                            {liveLogs.map((log, index) => (
+                              <div key={index} className="mb-1.5 last:mb-0 tabular-nums text-gray-600 dark:text-gray-400/90 break-words leading-relaxed whitespace-pre-wrap">
+                                {log}
+                              </div>
+                            ))}
+                           </div>
                         </motion.div>
                       )}
                      </AnimatePresence>
@@ -888,19 +1016,19 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
-                className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg border border-red-200 dark:border-red-500/50 rounded-xl p-5 text-red-700 dark:text-red-300 mt-8" // Added margin top
+                className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
               >
               <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
                  <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
                 </div>
               <div className="flex-grow">
                  <p className="mb-1 font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
-                <p className="text-sm text-red-700 dark:text-red-300">{error.message || 'An unknown error occurred.'}</p>
+                <p className="text-red-700 dark:text-red-300 text-sm">{error.message || 'An unknown error occurred.'}</p>
                   {/* Optionally show partial report if available in error */}
                   {report && (
-                     <details className="mt-3 text-xs border-t border-red-200 dark:border-red-500/30 pt-2">
-                         <summary className="cursor-pointer font-medium text-red-600 dark:text-red-400">Show partial report/details</summary>
-                         <div className="mt-2 p-3 bg-red-100/50 dark:bg-red-900/40 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300">
+                     <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs">
+                         <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer">Show partial report/details</summary>
+                         <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300">
                              {report}
                          </div>
                      </details>
@@ -918,26 +1046,25 @@ export default function Home() {
 
         {/* Report Display */}
           <AnimatePresence>
-          {report && !loading && !error && ( // Only show report if not loading AND no error
+          {report && !loading && !error && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 }} // Slight delay for smoother transition
-                // Updated Report Styling
-                className="bg-gradient-to-b from-white to-gray-50 dark:from-gray-900 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
+                transition={{ duration: 0.5, delay: 0.1 }}
+                className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
               >
               {/* Report Header */}
-                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
+                <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
                   <h2 className="flex items-center gap-3 font-sans font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
-                    <div className="bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/60 p-2.5 rounded-xl shadow-inner">
+                    <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
                       <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                     </div>
                     Research Report
                   </h2>
                   {/* Final Metrics Display */}
                   {currentProgress && (
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-gray-50 dark:bg-gray-800/70 p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs shadow-sm">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-gray-50 dark:bg-gray-800/70 shadow-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
                           <div className="flex items-center gap-1" title="Sources Consulted">
                               <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
                               <span className="font-semibold text-gray-700 dark:text-gray-300">{currentProgress.sourcesCount.toLocaleString()}</span> sources
@@ -961,19 +1088,19 @@ export default function Home() {
                   )}
                 </div>
 
-              {/* Markdown Report Content - Applied Tailwind Prose for base styling */}
-              <div className="prose prose-lg dark:prose-invert prose-img:rounded-lg prose-img:shadow-lg prose-img:border prose-img:border-gray-200 dark:prose-img:border-gray-700 prose-a:font-medium prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline prose-code:font-mono prose-code:text-sm prose-code:before:content-none prose-code:after:content-none prose-blockquote:font-normal prose-blockquote:not-italic prose-table:text-sm max-w-none">
+              {/* Markdown Report Content - Enhanced Styling */}
+               <div className="dark:prose-blockquote:bg-blue-900/20 prose-blockquote:bg-blue-50/50 prose-img:shadow-lg dark:prose-invert prose-hr:my-10 prose-blockquote:px-4 prose-blockquote:py-1 dark:prose-blockquote:border-l-blue-700 prose-blockquote:border-l-blue-500 prose-hr:border-none prose-img:rounded-xl prose-blockquote:rounded-r-md max-w-none prose-hr:h-0 prose-headings:font-sans prose-code:font-mono prose-blockquote:font-normal prose-a:font-medium dark:prose-a:text-blue-400 dark:prose-blockquote:text-gray-300 dark:prose-li:marker:text-blue-400 dark:prose-strong:text-blue-300 prose-a:text-blue-600 prose-blockquote:text-gray-700 prose-li:marker:text-blue-600 prose-strong:text-blue-700 prose-code:text-sm prose-a:no-underline prose-blockquote:not-italic prose-code:before:content-none prose-code:after:content-none prose-headings:tracking-tight prose-a:transition-all prose-a:duration-200 prose prose-lg">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeRaw]}
-                    components={renderers} // Use our enhanced custom renderers
+                    components={renderers}
                   >
                     {report}
                   </ReactMarkdown>
                 </div>
 
               {/* Report Footer */}
-              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
+              <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
                   <button
                     onClick={() => {
                       if (report) {
@@ -982,14 +1109,14 @@ export default function Home() {
                           .catch(err => console.error('Failed to copy report:', err));
                       }
                     }}
-                    className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 px-4 py-2 rounded-lg font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors shadow-sm hover:shadow-md"
+                    className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
                   >
                     <CopyIcon className="w-4 h-4" />
                     Copy Full Report
                   </button>
                   <button
                     onClick={() => { setQuery(''); setReport(null); setError(null); }}
-                    className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 px-4 py-2 rounded-lg font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors shadow-sm hover:shadow-md"
+                    className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
                   >
                     <SearchIcon className="w-4 h-4" />
                     New Research
