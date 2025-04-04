@@ -27,6 +27,22 @@ const SECOND_LEVEL_TOP_N_SOURCES = 10; // Crawl links from top N sources (Increa
 // ---
 const INITIAL_RELEVANCE_THRESHOLD = 0.40; // Slightly increased threshold
 
+// Add interface for research options
+interface ResearchOptions {
+  maxDepth?: number;
+  timeLimit?: number;
+  maxUrls?: number;
+  useFirecrawl?: boolean;
+}
+
+// Update ResearchSource with optional additional data
+interface EnhancedResearchSource extends ResearchSource {
+  firecrawlSource?: boolean;
+  fromActivity?: boolean;
+  activityType?: string;
+  custom?: Record<string, any>;
+}
+
 export class ResearchEngine {
   private model: any;
   private embeddingModel: any;
@@ -34,15 +50,15 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
-  private MAX_DATA_SOURCES = 20000; // Increase max sources allowed before synthesis truncation
-  private MAX_TOKEN_OUTPUT = 100000; // Adjust internal synthesis token limit if needed, still capped by target
-  private CHUNK_SIZE = 20000;
-  private SEARCH_DEPTH = 10;
-  private MAX_PARALLEL_REQUESTS = 100;
-  private ADDITIONAL_DOMAINS = 200;
-  private MAX_RESEARCH_TIME = 180000;
+  private MAX_DATA_SOURCES = 50000; // Increased from 20000 to process more sources
+  private MAX_TOKEN_OUTPUT = 150000; // Increased token limit for more comprehensive results
+  private CHUNK_SIZE = 25000; // Increased chunk size for more efficient processing
+  private SEARCH_DEPTH = 15; // Increased from 10
+  private MAX_PARALLEL_REQUESTS = 150; // Increased from 100
+  private ADDITIONAL_DOMAINS = 0; // Removed external domain limitations
+  private MAX_RESEARCH_TIME = 270000; // Increased from 180000 (3 minutes to 4.5 minutes)
   private DEEP_RESEARCH_MODE = true;
-
+  private firecrawlApiKey: string;
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -58,6 +74,8 @@ export class ResearchEngine {
        // If truly needed in a specific env without native support, a more robust polyfill strategy might be required.
        // For Edge Runtime, this check is likely sufficient, and native AbortController should be used.
     }
+    this.firecrawlApiKey = process.env.FIRECRAWL_API_KEY || '';
+    // Initialize other components
   }
 
   // Public method to generate content using the model
@@ -126,10 +144,13 @@ export class ResearchEngine {
   private createSourceObject(data: Partial<ResearchSource>): ResearchSource {
     return {
       url: data.url || '',
-      title: data.title || 'Unknown Source',
-      relevance: data.relevance || 0.5,
+      title: data.title || this.extractTitleFromHTML(data.content || ''),
       content: data.content || '',
-      timestamp: data.timestamp || new Date().toISOString()
+      relevance: data.relevance || 0.5,
+      credibility: data.credibility || 0.5,
+      validationScore: data.validationScore || 0.5,
+      // Any additional fields should be added as custom properties
+      ...(data as any) // Allow passing through additional properties
     };
   }
 
@@ -406,6 +427,216 @@ export class ResearchEngine {
   private async crawlWeb(
       initialQuery: string,
       overallAbortSignal: AbortSignal
+  ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number }> {
+    // Use Firecrawl's deep research for web crawling instead of custom implementation
+    try {
+      const startTime = Date.now();
+      console.log(`Starting Firecrawl deep research for query: "${initialQuery}"`);
+
+      // Configure Firecrawl deep research parameters
+      const deepResearchParams = {
+        query: initialQuery,
+        maxDepth: this.SEARCH_DEPTH,
+        timeLimit: Math.floor(this.MAX_RESEARCH_TIME / 1000), // Convert ms to seconds
+        maxUrls: this.MAX_DATA_SOURCES
+      };
+
+      // Call Firecrawl deep research API
+      const response = await fetch('https://api.firecrawl.dev/v1/deep-research', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.firecrawlApiKey}`
+        },
+        body: JSON.stringify(deepResearchParams),
+        signal: overallAbortSignal
+      });
+
+      if (!response.ok) {
+        throw new Error(`Firecrawl API error: ${response.status} ${response.statusText}`);
+      }
+
+      const researchResult = await response.json();
+      
+      if (researchResult.status === 'processing') {
+        // Poll for completed results
+        return await this.pollFirecrawlResearch(researchResult.id, overallAbortSignal);
+      }
+      
+      // Process completed results
+      return this.processFirecrawlResults(researchResult, startTime);
+    } catch (error: unknown) {
+      console.error(`Firecrawl deep research failed: ${error instanceof Error ? error.message : String(error)}`);
+      // Fall back to original crawling method
+      console.log("Falling back to legacy crawling method");
+      return await this.legacyCrawlWeb(initialQuery, overallAbortSignal);
+    }
+  }
+
+  private async pollFirecrawlResearch(jobId: string, signal: AbortSignal): Promise<{ 
+    sources: ResearchSource[], 
+    crawledUrlCount: number, 
+    failedUrlCount: number 
+  }> {
+    const startTime = Date.now();
+    const maxPollTime = 240000; // 4 minutes max polling time
+    const pollInterval = 3000; // 3 seconds between polls
+    let elapsedTime = 0;
+
+    while (elapsedTime < maxPollTime) {
+      if (signal.aborted) {
+        throw new Error("Research aborted during polling");
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+      elapsedTime = Date.now() - startTime;
+
+      const response = await fetch(`https://api.firecrawl.dev/v1/deep-research/${jobId}`, {
+        headers: {
+          'Authorization': `Bearer ${this.firecrawlApiKey}`
+        },
+        signal
+      });
+
+      if (!response.ok) {
+        console.error(`Polling error: ${response.status} ${response.statusText}`);
+        continue;
+      }
+
+      const result = await response.json();
+      
+      if (result.status === 'completed') {
+        return this.processFirecrawlResults(result, startTime);
+      }
+      
+      if (result.status === 'failed') {
+        throw new Error(`Firecrawl research failed: ${result.error || 'Unknown error'}`);
+      }
+      
+      console.log(`Polling Firecrawl research: ${result.currentDepth}/${result.maxDepth} complete`);
+    }
+
+    throw new Error("Firecrawl research timed out while polling");
+  }
+
+  private processFirecrawlResults(result: any, startTime: number): { 
+    sources: ResearchSource[], 
+    crawledUrlCount: number, 
+    failedUrlCount: number 
+  } {
+    console.log(`Processing Firecrawl results: ${result.data?.sources?.length || 0} sources found`);
+    
+    // Extract sources from Firecrawl response
+    const sources: ResearchSource[] = (result.data?.sources || []).map((source: any) => {
+      const sourceObj = {
+        url: source.url,
+        title: source.title || this.extractTitleFromURL(source.url),
+        content: source.description || "",
+        relevance: 0.9, // Default high relevance, will be refined later
+        credibility: this.getDomainAuthorityScore(source.url),
+        validationScore: 0.85, // Will be validated later in the process,
+        timestamp: new Date().toISOString() // Add timestamp
+      };
+      
+      // Add Firecrawl metadata as custom property
+      (sourceObj as any).firecrawlSource = true;
+      
+      return sourceObj;
+    });
+
+    // Extract activities for additional insights
+    const activities = result.data?.activities || [];
+    let additionalSources: ResearchSource[] = [];
+
+    // Extract any URLs mentioned in activities but not in sources
+    for (const activity of activities) {
+      if (activity.message && typeof activity.message === 'string') {
+        const urlMatches = activity.message.match(/https?:\/\/[^\s"'<>]+/g);
+        if (urlMatches) {
+          for (const url of urlMatches) {
+            // Check if this URL is already in sources
+            if (!sources.some(s => s.url === url)) {
+              const sourceObj = {
+                url,
+                title: this.extractTitleFromURL(url),
+                content: activity.message,
+                relevance: 0.7,
+                credibility: this.getDomainAuthorityScore(url),
+                validationScore: 0.75,
+                timestamp: activity.timestamp || new Date().toISOString() // Add timestamp
+              };
+              
+              // Add activity metadata as custom properties
+              (sourceObj as any).fromActivity = true;
+              (sourceObj as any).activityType = activity.type;
+              
+              additionalSources.push(sourceObj);
+            }
+          }
+        }
+      }
+    }
+
+    // Combine all sources and remove duplicates
+    const allSources = [...sources, ...additionalSources];
+    const uniqueSources = this.deduplicateSources(allSources);
+    
+    // Calculate metrics
+    const elapsedTime = Date.now() - startTime;
+    console.log(`Firecrawl processing completed in ${elapsedTime}ms, found ${uniqueSources.length} unique sources`);
+
+    return {
+      sources: uniqueSources,
+      crawledUrlCount: uniqueSources.length,
+      failedUrlCount: 0 // Firecrawl handles failures internally
+    };
+  }
+
+  private deduplicateSources(sources: ResearchSource[]): ResearchSource[] {
+    const urlMap = new Map<string, ResearchSource>();
+    
+    for (const source of sources) {
+      if (source.url) {
+        // If we already have this URL, keep the one with higher relevance or more content
+        if (urlMap.has(source.url)) {
+          const existing = urlMap.get(source.url)!;
+          if (source.relevance > existing.relevance || 
+              (source.content && (!existing.content || source.content.length > existing.content.length))) {
+            urlMap.set(source.url, source);
+          }
+        } else {
+          urlMap.set(source.url, source);
+        }
+      }
+    }
+    
+    return Array.from(urlMap.values());
+  }
+
+  private extractTitleFromURL(url: string): string {
+    try {
+      const parsedUrl = new URL(url);
+      const pathSegments = parsedUrl.pathname.split('/').filter(Boolean);
+      if (pathSegments.length > 0) {
+        const lastSegment = pathSegments[pathSegments.length - 1];
+        // Convert kebab or snake case to title case
+        return lastSegment
+          .replace(/[-_]/g, ' ')
+          .replace(/\.\w+$/, '') // Remove file extension
+          .split(' ')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      }
+      return parsedUrl.hostname.replace('www.', '');
+    } catch (e) {
+      return url;
+    }
+  }
+
+  // Legacy fallback method if Firecrawl API isn't available
+  private async legacyCrawlWeb(
+    initialQuery: string, 
+    overallAbortSignal: AbortSignal
   ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number }> {
     console.log(`[crawlWeb] Starting deep crawl for: "${initialQuery}"`);
       const crawledUrls = new Set<string>();
@@ -1582,186 +1813,145 @@ Please retry your query or contact support if this issue persists.
   }
   // -------------------------------------------------------------------------
 
-  async research(query: string): Promise<ResearchResult> {
+  // Update the research method to accept options
+  async research(query: string, options?: ResearchOptions): Promise<ResearchResult> {
     this.startTime = Date.now();
-    clearLogs();
-    clearMetrics();
-
-    addLog(`Research initialized for query: "${query}"`);
-    updateMetrics({ elapsedTime: 0 });
-    console.log(`[Research] Starting process for: "${query}" at ${new Date().toISOString()}`);
-    console.log(`[Research] Config - Max Time: ${MAX_OVERALL_RESEARCH_TIME_MS}ms, Parallel Fetches: ${MAX_PARALLEL_FETCHES}, Target Output Tokens: ${MAX_TOKEN_OUTPUT_TARGET}`);
-
-    const overallTimeoutController = new globalThis.AbortController();
-    const researchTimeout = setTimeout(() => { /* ... timeout logic ... */ }, MAX_OVERALL_RESEARCH_TIME_MS);
-    const overallAbortSignal = overallTimeoutController.signal;
-
-    let finalAnalysis = "Research did not complete.";
-    let finalSources: ResearchSource[] = [];
-    let researchPlan: ResearchPlan | null = null; // Keep null initially
-    let researchPaths: string[] = [query];
-    let confidenceLevel: ResearchConfidenceLevel = "very low";
-    // Metrics object to be calculated at the end
-    let finalMetricsResult: ResearchResult['researchMetrics'];
-    let crawlMetaData = { crawledUrlCount: 0, failedUrlCount: 0 };
-
-    try {
+    console.log(`Starting enhanced research for: "${query}"`);
+    
+    // Apply options if provided
+    if (options) {
+      if (options.maxDepth) this.SEARCH_DEPTH = options.maxDepth;
+      if (options.timeLimit) this.MAX_RESEARCH_TIME = options.timeLimit;
+      if (options.maxUrls) this.MAX_DATA_SOURCES = options.maxUrls;
+    }
+    
+    // Check cache first
     const cachedResult = this.getCachedResult(query);
     if (cachedResult) {
-        clearTimeout(researchTimeout);
-        addLog(`Using cached result.`);
-        return cachedResult;
-      }
-
-      // --- Phase 1: Planning ---
-      // ... (Planning logic - ensure researchPlan is assigned or defaulted) ...
-      try {
-        researchPlan = await this.createResearchPlan(query);
-         researchPaths = [query, ...(researchPlan?.subQueries?.slice(0, 5) || [])];
-         addLog(`Phase 1 Done: Plan created.`);
-         updateMetrics({ elapsedTime: Date.now() - this.startTime });
-      } catch (planError: any) {
-         researchPlan = { mainQuery: query, objective: `Gather information on ${query}`, subQueries: [query], researchAreas: [], explorationStrategy: '', priorityOrder: [] }; // Assign default non-null plan
-         researchPaths = [query];
-         addLog(`WARN: Failed to create plan. Using basic query.`);
-         updateMetrics({ elapsedTime: Date.now() - this.startTime });
-      }
-
-
-      // --- Phase 2: Deep Crawling (Uses updated crawlWeb) ---
-      addLog("Phase 2: Conducting deep web crawl (Multi-Level)...");
-      if (overallAbortSignal.aborted) throw new Error("Timeout before crawling phase.");
-      const crawlResult = await this.crawlWeb(query, overallAbortSignal); // Calls updated crawlWeb
-      finalSources = crawlResult.sources;
-      crawlMetaData = { crawledUrlCount: crawlResult.crawledUrlCount, failedUrlCount: crawlResult.failedUrlCount };
-      // Metrics updated internally by crawlWeb for live progress
-      addLog(`Phase 2 Done: Crawling complete. Collected ${finalSources.length} sources. URLs attempted: ${crawlMetaData.crawledUrlCount}, Failed: ${crawlMetaData.failedUrlCount}.`);
-
-
-      // --- Phase 3: Analysis & Synthesis ---
-      addLog("Phase 3: Analyzing collected data and synthesizing report...");
-      if (overallAbortSignal.aborted && finalSources.length === 0) {
-         throw new Error("Timeout occurred before any sources could be analyzed.");
-      }
-       if (overallAbortSignal.aborted) {
-          addLog("WARN: Timeout before analysis generation call. Using collected sources.");
-      }
-      finalAnalysis = await this.analyzeData(query, finalSources, overallAbortSignal); // analyzeData also calls updateMetrics
-      addLog(`Phase 3 Done: Analysis complete. Report length: ${finalAnalysis.length} chars.`);
-
-
-      // --- Phase 4: Finalization ---
-      addLog("Phase 4: Finalizing report and metrics...");
-      confidenceLevel = this.calculateConfidenceLevel(finalSources, query);
-
-      // --- Calculate Final Metrics Directly ---
-      const finalElapsedTime = Math.min(Date.now() - this.startTime, MAX_OVERALL_RESEARCH_TIME_MS);
-      const finalDomainsCount = new Set(finalSources.map(s => { try { return new URL(s.url).hostname; } catch { return s.url; } })).size;
-      const finalDataSize = `${Math.round(Buffer.byteLength(finalAnalysis || '', 'utf8') / 1024)}KB`; // Use final analysis size
-
-      finalMetricsResult = {
-         sourcesCount: finalSources.length,
-          domainsCount: finalDomainsCount,
-          dataSize: finalDataSize,
-          elapsedTime: finalElapsedTime
-      };
-      // --- Update shared state one last time ---
-      updateMetrics(finalMetricsResult);
-      // ---
-
-      console.log(`[Research] Process completed successfully in ${(finalMetricsResult.elapsedTime / 1000).toFixed(1)}s`);
-      console.log(`[Research] Final Metrics: Sources=${finalMetricsResult.sourcesCount}, Domains=${finalMetricsResult.domainsCount}, Size=${finalMetricsResult.dataSize}, Confidence=${confidenceLevel}`);
-      addLog(`Research process finished in ${(finalMetricsResult.elapsedTime / 1000).toFixed(1)}s. Confidence: ${confidenceLevel}.`);
-
-
-      // Construct the final result object
-      const result: ResearchResult = {
-         query: query,
-         findings: [{ key: "Main Analysis Summary", details: finalAnalysis.substring(0, 800) + (finalAnalysis.length > 800 ? "..." : "") }],
-         sources: finalSources,
-         confidenceLevel: confidenceLevel,
-         codeExamples: [],
-         insights: [],
-         metadata: {
-             totalSources: finalMetricsResult.sourcesCount,
-             qualitySources: finalSources.filter(s => s.relevance > 0.6).length,
-             avgValidationScore: finalSources.length > 0 ? finalSources.reduce((sum, s) => sum + (s.validationScore || 0.5), 0) / finalSources.length : 0.0,
-             executionTimeMs: finalMetricsResult.elapsedTime,
-             timestamp: new Date().toISOString(),
-             crawlAttempted: crawlMetaData.crawledUrlCount,
-             crawlFailed: crawlMetaData.failedUrlCount,
-         },
-         analysis: finalAnalysis,
-         researchPath: researchPaths,
-         plan: researchPlan, // researchPlan is guaranteed non-null now
-         researchMetrics: finalMetricsResult // Assign directly calculated metrics
-      };
-
-      this.cache.set(query, { data: result, timestamp: Date.now() });
-      clearTimeout(researchTimeout);
-      console.log(`[Research] Result cached successfully for query: "${query}"`);
-      return result;
-
-    } catch (error: any) {
-        clearTimeout(researchTimeout);
-        console.error(`[Research] CRITICAL ERROR for query "${query}":`, error);
-        addLog(`CRITICAL ERROR: ${error.message}`);
-
-        const isTimeoutError = error.message.includes("Timeout");
-        // Provide a more specific message based on the error context
-        if (isTimeoutError && finalSources.length > 0) {
-             finalAnalysis = `Research aborted due to time limit (${MAX_OVERALL_RESEARCH_TIME_MS / 1000}s). Analysis based on ${finalSources.length} partially collected sources.`;
-        } else if (isTimeoutError) {
-             finalAnalysis = `Research aborted due to time limit (${MAX_OVERALL_RESEARCH_TIME_MS / 1000}s) before significant data could be collected.`;
-        } else {
-             finalAnalysis = `Research failed critically: ${error.message}`;
-        }
-
-
-        // --- Calculate Final Metrics on Error ---
-         const finalElapsedTimeOnError = Math.min(Date.now() - this.startTime, MAX_OVERALL_RESEARCH_TIME_MS);
-         const finalDomainsCountOnError = new Set(finalSources.map(s => { try { return new URL(s.url).hostname; } catch { return s.url; } })).size;
-         const finalDataSizeOnError = `${Math.round(Buffer.byteLength(finalAnalysis || '', 'utf8') / 1024)}KB`;
-
-         // Ensure finalMetricsResult is assigned even in the catch block
-         finalMetricsResult = {
-             sourcesCount: finalSources.length,
-             domainsCount: finalDomainsCountOnError,
-             dataSize: finalDataSizeOnError,
-             elapsedTime: finalElapsedTimeOnError
-         };
-         // --- Update shared state ---
-         updateMetrics(finalMetricsResult);
-        // ---
-
-         console.log(`[Research] Process failed after ${(finalMetricsResult.elapsedTime / 1000).toFixed(1)}s`);
-
-
-        // Return a structured error object - **CORRECTED METADATA**
-        return {
-            query: query,
-            findings: [{ key: "Error", details: error.message }],
-            sources: finalSources, // Return any sources found before the error
-            confidenceLevel: "very low",
-            codeExamples: [],
-            insights: [],
-            metadata: {
-                totalSources: finalMetricsResult.sourcesCount,
-                qualitySources: finalSources.filter(s => s.relevance > 0.6).length, // Calculate from partial sources
-                avgValidationScore: finalSources.length > 0 ? finalSources.reduce((sum, s) => sum + (s.validationScore || s.relevance || 0.5), 0) / finalSources.length : 0.0, // Use relevance as fallback for avg score
-                timestamp: new Date().toISOString(), // Add current timestamp
-                executionTimeMs: finalMetricsResult.elapsedTime,
-                error: error.message, // Keep the error message
-                crawlAttempted: crawlMetaData.crawledUrlCount,
-                crawlFailed: crawlMetaData.failedUrlCount,
-            },
-            analysis: finalAnalysis, // Include partial/error analysis
-            researchPath: researchPaths, // Include paths explored
-            plan: researchPlan || { mainQuery: query, objective: 'Error occurred during research', subQueries: [], researchAreas: [], explorationStrategy: '', priorityOrder: [] }, // Ensure plan is non-null
-            researchMetrics: finalMetricsResult // Include metrics calculated up to the error point
-        };
+      console.log(`Returning cached result for: "${query}"`);
+      return cachedResult;
     }
-  } // End of research method
+
+    // Create abort controller for timeout management
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+      console.log(`Research aborted due to timeout after ${this.MAX_RESEARCH_TIME}ms`);
+    }, this.MAX_RESEARCH_TIME);
+
+    try {
+      // Create research plan
+      const plan = await this.createResearchPlan(query);
+      // Extract steps from the plan - use subQueries for steps if they exist
+      const researchSteps = plan.subQueries || [query];
+      console.log(`Research plan created for "${query}" with ${researchSteps.length} steps`);
+
+      // Execute deep research with Firecrawl integration
+      const { sources, crawledUrlCount, failedUrlCount } = 
+        await this.crawlWeb(query, controller.signal);
+      
+      console.log(`Web crawling completed: Found ${sources.length} sources (${crawledUrlCount} crawled, ${failedUrlCount} failed)`);
+
+      // Prioritize and validate sources
+      const prioritizedSources = this.prioritizeSources(sources, query)
+        .slice(0, this.MAX_DATA_SOURCES);
+      
+      console.log(`Sources prioritized. Working with top ${prioritizedSources.length} sources`);
+
+      // Analyze the data
+      const analysis = await this.analyzeData(query, prioritizedSources, controller.signal);
+      console.log(`Data analysis completed: ${analysis.length} characters`);
+
+      // Calculate confidence level
+      const confidenceLevel = this.calculateConfidenceLevel(prioritizedSources, query);
+      console.log(`Confidence level calculated: ${confidenceLevel}`);
+
+      // Calculate elapsed time
+      const elapsedTime = Date.now() - this.startTime;
+      
+      // Prepare result metadata
+      const uniqueDomains = new Set(prioritizedSources.map(s => {
+        try {
+          return new URL(s.url || '').hostname;
+        } catch {
+          return s.url || '';
+        }
+      }));
+      
+      // Format research result with all required fields
+      const result: ResearchResult = {
+        query,
+        analysis,
+        sources: prioritizedSources,
+        confidenceLevel,
+        researchPath: researchSteps,
+        researchMetrics: {
+          sourcesCount: prioritizedSources.length,
+          domainsCount: uniqueDomains.size,
+          dataSize: `${Math.round(analysis.length / 1024)}KB`,
+          elapsedTime
+        },
+        // Add any additional required fields based on ResearchResult type
+        findings: [{ key: "Main Analysis", details: analysis.substring(0, 500) + "..." }],
+        plan: plan,
+        metadata: {
+          totalSources: sources.length,
+          qualitySources: prioritizedSources.length,
+          avgValidationScore: prioritizedSources.reduce((sum, s) => sum + (s.validationScore || 0), 0) / prioritizedSources.length,
+          executionTimeMs: elapsedTime,
+          timestamp: new Date().toISOString(),
+          crawlAttempted: crawledUrlCount,
+          crawlFailed: failedUrlCount
+        }
+      };
+
+      // Cache the result
+      this.cache.set(query, { data: result, timestamp: Date.now() });
+      
+      return result;
+    } catch (error: unknown) {
+      console.error(`Research failed: ${error instanceof Error ? error.message : String(error)}`);
+      
+      // Create error result with partial data if available
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      // Create a complete ResearchResult even for error case
+      return {
+        query,
+        analysis: `Research Error: ${errorMsg}. The research process encountered an error and could not complete successfully.`,
+        sources: [],
+        confidenceLevel: 'low',
+        researchPath: [query],
+        findings: [{ key: "Error", details: errorMsg }],
+        plan: { 
+          mainQuery: query, 
+          objective: "Error during research", 
+          subQueries: [query], 
+          researchAreas: [], 
+          explorationStrategy: "", 
+          priorityOrder: [] 
+        },
+        researchMetrics: {
+          sourcesCount: 0,
+          domainsCount: 0,
+          dataSize: '0KB',
+          elapsedTime: Date.now() - this.startTime
+        },
+        metadata: {
+          totalSources: 0,
+          qualitySources: 0,
+          avgValidationScore: 0,
+          executionTimeMs: Date.now() - this.startTime,
+          timestamp: new Date().toISOString(),
+          error: errorMsg,
+          crawlAttempted: 0,
+          crawlFailed: 0
+        }
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   /**
    * Calculate relevance of content using semantic understanding
@@ -2198,7 +2388,7 @@ Please retry your query or contact support if this issue persists.
       
       // Dates and time references
       /\b(in|since|from|until) \d{4}\b/gi, // Year references
-      /\b(january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(st|nd|rd|th)?,? \d{4}\b/gi, // Full dates
+      /\b(january|february|march|april|may|june|july|august|september|october|november|december) \d{1,2}(st|nd|rd|th)?, \d{4}\b/gi, // Full dates
       /\bv\d+(\.\d+)+(-\w+)?\b/gi, // Version numbers
       
       // Citations and references

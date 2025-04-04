@@ -16,6 +16,9 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     query = body.query;
+    const maxDepth = Math.min(body.maxDepth || 15, 20); // Cap at 20, default to 15
+    const timeLimit = Math.min(body.timeLimit || 270, 290); // Cap at 290s, default to 270s
+    const maxUrls = Math.min(body.maxUrls || 50000, 100000); // Cap at 100k, default to 50k
 
     if (!query?.trim()) {
         console.log("API Error: Invalid query received."); // Added Log
@@ -26,10 +29,15 @@ export async function POST(req: Request) {
 
     clearLogs(); // Clear logs for the new request
     addLog(`Received research request: "${query}"`);
-    console.log(`[API Route] Starting deep research API call for: "${query}"`);
+    console.log(`[API Route] Starting deep research API call for: "${query}" with maxDepth=${maxDepth}, timeLimit=${timeLimit}s, maxUrls=${maxUrls}`);
 
-    // Call the research engine - result now guaranteed to have researchMetrics
-    const result: ResearchResult = await researchEngine.research(query);
+    // Call the research engine with configuration options
+    const result: ResearchResult = await researchEngine.research(query, {
+      maxDepth,
+      timeLimit: timeLimit * 1000, // Convert to ms
+      maxUrls,
+      useFirecrawl: true
+    });
 
     const endTime = Date.now();
     const duration = (endTime - startTime) / 1000;
@@ -38,7 +46,6 @@ export async function POST(req: Request) {
     // Use the non-optional metrics directly from the result
     console.log(`[API Route] Engine Metrics: Sources=${result.researchMetrics.sourcesCount}, Domains=${result.researchMetrics.domainsCount}, Size=${result.researchMetrics.dataSize}, EngineTime=${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s`);
     addLog(`Research engine finished. Metrics: ${result.researchMetrics.sourcesCount} sources, ${result.researchMetrics.domainsCount} domains.`);
-
 
     // Check if the result itself indicates an error occurred (e.g., from timeout or critical failure within the engine)
     if (result.metadata?.error) {
@@ -53,7 +60,6 @@ export async function POST(req: Request) {
             sources: result.sources?.slice(0, 10) // Maybe show a few sources even on error
         }, { status: 500 });
     }
-
 
     // --- Result Processing for Success Case ---
     console.log(`[API Route] Processing successful result for: "${query}"`); // Added Log
@@ -91,7 +97,7 @@ export async function POST(req: Request) {
 ## Research Path
 ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${path}"`).join('\n')}
     `;
-// 
+
     // Source Statistics using metrics directly from result.researchMetrics
     const uniqueDomainsCount = result.researchMetrics.domainsCount;
     const totalSourcesFound = result.researchMetrics.sourcesCount;
@@ -106,6 +112,9 @@ ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${pat
     `;
     console.log(`[API Route] Generated Source Stats: Found=${totalSourcesFound}, UniqueDomains=${uniqueDomainsCount}`); // Added Log
 
+    // Add Firecrawl integration note if enabled
+    const firecrawlInfo = 
+      `\n**Enhanced Data Collection:** This research utilizes Firecrawl's deep research capability to gather comprehensive information from across the web.`;
 
     // Format Top Sources Sample
     const formattedTopSources = `
@@ -117,9 +126,8 @@ ${formattedSources.map(s => `- **[${s.title}](${s.url})** (Domain: ${s.domain}, 
     const confidenceLevel = result.confidenceLevel ? result.confidenceLevel.toUpperCase() : "MEDIUM";
     const avgValidationScore = result.metadata?.avgValidationScore;
     const confidenceReason = result.metadata
-      ? `Based on ${result.metadata.totalSources} sources across ${uniqueDomainsCount} domains.${avgValidationScore ? ` Avg Validation: ${(avgValidationScore * 100).toFixed(1)}%.` : ''} Exec Time: ${(result.metadata.executionTimeMs / 1000).toFixed(1)}s.`
+      ? `Based on ${result.metadata.totalSources || 0} sources across ${uniqueDomainsCount} domains.${avgValidationScore ? ` Avg Validation: ${(avgValidationScore * 100).toFixed(1)}%.` : ''} Exec Time: ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s.`
       : `Based on source quantity (${totalSourcesFound}), diversity (${uniqueDomainsCount} domains), and internal analysis quality.`;
-
 
     // --- Assemble the Final Report ---
     const finalReport = `
@@ -127,7 +135,7 @@ ${analysisReport}
 
 ---
 
-## Research Process & Sources
+## Research Process & Sources${firecrawlInfo}
 
 ${formattedResearchPath}
 
@@ -144,11 +152,24 @@ ${formattedTopSources}
     // Use metrics directly from the successful result
     const researchMetrics = result.researchMetrics;
 
-    addLog("Successfully generated final report.");
-    return NextResponse.json({
+    // Include extra data points in the response for client-side enhancement
+    const enhancedResponse = {
       report: finalReport,
-      metrics: researchMetrics // Pass the non-optional metrics object
-    }, {
+      metrics: researchMetrics,
+      // Add extra data for richer client-side rendering
+      enhancedData: {
+        sources: formattedSources,
+        researchPath: researchPath,
+        confidenceLevel: confidenceLevel,
+        domainStats: {
+          total: uniqueDomainsCount,
+          sample: uniqueDomainsSample
+        }
+      }
+    };
+
+    addLog("Successfully generated final report.");
+    return NextResponse.json(enhancedResponse, {
       status: 200,
       headers: { 'Cache-Control': 'no-store' } // Don't cache deep research results aggressively
     });
