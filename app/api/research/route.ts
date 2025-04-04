@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 ## Research Path
 ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${path}"`).join('\n')}
     `;
-
+// 
     // Source Statistics using metrics directly from result.researchMetrics
     const uniqueDomainsCount = result.researchMetrics.domainsCount;
     const totalSourcesFound = result.researchMetrics.sourcesCount;
