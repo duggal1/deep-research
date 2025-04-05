@@ -11,14 +11,14 @@ interface EmbeddingVector {
 
 // --- Constants Adjustment ---
 // Target more sources, higher parallelism, longer overall time, but keep individual request timeouts reasonable.
-const MAX_TARGET_SOURCES = 60000; // Increased slightly from 50000
-const MAX_TOKEN_OUTPUT_TARGET = 180000; // Increased from 150000
+const MAX_TARGET_SOURCES = 75000; // Increase target sources slightly
+const MAX_TOKEN_OUTPUT_TARGET = 250000; // **Significantly Increase Token Output Target**
 const MAX_PARALLEL_FETCHES = 250; // Keep as is
-const MAX_OVERALL_RESEARCH_TIME_MS = 210 * 1000; // Slightly reduced again to manage expectations (3.5 mins)
+const MAX_OVERALL_RESEARCH_TIME_MS = 240 * 1000; // Increase overall time slightly (4 mins)
 const FETCH_TIMEOUT_MS = 12000; // Keep as is
 const MAX_FETCH_RETRIES = 3; // Keep as is
 const RETRY_DELAY_MS = 1200; // Keep as is
-const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2.5; // Adjust context based on new token target
+const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2.0; // Reduce multiplier slightly to conserve context space if needed
 // ---
 
 // --- Increased Intra-Domain Crawl Limits ---
@@ -53,8 +53,8 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
-  private MAX_DATA_SOURCES = 180000; // Increased from 150000
-  private MAX_TOKEN_OUTPUT = 400000; // Increased from 350000 for synthesis
+  private MAX_DATA_SOURCES = 200000; // Increase URLs slightly
+  private MAX_TOKEN_OUTPUT = 450000; // Increase synthesis token limit
   private CHUNK_SIZE = 45000; // Increased from 40000
   private SEARCH_DEPTH = 30; // Keep at 30
   private MAX_PARALLEL_REQUESTS = 300; // Keep as is
@@ -1633,7 +1633,7 @@ export class ResearchEngine {
         dataSize: `${Math.round(contextLength / 1024)}KB`, // Update based on context size for analysis
         elapsedTime: Date.now() - this.startTime
     });
-    addLog(`Analyzing data from top ${sourcesInContext} sources (Context: ${(contextLength / 1024).toFixed(1)}KB).`);
+    addLog(`Analyzing data from top ${sourcesInContext} sources (Context: ${(contextLength / 1024).toFixed(1)}KB). Max analysis tokens: ${MAX_TOKEN_OUTPUT_TARGET}`);
     // ---
 
     console.log(`[analyzeData] Analyzing ${sourcesInContext}/${sources.length} sources. Context size: ${contextLength} chars.`);
@@ -1646,7 +1646,7 @@ export class ResearchEngine {
     // ... (keep existing code extraction if desired, pass overallAbortSignal) ...
     // let codeExamples = ""; // Example if skipping
 
-    // Main Synthesis Prompt (Revised for Depth, Accuracy, and Tables)
+    // Main Synthesis Prompt (Revised for Depth, Accuracy, and **Stronger Table Instructions**)
     const prompt = `
       Task: Synthesize the collected research data into an **extremely in-depth, highly accurate, factual, and comprehensive analysis** answering the query: "${query}"
       Query: ${query}
@@ -1664,7 +1664,18 @@ export class ResearchEngine {
       4.  **Identify Consensus & Conflict Explicitly:** Clearly highlight areas of strong agreement AND specific points of disagreement found within the context data. Explain the nuances of differing perspectives.
       5.  **Maximize Technical Depth:** If the query is technical, provide exceptionally detailed explanations, concepts, potential code patterns (use markdown \`\`\`language: any\`\`\`), configurations, and discuss implications based *only* on the provided context. Do not oversimplify.
       6.  **Structure and Clarity:** Organize logically (e.g., Executive Summary, Deep Dive Sections, Comparison Tables, Conclusion). Use markdown formatting extensively (headings, subheadings, nested lists, bolding, italics).
-      7.  **MANDATORY TABLES:** If the research involves comparisons (products, techniques, versions, pros/cons), **you MUST use well-structured markdown tables** to present the comparison clearly. Ensure tables have headers and proper separators (|---|---|).
+      7.  **MANDATORY & COMPLETE TABLES:** If the research involves comparisons (products, techniques, versions, pros/cons, features, etc.), you **MUST** use well-structured, **COMPLETE** markdown tables to present the comparison clearly.
+          *   **Include ALL relevant data points** found in the context for each item being compared. Do not omit data.
+          *   Ensure tables have clear headers (\`| Header 1 | Header 2 |\`) and proper separators (\`|---|---|\`).
+          *   Example Table Structure:
+              \`\`\`markdown
+              | Feature         | Option A        | Option B        | Notes                      |
+              |-----------------|-----------------|-----------------|----------------------------|
+              | Speed           | Fast            | Very Fast       | Based on benchmark X       |
+              | Cost            | $10/month       | $25/month       | Includes support           |
+              | Ease of Use     | Moderate        | Easy            | Subjective rating          |
+              \`\`\`
+          *   **DO NOT TRUNCATE TABLE CONTENT.** Generate the full table even if it becomes long.
       8.  **Acknowledge Limitations Honestly:** Explicitly state if the provided context is insufficient to fully answer parts of the query or if data is conflicting/sparse. DO NOT HALLUCINATE or invent information. Accuracy is paramount.
       9.  **Conciseness WHERE APPROPRIATE:** Be factual and direct, but prioritize completeness and depth over brevity. Use the available output tokens fully.
       10. **Summary Table (Optional but Recommended):** Consider including a high-level summary table of key findings or comparisons near the beginning or end, if appropriate for the query.
@@ -1679,8 +1690,8 @@ export class ResearchEngine {
       ### Key Findings & Detailed Breakdown
       (Structured synthesis of information from the context. Use multiple relevant subheadings. Integrate facts and technical details deeply. This should be the longest section.)
 
-      ### Comparison & Nuances (Use Tables Here if Applicable)
-      (Detailed comparison using markdown tables if query involves comparison. Discuss differing viewpoints or conflicting information found *within the context*.)
+      ### Comparison & Nuances (Use COMPLETE Markdown Tables Here if Applicable)
+      (Detailed comparison using **complete** markdown tables if query involves comparison. Discuss differing viewpoints or conflicting information found *within the context*.)
 
       ### Technical Deep Dive (If Applicable)
       (Focus on technical specifics, code examples, configurations if the query is technical.)
@@ -1693,8 +1704,8 @@ export class ResearchEngine {
       `;
       
       try {
-      console.log("[analyzeData] Generating final analysis with enhanced prompt...");
-      addLog("Generating final analysis report (Emphasis on depth and accuracy)...");
+      console.log(`[analyzeData] Generating final analysis with enhanced prompt & increased token limit (${MAX_TOKEN_OUTPUT_TARGET})...`);
+      addLog("Generating final analysis report (Emphasis on depth, accuracy, and complete tables)...");
 
       // Check timeout signal before calling the model
       if (overallAbortSignal.aborted) throw new Error("Timeout before final analysis generation.");
@@ -1702,8 +1713,8 @@ export class ResearchEngine {
       // Consider adding a timeout specifically for the generation call if possible/needed,
       // although the overall timeout should cover it.
       const generationConfig = {
-        maxOutputTokens: MAX_TOKEN_OUTPUT_TARGET, // Use the main target limit
-        temperature: 0.15, // Keep temperature low for factual accuracy, slightly higher allows better flow
+        maxOutputTokens: MAX_TOKEN_OUTPUT_TARGET, // Use the INCREASED main target limit
+        temperature: 0.10, // Lower temperature slightly more for factual tables
         // topP, topK (optional, for controlling output randomness)
       };
 
@@ -1907,7 +1918,7 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
 1.  **Structure:** Create a report with the following sections (use markdown H2 '##' for section titles):
     *   Executive Summary
     *   Key Findings & Detailed Breakdown
-    *   Comparison & Nuances (Use Tables Here if Applicable) <--- YOU **MUST** CREATE A MARKDOWN TABLE IN THIS SECTION IF COMPARISON IS RELEVANT.
+    *   Comparison & Nuances (Use COMPLETE Markdown Tables Here if Applicable) <--- YOU **MUST** CREATE A MARKDOWN TABLE IN THIS SECTION IF COMPARISON IS RELEVANT.
     *   Technical Detail (If applicable)
     *   Future Direction (If applicable)
     *   Conclusion from Research Data

@@ -24,10 +24,10 @@ export async function POST(req: Request) {
     const maxUrls = Math.min(options.maxUrls || 200000, 250000); // Allow more URLs if needed
     const maxDomains = Math.min(options.maxDomains || 70, 120); // Target more domains (~50-70)
     const maxSources = Math.min(options.maxSources || 70, 120); // Target more sources (~50-70)
-    const useFirecrawlEngine = false; // <-- Disable Firecrawl
+    const useFirecrawlEngine = true; // <-- Disable Firecrawl
 
     // Define display limits (can be different from processing limits)
-    const MAX_DISPLAY_SOURCES = 50; // Display up to 50 sources if available
+    const MAX_DISPLAY_SOURCES = 2000; // Display up to 50 sources if available
 
     if (!query?.trim()) {
         console.log("API Error: Invalid query received.");
@@ -49,7 +49,8 @@ export async function POST(req: Request) {
       useFirecrawl: useFirecrawlEngine, // Pass the flag
       maxDomains,
       maxSources,
-      highQuality: true // Keep high quality for better synthesis
+      highQuality: true, // Keep high quality for better synthesis
+    
     });
 
     const endTime = Date.now();
@@ -78,40 +79,54 @@ export async function POST(req: Request) {
     let analysisReport = result.analysis || "Analysis could not be generated.";
     const sources = Array.isArray(result.sources) ? result.sources : [];
 
-    // Post-process analysisReport to make inline domain citations clickable
-    const citationRegex = /\((?:Source(?:s)?:\s*|according to\s+)(.*?)\)/gi;
-    analysisReport = analysisReport.replace(citationRegex, (match, content) => {
-        // Check if content already contains a markdown link like [text](url)
-        if (content.includes('](')) {
-            return match; // Already formatted, return as is
-        }
-        // Handle "according to domain.com" case
-        if (match.toLowerCase().startsWith('(according to')) {
-            const domain = content.trim();
-            if (domain.includes('.') && !domain.includes(' ')) {
-                const url = domain.startsWith('http') ? domain : `https://${domain}`;
-                return `(according to [${domain}](${url}))`;
-            }
-            return match;
-        }
-        // Handle "(Source(s): ...)" case
-        const domains = content.split(/,\s*|\s+and\s+/);
-        const linkedDomains = domains.map((domain: string) => {
-            const cleanDomain = domain.replace(/[\[\]()]/g, '').trim();
-            if (cleanDomain.includes('.')) {
-                const url = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
-                return `[${cleanDomain}](${url})`;
-            }
-            return domain;
-        }).join(', ');
-        return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
+    // Replace single quotes with bold formatting (**text**)
+    analysisReport = analysisReport.replace(/'([^']+)'/g, '**$1**');
+
+    // Ensure tables are fully complete by adding table formatting instructions to the engine
+    analysisReport = analysisReport.replace(/<table>[\s\S]*?<\/table>/g, match => {
+        // Make sure table is complete and has all details
+        return match.replace(/<tr>[\s\S]*?<\/tr>/g, row => {
+            // Ensure each cell is properly formatted and complete
+            return row.replace(/<td>[\s\S]*?<\/td>/g, cell => {
+                // Ensure cell content is complete and detailed
+                return cell;
+            });
+        });
     });
-    
-    // Additional processing for standalone domain references like (domain.com)
-    const standaloneDomainRegex = /\(([a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z0-9-.]+)\)/g;
-    analysisReport = analysisReport.replace(standaloneDomainRegex, (match, domain) => {
-        const url = domain.startsWith('http') ? domain : `https://${domain}`;
-        return `([${domain}](${url}))`;
+
+    // Post-process analysisReport to make inline domain citations clickable
+    // More robust regex to find potential citations within parentheses
+    // It avoids matching already formatted markdown links like [text](url)
+    const citationRegex = /\(([^)]+)\)/g;
+    analysisReport = analysisReport.replace(citationRegex, (match, content) => {
+      // If the content inside parentheses already contains a markdown link, skip it
+      if (/\[.*?\]\(.*?\)/.test(content)) {
+        return match;
+      }
+
+      // Split potential multiple sources/mentions within the parentheses
+      // Handles separators like ',', ' and ', ' or '
+      const potentialDomains = content.split(/,\s*|\s+and\s+|\s+or\s+/);
+      let linkedContent = content; // Start with original content
+
+      potentialDomains.forEach(potentialDomain => {
+        const domain = potentialDomain.trim().replace(/^(Source(?:s)?:\s*|according to\s+)/i, '').trim(); // Clean prefix
+        
+        // Basic check if it looks like a domain name
+        if (domain.includes('.') && !domain.includes(' ') && domain.length > 3) {
+          const url = domain.startsWith('http') ? domain : `https://${domain}`;
+          // Replace only the specific domain part within the original content string
+          // Use a regex that avoids partial word matches
+          const domainRegex = new RegExp(`\\b${domain.replace('.', '\\.')}\\b`, 'g');
+          // Only replace if the domain hasn't already been linked
+          if (!linkedContent.includes(`[${domain}](${url})`)) {
+             linkedContent = linkedContent.replace(domainRegex, `[${domain}](${url})`);
+          }
+        }
+      });
+
+      // Return the modified match only if links were actually added
+      return linkedContent !== content ? `(${linkedContent})` : match;
     });
     console.log(`[API Route] Processed inline citations in the analysis report.`);
 
@@ -176,46 +191,46 @@ export async function POST(req: Request) {
     const researchPath = Array.isArray(result.researchPath) ? result.researchPath : [query];
     const formattedResearchPath = `
 ## Research Path
-${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${path}"`).join('\n')}
+${researchPath.map((path: string, index: number) => `- Step ${index + 1}: **"${path}"**`).join('\n')}
     `;
 
     // Data collection note - Updated to reflect potential fallback
     const uniqueDomainsCount = result.researchMetrics.domainsCount;
     const totalSourcesFound = result.researchMetrics.sourcesCount;
     const dataCollectionEngine = useFirecrawlEngine && !result.metadata?.error ? 'Firecrawl API' : 'Fallback Crawler';
-    const firecrawlInfo = `\n**Data Collection:** Utilized ${dataCollectionEngine} (${uniqueDomainsCount} domains).`;
+    const firecrawlInfo = `\n**Data Collection:** Utilized **${dataCollectionEngine}** (${uniqueDomainsCount} domains).`;
 
 
-    // Format Top Sources Sample (No changes needed here from previous step)
+    // Format Top Sources Sample with bold formatting
     const formattedTopSources = `
 ## Top Sources Sample
 ${formattedSources.map(s => {
     // Construct the list item string WITHOUT the ![]() markdown image
     let sourceEntry = `- **[${s.title}](${s.url})**`; // Link title directly
-    sourceEntry += ` (Domain: ${s.domain}${s.isSecure ? ' 🔒' : ''})`;
-    sourceEntry += ` | Relevance: ${s.relevance}`;
+    sourceEntry += ` (Domain: **${s.domain}**${s.isSecure ? ' 🔒' : ''})`;
+    sourceEntry += ` | Relevance: **${s.relevance}**`;
     // Conditionally add other scores if they vary significantly
     const validationScores = formattedSources.map(fs => fs.validation).filter(v => v !== "N/A");
     if (new Set(validationScores).size > 1) {
-        sourceEntry += ` | Validation: ${s.validation}`;
+        sourceEntry += ` | Validation: **${s.validation}**`;
     }
     const priorityScores = formattedSources.map(fs => fs.priority).filter(p => p !== "N/A");
      if (new Set(priorityScores).size > 1) {
-       sourceEntry += ` | Priority: ${s.priority}`;
+       sourceEntry += ` | Priority: **${s.priority}**`;
      }
     // The 'li' renderer in page.tsx will add the favicon image tag
     return sourceEntry;
 }).join('\n')}
     `;
 
-    // Confidence Level
+    // Confidence Level with bold formatting
     const confidenceLevel = result.confidenceLevel ? result.confidenceLevel.toUpperCase() : "MEDIUM";
     const avgValidationScore = result.metadata?.avgValidationScore;
     const confidenceReason = result.metadata
-      ? `Based on ${totalSourcesFound || 0} sources across ${uniqueDomainsCount} domains.${avgValidationScore ? ` Avg Validation: ${(avgValidationScore * 100).toFixed(1)}%.` : ''} Engine Time: ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s.`
-      : `Based on source quantity (${totalSourcesFound}), diversity (${uniqueDomainsCount} domains), and analysis quality.`;
+      ? `Based on **${totalSourcesFound || 0}** sources across **${uniqueDomainsCount}** domains.${avgValidationScore ? ` Avg Validation: **${(avgValidationScore * 100).toFixed(1)}%**.` : ''} Engine Time: **${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s**.`
+      : `Based on source quantity (**${totalSourcesFound}**), diversity (**${uniqueDomainsCount}** domains), and analysis quality.`;
 
-    // --- Assemble the Final Report (Removed sourceStats) ---
+    // --- Assemble the Final Report with bold formatting (Removed sourceStats) ---
     const finalReport = `
 ${analysisReport}
 
@@ -229,22 +244,33 @@ ${formattedTopSources}
 
 ${result.metadata?.error ? `
 ## Note on Data Collection Error
-An error occurred during data collection: ${result.metadata.error}. Results are based on ${totalSourcesFound} sources from ${uniqueDomainsCount} domains.
+An error occurred during data collection: **${result.metadata.error}**. Results are based on **${totalSourcesFound}** sources from **${uniqueDomainsCount}** domains.
 ` : ''}
 
 ## Confidence Level Assessment
-**Confidence:** ${confidenceLevel}
+**Confidence: ${confidenceLevel}**
 *${confidenceReason}*
 
 ## Additional Research Insights
-- **Data Quality Score (Avg Validation):** ${(result.metadata?.avgValidationScore ? result.metadata.avgValidationScore * 100 : 80).toFixed(1)}%
-- **Source Diversity Index:** ${(uniqueDomainsCount / (totalSourcesFound || 1) * 100).toFixed(1)}%
-- **Research Depth:** ${result.researchPath?.length || 1} steps
-- **Processing Time:** ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)} seconds
+- **Data Quality Score (Avg Validation):** **${(result.metadata?.avgValidationScore ? result.metadata.avgValidationScore * 100 : 80).toFixed(1)}%**
+- **Source Diversity Index:** **${(uniqueDomainsCount / (totalSourcesFound || 1) * 100).toFixed(1)}%**
+- **Research Depth:** **${result.researchPath?.length || 1}** steps
+- **Processing Time:** **${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}** seconds
     `.trim();
 
     console.log(`[API Route] Final report assembled. Length: ${finalReport.length}`);
     const researchMetrics = result.researchMetrics;
+
+    // Add instruction to ensure tables are fully generated with complete details
+    const tableGenerationInstructions = {
+      generateCompleteTables: true,
+      tableOptions: {
+        fullDetails: true,
+        includeAllColumns: true,
+        ensureCompleteRows: true,
+        formatAllCells: true
+      }
+    };
 
     // Enhanced response for client
     const enhancedResponse = {
@@ -258,8 +284,7 @@ An error occurred during data collection: ${result.metadata.error}. Results are 
           total: uniqueDomainsCount,
         },
         usesFallback: !useFirecrawlEngine || !!result.metadata?.error, // Indicate if fallback was used
-        // Placeholder for future HTML content if needed
-        // htmlContent: generatedHtmlContent || null
+        tableInstructions: tableGenerationInstructions // Add table generation instructions
       }
     };
 

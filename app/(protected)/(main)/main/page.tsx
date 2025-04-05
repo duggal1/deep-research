@@ -7,7 +7,6 @@ import {
   SearchIcon,
   Loader2Icon,
   BookOpenIcon,
-  HistoryIcon,
   AlertCircleIcon,
   BrainIcon,
   ExternalLinkIcon,
@@ -97,36 +96,21 @@ const formatCurrency = (value: string): string => {
 
 export default function Home() {
   const [query, setQuery] = useState('');
-  const [report, setReport] = useState<string | null>(null); // Use null for initial state
+  const [report, setReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<ResearchError | null>(null); // Use specific error type
-  const [searchHistory, setSearchHistory] = useState<string[]>([]);
+  const [error, setError] = useState<ResearchError | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [showLiveLogs, setShowLiveLogs] = useState(false);
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
   const [currentProgress, setCurrentProgress] = useState<ResearchMetrics | null>(null);
-  const [currentStatus, setCurrentStatus] = useState<string>(''); // For displaying current step/status
+  const [currentStatus, setCurrentStatus] = useState<string>('');
   const progressPollRef = useRef<NodeJS.Timeout | null>(null);
-  const { theme } = useTheme(); // Get current theme
+  const { theme } = useTheme();
 
-  // Define pathKeywords here so it's accessible to both li and ul renderers
   const pathKeywords = ['Initial query:', 'Research area', 'Follow-up query', 'Step ', '- Step '];
 
   useEffect(() => {
-    // Load search history from localStorage
-    const savedHistory = localStorage.getItem('searchHistory');
-    if (savedHistory) {
-      try {
-        setSearchHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error('Failed to parse search history', e);
-        localStorage.removeItem('searchHistory'); // Clear corrupted history
-      }
-    }
-  }, []);
-
-  // Cleanup polling interval on component unmount
-  useEffect(() => {
+    // Cleanup polling interval on component unmount
     return () => {
       if (progressPollRef.current) {
         clearInterval(progressPollRef.current);
@@ -134,12 +118,22 @@ export default function Home() {
     };
   }, []);
 
-  const saveHistory = (newHistory: string[]) => {
-    setSearchHistory(newHistory);
-    localStorage.setItem('searchHistory', JSON.stringify(newHistory));
+  const addHistoryEntry = async (queryToAdd: string) => {
+    try {
+      const res = await fetch('/api/search-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: queryToAdd }),
+      });
+      if (!res.ok) {
+        console.error('Failed to save search history item:', res.status);
+      }
+      // TODO: Optionally trigger a refresh of the sidebar's history state here if needed
+    } catch (e) {
+      console.error('Error saving search history item:', e);
+    }
   };
 
-  // Function to poll for progress updates
   const pollResearchProgress = useCallback(async () => {
     try {
       const res = await fetch('/api/research/progress', { 
@@ -317,8 +311,8 @@ export default function Home() {
          setCurrentStatus('Research complete');
       }
 
-      const newHistory = [query, ...searchHistory.filter(q => q !== query)].slice(0, 5);
-      saveHistory(newHistory);
+      // Add query to history via API
+      await addHistoryEntry(query);
 
     } catch (err) {
       console.error("Research handling error:", err);
@@ -350,10 +344,6 @@ export default function Home() {
     }
   };
 
-  const clearHistory = () => {
-    saveHistory([]);
-  };
-
   const handleCopyCode = useCallback((code: string) => {
     navigator.clipboard.writeText(code).then(() => {
     setCopiedCode(code);
@@ -364,7 +354,6 @@ export default function Home() {
     });
   }, []);
 
-  // Enhanced renderers for React Markdown
   const renderers = {
     // --- Horizontal Rule Renderer ---
     hr: () => (
@@ -705,14 +694,38 @@ export default function Home() {
       const isExternal = url.startsWith('http://') || url.startsWith('https://');
       const textContent = Array.isArray(children) ? children.join('') : String(children);
 
-      // Skip rendering specific list item links here, handled by 'li' renderer
-      if (node?.parent?.tagName === 'li') {
-        const parentText = node.parent.children?.map((c: any) => c.value || '').join('');
-        if (parentText.includes('(Domain:') && parentText.includes(', Relevance:')) {
-          // Let the 'li' renderer handle the full component for source items
-          return <>{children}</>; // Render children (the title text) as-is within the li's anchor
+      // Check if this link is inside a source list item (identified by the specific text pattern)
+      const parentLi = node?.parent;
+      let isSourceListItemLink = false;
+      if (parentLi && parentLi.tagName === 'li') {
+        let parentTextContent = '';
+        parentLi.children?.forEach((child: any) => {
+           if (child.type === 'text') parentTextContent += child.value;
+           else if (child.tagName === 'strong' || child.tagName === 'a') {
+               child.children?.forEach((grandChild: any) => {
+                   if (grandChild.type === 'text') parentTextContent += grandChild.value;
+               });
+           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') {
+               parentTextContent += child.children[0].value;
+           }
+        });
+        parentTextContent = parentTextContent.trim();
+        if (parentTextContent.includes('(Domain:') && parentTextContent.includes('| Relevance:')) {
+          isSourceListItemLink = true;
         }
       }
+
+      // If it's a link within our custom source list item, render it simply.
+      // The `li` renderer handles the overall structure and styling.
+      if (isSourceListItemLink) {
+        return (
+          <a href={url} target="_blank" rel="noopener noreferrer" {...props}>
+            {children}
+          </a>
+        );
+      }
+
+      // --- Existing logic for other links (images, code links, standard external/internal links) ---
 
       // Handle image links
       if (url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i)) {
@@ -756,7 +769,7 @@ export default function Home() {
       // --- Improved Link Styling for Modern UI ---
       let domain = '';
       let faviconUrl = '';
-      
+
       if (isExternal) {
         try {
           domain = extractDomain(url);
@@ -803,7 +816,7 @@ export default function Home() {
         );
       }
 
-      // Modern link styling with improved hover effects and accessibility
+      // Modern link styling for regular links
       return (
         <a
           href={url}
@@ -835,28 +848,41 @@ export default function Home() {
     li: ({ node, children, ordered, ...props }: any) => {
        // Get text content cleanly, handling nested strong/a tags
        let textContent = '';
+       let linkNode: any = null; // Initialize linkNode
+
        node.children?.forEach((child: any) => {
-           if (child.type === 'text') textContent += child.value;
-           else if (child.tagName === 'strong' || child.tagName === 'a') {
-               child.children?.forEach((grandChild: any) => {
-                   if (grandChild.type === 'text') textContent += grandChild.value;
-               });
+           if (child.type === 'text') {
+             textContent += child.value;
+           } else if (child.tagName === 'strong') {
+             child.children?.forEach((grandChild: any) => {
+                 if (grandChild.type === 'text') textContent += grandChild.value;
+             });
+           } else if (child.tagName === 'a') {
+              linkNode = child; // Store the link node
+              child.children?.forEach((grandChild: any) => {
+                  if (grandChild.type === 'text') textContent += grandChild.value;
+              });
            } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') {
-               textContent += child.children[0].value;
+              textContent += child.children[0].value;
            }
        });
        textContent = textContent.trim();
 
-       // Match source pattern
-       const sourceMatch = textContent.match(/^(.*?)\s*\(Domain: (.*?), Relevance: (.*?)\)\s*$/);
-       const linkNode = node.children?.find((child: any) => child.tagName === 'a');
+       // Match source pattern more robustly - allow for more variations in formatting from route.ts
+       const sourcePattern = /^\s*\[?(.*?)\]?\(.*?\)\s*\(Domain:\s*\*{0,2}(.*?)\*{0,2}(?:\s*🔒)?\)\s*(?:\|\s*Relevance:\s*\*{0,2}(.*?)\*{0,2})?(?:.*?)$/;
+       const sourceMatch = textContent.match(sourcePattern);
+       // Find the link node again if needed (if the first child isn't the link)
+       if (!linkNode) {
+         linkNode = node.children?.find((child: any) => child.tagName === 'a');
+       }
        const url = linkNode?.properties?.href || '#';
-       const title = linkNode?.children?.find((c:any) => c.type === 'text')?.value || sourceMatch?.[1] || '';
+       const title = sourceMatch?.[1] || linkNode?.children?.find((c:any) => c.type === 'text')?.value || textContent.split('(')[0].trim() || ''; // Extract title more robustly
 
        if (sourceMatch && !ordered && url !== '#') {
           const domain = sourceMatch[2];
-          const relevance = sourceMatch[3];
+          const relevance = sourceMatch[3] || 'N/A'; // Handle optional relevance
           const faviconUrl = getFaviconUrl(domain);
+          const isSecure = url.startsWith('https://'); // Check if URL is secure
 
           return (
              <li className="group m-0 mb-3 p-0 list-none" {...props}>
@@ -864,6 +890,7 @@ export default function Home() {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
+                // Apply the full styling here for the source item link
                 className="flex items-center gap-3 bg-white hover:bg-blue-50 dark:bg-gray-800/60 dark:hover:bg-blue-900/40 shadow-sm hover:shadow-md p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
               >
                 {domain && (
@@ -890,11 +917,11 @@ export default function Home() {
                 )}
                 <div className="flex-grow min-w-0">
                    <div className="font-serif font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 text-sm line-clamp-2 leading-snug transition-colors">
-                     {title}
+                     {title} {/* Use the extracted title */}
                    </div>
                    <div className="flex items-center gap-1 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
                      <GlobeIcon className="flex-shrink-0 w-3 h-3" />
-                     <span className="truncate">{domain}</span>
+                     <span className="truncate">{domain}{isSecure ? ' 🔒' : ''}</span>
                    </div>
                  </div>
                  <div className="flex flex-shrink-0 items-center gap-2 ml-3">
@@ -1079,324 +1106,293 @@ export default function Home() {
     );
   };
 
-  // --- Component Return ---
   return (
-    <div className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-950 dark:to-black min-h-screen font-serif text-gray-800 dark:text-gray-200">
-      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
-        {/* Title and Description */}
-        <div className="space-y-8 mx-auto mb-12 max-w-3xl">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-             className="space-y-4 text-center"
-          >
-            <h1 className="flex justify-center items-center font-serif font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-300">
-                Deep Research Engine
-              </span>
-            </h1>
-             <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg font-serif">
-              Enter a query to initiate AI-powered deep research, synthesizing information from thousands of sources.
-            </p>
-          </motion.div>
+    <div className="py-12 px-4 sm:px-6 lg:px-8"> {/* Added padding */}
+      {/* Title and Description */}
+      <div className="space-y-8 mx-auto mb-12 max-w-3xl">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+           className="space-y-4 text-center"
+        >
+          <h1 className="flex justify-center items-center font-serif font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
+            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-300">
+              Deep Research Engine
+            </span>
+          </h1>
+           <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg font-serif">
+            Enter a query to initiate AI-powered deep research, synthesizing information from thousands of sources.
+          </p>
+        </motion.div>
 
-          {/* Search Input and History */}
+        {/* Search Input - History section removed */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
+          className="space-y-4"
+        >
+          {/* Input Field */}
+          <div className="group relative"> {/* Added group for focus-within styling */}
+            <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none">
+              <SearchIcon className="w-5 h-5" />
+            </div>
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="e.g., Latest advancements in serverless computing for Next.js"
+              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
+              onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
+              disabled={loading}
+            />
+            <button
+              onClick={handleResearch}
+              disabled={loading || !query.trim()}
+              className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-serif font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
+              aria-label="Start Research"
+            >
+              {loading ? (
+                <Loader2Icon className="w-5 h-5 animate-spin" />
+              ) : (
+                 <>
+                   <span className="hidden sm:inline">Research</span>
+                   <SearchIcon className="sm:hidden w-5 h-5" /> {/* Icon for small screens */}
+                 </>
+              )}
+            </button>
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Loading State */}
+      <AnimatePresence>
+        {loading && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="space-y-4"
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.4, ease: "circOut" }}
+            className="bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-950/90 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl space-y-6 overflow-hidden"
           >
-            {/* Input Field */}
-            <div className="group relative"> {/* Added group for focus-within styling */}
-              <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none">
-                <SearchIcon className="w-5 h-5" />
+            {/* Header & Overall Progress Bar */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex items-center justify-center w-10 h-10">
+                    {/* Spinner */}
+                    <svg className="absolute inset-0 w-full h-full animate-spin text-blue-500/30 dark:text-blue-400/30" viewBox="0 0 36 36" fill="none">
+                      <circle className="opacity-25" cx="18" cy="18" r="16" stroke="currentColor" strokeWidth="3"></circle>
+                    </svg>
+                    {/* Progress Arc - Placeholder, replace with actual progress if available */}
+                    <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36" fill="none">
+                      <circle
+                        className="text-blue-600 dark:text-blue-500 transition-all duration-500"
+                        cx="18" cy="18" r="16"
+                        stroke="currentColor" strokeWidth="3"
+                        strokeDasharray={100.5} // Circumference
+                        strokeDashoffset={100.5 - ((currentProgress?.elapsedTime ?? 0) / (180 * 10))} // Placeholder: % of 3min timeout
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <BrainIcon className="relative w-5 h-5 text-blue-600 dark:text-blue-500" />
+                  </div>
+                  <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl md:text-2xl tracking-tight">
+                    Research in Progress...
+                  </h3>
+                </div>
+                {/* Elapsed time */}
+                <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm">
+                  {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
+                </div>
               </div>
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="e.g., Latest advancements in serverless computing for Next.js"
-                className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
-                onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
-                disabled={loading}
-              />
-              <button
-                onClick={handleResearch}
-                disabled={loading || !query.trim()}
-                className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-serif font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
-                aria-label="Start Research"
-              >
-                {loading ? (
-                  <Loader2Icon className="w-5 h-5 animate-spin" />
-                ) : (
-                   <>
-                     <span className="hidden sm:inline">Research</span>
-                     <SearchIcon className="sm:hidden w-5 h-5" /> {/* Icon for small screens */}
-                   </>
-                )}
-              </button>
+              {/* Simplified Overall Progress Bar */}
+              <div className="w-full bg-gray-200 dark:bg-gray-700/50 rounded-full h-2 overflow-hidden">
+                <motion.div
+                   className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
+                   initial={{ width: "0%" }}
+                   animate={{ width: `${Math.min(100, ((currentProgress?.elapsedTime ?? 0) / (180 * 10)))}%` }} // Placeholder %
+                   transition={{ duration: 0.5, ease: "linear" }}
+                />
+              </div>
             </div>
 
-            {/* Search History */}
-            {searchHistory.length > 0 && (
-              <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 bg-white dark:bg-gray-900/50 shadow-sm p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
-                 <div className="flex items-center gap-2 overflow-x-auto text-gray-600 dark:text-gray-400 text-sm">
-                    <HistoryIcon className="flex-shrink-0 w-4 h-4" />
-                    <span className="mr-1 font-serif font-medium text-xs uppercase tracking-wider">Recent:</span>
-                    {searchHistory.map((q, i) => (
-                    <button
-                        key={i}
-                        onClick={() => { if (!loading) setQuery(q); }}
-                        disabled={loading}
-                        className="bg-gray-100 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-blue-900/50 disabled:opacity-60 shadow-sm hover:shadow px-3 py-1 rounded-full text-gray-700 dark:text-gray-300 text-xs whitespace-nowrap transition-colors font-serif"
-                        title={q}
-                      >
-                      {q.length > 35 ? q.substring(0, 32) + '...' : q}
-                    </button>
-                    ))}
+            {/* Current Status Display */}
+            <div className="bg-gradient-to-r from-gray-100 to-white dark:from-gray-800/70 dark:to-gray-900/50 shadow-inner p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+              <div className="flex items-center gap-3 font-serif text-gray-800 dark:text-gray-200 text-base">
+                <div className="flex-shrink-0 w-5 h-5">
+                   {/* Dynamic Icon based on status - add more cases if needed */}
+                   {currentStatus.toLowerCase().includes('fetching') || currentStatus.toLowerCase().includes('searching') ? <SearchIcon className="text-blue-500 dark:text-blue-400 animate-pulse"/> :
+                    currentStatus.toLowerCase().includes('crawling') ? <GlobeIcon className="text-green-500 dark:text-green-400 animate-pulse"/> :
+                    currentStatus.toLowerCase().includes('analyzing') ? <BrainIcon className="text-purple-500 dark:text-purple-400 animate-pulse"/> :
+                    currentStatus.toLowerCase().includes('generating') || currentStatus.toLowerCase().includes('finalizing') ? <FileTextIcon className="text-orange-500 dark:text-orange-400 animate-pulse"/> :
+                    <Loader2Icon className="text-gray-500 dark:text-gray-400 animate-spin"/>
+                   }
+                </div>
+                <span className="font-medium truncate">{currentStatus || 'Initializing research...'}</span>
+              </div>
+            </div>
+
+            {/* Metrics Grid V5 - Cleaner & More Visual */}
+            <div className="gap-4 grid grid-cols-1 sm:grid-cols-3">
+              {/* Metric Card Template */}
+              {metricCard('sourcesCount', GlobeIcon, 'Sources Found', 'blue')}
+              {metricCard('domainsCount', DatabaseIcon, 'Unique Domains', 'green')}
+              {metricCard('dataSize', FileTextIcon, 'Data Size', 'purple')}
+              {metricCard('elapsedTime', RefreshCwIcon, 'Time Elapsed', 'amber')}
+            </div>
+
+            {/* Live Logs V4 - Improved Styling & Visibility */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2 font-serif font-medium text-gray-600 dark:text-gray-400 text-sm">
+                   <TerminalIcon className="w-4 h-4"/>
+                   <span>Activity Log</span>
                 </div>
                 <button
-                  onClick={clearHistory}
-                  disabled={loading}
-                  className="disabled:opacity-60 pr-1 font-serif font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-500 dark:text-gray-400 text-xs transition-colors"
-                  aria-label="Clear search history"
+                  onClick={() => setShowLiveLogs(!showLiveLogs)}
+                  className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-600/80 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
                 >
-                  Clear
+                  {showLiveLogs ? 'Hide' : 'Show'}
                 </button>
               </div>
-            )}
-          </motion.div>
-        </div>
 
-        {/* --- Enhanced Loading State V5 - Sleek & Engaging --- */}
-        <AnimatePresence>
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 30, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: "circOut" }}
-              className="bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-950/90 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl space-y-6 overflow-hidden"
-            >
-              {/* Header & Overall Progress Bar */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div className="relative flex items-center justify-center w-10 h-10">
-                      {/* Spinner */}
-                      <svg className="absolute inset-0 w-full h-full animate-spin text-blue-500/30 dark:text-blue-400/30" viewBox="0 0 36 36" fill="none">
-                        <circle className="opacity-25" cx="18" cy="18" r="16" stroke="currentColor" strokeWidth="3"></circle>
-                      </svg>
-                      {/* Progress Arc - Placeholder, replace with actual progress if available */}
-                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36" fill="none">
-                        <circle
-                          className="text-blue-600 dark:text-blue-500 transition-all duration-500"
-                          cx="18" cy="18" r="16"
-                          stroke="currentColor" strokeWidth="3"
-                          strokeDasharray={100.5} // Circumference
-                          strokeDashoffset={100.5 - ((currentProgress?.elapsedTime ?? 0) / (180 * 10))} // Placeholder: % of 3min timeout
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                      <BrainIcon className="relative w-5 h-5 text-blue-600 dark:text-blue-500" />
-                    </div>
-                    <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl md:text-2xl tracking-tight">
-                      Research in Progress...
-                    </h3>
-                  </div>
-                  {/* Elapsed time */}
-                  <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm">
-                    {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
-                  </div>
-                </div>
-                {/* Simplified Overall Progress Bar */}
-                <div className="w-full bg-gray-200 dark:bg-gray-700/50 rounded-full h-2 overflow-hidden">
+              <AnimatePresence>
+                {showLiveLogs && (
                   <motion.div
-                     className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
-                     initial={{ width: "0%" }}
-                     animate={{ width: `${Math.min(100, ((currentProgress?.elapsedTime ?? 0) / (180 * 10)))}%` }} // Placeholder %
-                     transition={{ duration: 0.5, ease: "linear" }}
-                  />
-                </div>
-              </div>
-
-              {/* Current Status Display */}
-              <div className="bg-gradient-to-r from-gray-100 to-white dark:from-gray-800/70 dark:to-gray-900/50 shadow-inner p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                <div className="flex items-center gap-3 font-serif text-gray-800 dark:text-gray-200 text-base">
-                  <div className="flex-shrink-0 w-5 h-5">
-                     {/* Dynamic Icon based on status - add more cases if needed */}
-                     {currentStatus.toLowerCase().includes('fetching') || currentStatus.toLowerCase().includes('searching') ? <SearchIcon className="text-blue-500 dark:text-blue-400 animate-pulse"/> :
-                      currentStatus.toLowerCase().includes('crawling') ? <GlobeIcon className="text-green-500 dark:text-green-400 animate-pulse"/> :
-                      currentStatus.toLowerCase().includes('analyzing') ? <BrainIcon className="text-purple-500 dark:text-purple-400 animate-pulse"/> :
-                      currentStatus.toLowerCase().includes('generating') || currentStatus.toLowerCase().includes('finalizing') ? <FileTextIcon className="text-orange-500 dark:text-orange-400 animate-pulse"/> :
-                      <Loader2Icon className="text-gray-500 dark:text-gray-400 animate-spin"/>
-                     }
-                  </div>
-                  <span className="font-medium truncate">{currentStatus || 'Initializing research...'}</span>
-                </div>
-              </div>
-
-              {/* Metrics Grid V5 - Cleaner & More Visual */}
-              <div className="gap-4 grid grid-cols-1 sm:grid-cols-3">
-                {/* Metric Card Template */}
-                {metricCard('sourcesCount', GlobeIcon, 'Sources Found', 'blue')}
-                {metricCard('domainsCount', DatabaseIcon, 'Unique Domains', 'green')}
-                {metricCard('dataSize', FileTextIcon, 'Data Size', 'purple')}
-                {metricCard('elapsedTime', RefreshCwIcon, 'Time Elapsed', 'amber')}
-              </div>
-
-              {/* Live Logs V4 - Improved Styling & Visibility */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2 font-serif font-medium text-gray-600 dark:text-gray-400 text-sm">
-                     <TerminalIcon className="w-4 h-4"/>
-                     <span>Activity Log</span>
-                  </div>
-                  <button
-                    onClick={() => setShowLiveLogs(!showLiveLogs)}
-                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-600/80 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto', maxHeight: '350px' }} // Increased max height
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.35, ease: "easeInOut" }}
+                    className="overflow-hidden"
                   >
-                    {showLiveLogs ? 'Hide' : 'Show'}
-                  </button>
+                    <div className="bg-gradient-to-b from-gray-100 dark:from-black/60 to-gray-200/70 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/70 rounded-lg max-h-[350px] overflow-y-auto font-mono text-xs space-y-1.5 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+                      {liveLogs.length === 0 ? (
+                         <p className="text-gray-500 italic">Waiting for logs...</p>
+                      ) : (
+                         liveLogs.map((log, index) => {
+                            // Basic log parsing for styling
+                            const timeMatch = log.match(/^\[(.*?)\]/);
+                            const time = timeMatch ? timeMatch[1] : '';
+                            let content = timeMatch ? log.substring(timeMatch[0].length).trim() : log;
+                            let icon = null;
+                            let colorClass = "text-gray-600 dark:text-gray-400/90";
+
+                            if (content.toLowerCase().includes('fetching') || content.toLowerCase().includes('searching')) { icon = <SearchIcon className="w-3 h-3 text-blue-500"/>; colorClass="text-blue-700 dark:text-blue-400"; }
+                            else if (content.toLowerCase().includes('crawling') || content.toLowerCase().includes('found') || content.toLowerCase().includes('added')) { icon = <GlobeIcon className="w-3 h-3 text-green-500"/>; colorClass="text-green-700 dark:text-green-400"; }
+                            else if (content.toLowerCase().includes('analyzing')) { icon = <BrainIcon className="w-3 h-3 text-purple-500"/>; colorClass="text-purple-700 dark:text-purple-400"; }
+                            else if (content.toLowerCase().includes('generating') || content.toLowerCase().includes('finalizing')) { icon = <FileTextIcon className="w-3 h-3 text-orange-500"/>; colorClass="text-orange-700 dark:text-orange-400"; }
+                            else if (content.toLowerCase().includes('error') || content.toLowerCase().includes('failed')) { icon = <AlertCircleIcon className="w-3 h-3 text-red-500"/>; colorClass="text-red-600 dark:text-red-400 font-medium"; }
+                            else if (content.toLowerCase().includes('warn')) { icon = <AlertCircleIcon className="w-3 h-3 text-yellow-500"/>; colorClass="text-yellow-600 dark:text-yellow-400"; }
+
+                            // Highlight domain fetching
+                            if (content.match(/Fetching (L1|L2): (.+?)\.\.\./)) {
+                               content = content.replace(/Fetching (L1|L2): (.+?)\.\.\./, `Fetching $1: <span class="font-semibold text-indigo-600 dark:text-indigo-400">$2</span>...`);
+                            }
+
+
+                            return (
+                            <div key={index} className={`flex items-start gap-2 break-words leading-relaxed whitespace-pre-wrap ${colorClass}`}>
+                               {time && <span className="flex-shrink-0 opacity-60 tabular-nums">[{time}]</span>}
+                               {icon && <span className="flex-shrink-0 mt-[1px]">{icon}</span>}
+                               <span dangerouslySetInnerHTML={{ __html: content }} />
+                            </div>
+                            );
+                         })
+                      )}
+                       {/* Auto-scroll placeholder - implement with useRef and useEffect if needed */}
+                       {/* <div ref={logEndRef} /> */}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Display */}
+      <AnimatePresence>
+        {error && !loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
+          >
+            <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
+              <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-grow">
+              <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
+              <p className="text-red-700 dark:text-red-300 text-sm font-serif">{error.message || 'An unknown error occurred.'}</p>
+              {/* Optionally show partial report if available in error */}
+              {report && (
+                <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs">
+                  <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer font-serif">Show partial report/details</summary>
+                  <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">
+                    {report}
+                  </div>
+                </details>
+              )}
+              <button
+                onClick={() => { setError(null); setReport(null); }} // Clear error and report
+                className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-4 py-1.5 rounded-md font-serif font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Report Display */}
+      <AnimatePresence>
+        {report && !loading && !error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
+          >
+            {/* Report Header */}
+            <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
+              <h2 className="flex items-center gap-3 font-serif font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
+                <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
+                  <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
-
-                <AnimatePresence>
-                  {showLiveLogs && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto', maxHeight: '350px' }} // Increased max height
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.35, ease: "easeInOut" }}
-                      className="overflow-hidden"
-                    >
-                      <div className="bg-gradient-to-b from-gray-100 dark:from-black/60 to-gray-200/70 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/70 rounded-lg max-h-[350px] overflow-y-auto font-mono text-xs space-y-1.5 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-                        {liveLogs.length === 0 ? (
-                           <p className="text-gray-500 italic">Waiting for logs...</p>
-                        ) : (
-                           liveLogs.map((log, index) => {
-                              // Basic log parsing for styling
-                              const timeMatch = log.match(/^\[(.*?)\]/);
-                              const time = timeMatch ? timeMatch[1] : '';
-                              let content = timeMatch ? log.substring(timeMatch[0].length).trim() : log;
-                              let icon = null;
-                              let colorClass = "text-gray-600 dark:text-gray-400/90";
-
-                              if (content.toLowerCase().includes('fetching') || content.toLowerCase().includes('searching')) { icon = <SearchIcon className="w-3 h-3 text-blue-500"/>; colorClass="text-blue-700 dark:text-blue-400"; }
-                              else if (content.toLowerCase().includes('crawling') || content.toLowerCase().includes('found') || content.toLowerCase().includes('added')) { icon = <GlobeIcon className="w-3 h-3 text-green-500"/>; colorClass="text-green-700 dark:text-green-400"; }
-                              else if (content.toLowerCase().includes('analyzing')) { icon = <BrainIcon className="w-3 h-3 text-purple-500"/>; colorClass="text-purple-700 dark:text-purple-400"; }
-                              else if (content.toLowerCase().includes('generating') || content.toLowerCase().includes('finalizing')) { icon = <FileTextIcon className="w-3 h-3 text-orange-500"/>; colorClass="text-orange-700 dark:text-orange-400"; }
-                              else if (content.toLowerCase().includes('error') || content.toLowerCase().includes('failed')) { icon = <AlertCircleIcon className="w-3 h-3 text-red-500"/>; colorClass="text-red-600 dark:text-red-400 font-medium"; }
-                              else if (content.toLowerCase().includes('warn')) { icon = <AlertCircleIcon className="w-3 h-3 text-yellow-500"/>; colorClass="text-yellow-600 dark:text-yellow-400"; }
-
-                              // Highlight domain fetching
-                              if (content.match(/Fetching (L1|L2): (.+?)\.\.\./)) {
-                                 content = content.replace(/Fetching (L1|L2): (.+?)\.\.\./, `Fetching $1: <span class="font-semibold text-indigo-600 dark:text-indigo-400">$2</span>...`);
-                              }
-
-
-                              return (
-                              <div key={index} className={`flex items-start gap-2 break-words leading-relaxed whitespace-pre-wrap ${colorClass}`}>
-                                 {time && <span className="flex-shrink-0 opacity-60 tabular-nums">[{time}]</span>}
-                                 {icon && <span className="flex-shrink-0 mt-[1px]">{icon}</span>}
-                                 <span dangerouslySetInnerHTML={{ __html: content }} />
-                              </div>
-                              );
-                           })
-                        )}
-                         {/* Auto-scroll placeholder - implement with useRef and useEffect if needed */}
-                         {/* <div ref={logEndRef} /> */}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Error Display */}
-        <AnimatePresence>
-          {error && !loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
-            >
-              <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
-                <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
-              </div>
-              <div className="flex-grow">
-                <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
-                <p className="text-red-700 dark:text-red-300 text-sm font-serif">{error.message || 'An unknown error occurred.'}</p>
-                {/* Optionally show partial report if available in error */}
-                {report && (
-                  <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs">
-                    <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer font-serif">Show partial report/details</summary>
-                    <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">
-                      {report}
-                    </div>
-                  </details>
-                )}
-                <button
-                  onClick={() => { setError(null); setReport(null); }} // Clear error and report
-                  className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-4 py-1.5 rounded-md font-serif font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
-                >
-                  Dismiss
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Report Display */}
-        <AnimatePresence>
-          {report && !loading && !error && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
-            >
-              {/* Report Header */}
-              <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
-                <h2 className="flex items-center gap-3 font-serif font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
-                  <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
-                    <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                Research Report
+              </h2>
+              {/* Final Metrics Display - Modern Cards */}
+              {currentProgress && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-md" title="Sources Consulted">
+                    <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
+                    <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.sourcesCount.toLocaleString()}</span> 
+                    <span className="text-gray-500 dark:text-gray-500">sources</span>
                   </div>
-                  Research Report
-                </h2>
-                {/* Final Metrics Display - Modern Cards */}
-                {currentProgress && (
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-md" title="Sources Consulted">
-                      <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
-                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.sourcesCount.toLocaleString()}</span> 
-                      <span className="text-gray-500 dark:text-gray-500">sources</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/30 rounded-md" title="Unique Domains">
-                      <DatabaseIcon className="w-3.5 h-3.5 text-green-500" />
-                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.domainsCount}</span>
-                      <span className="text-gray-500 dark:text-gray-500">domains</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 rounded-md" title="Data Analyzed">
-                      <FileTextIcon className="w-3.5 h-3.5 text-purple-500" />
-                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.dataSize}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/30 rounded-md" title="Execution Time">
-                      <RefreshCwIcon className="w-3.5 h-3.5 text-amber-500" />
-                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{(currentProgress.elapsedTime / 1000).toFixed(1)}s</span>
-                    </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/30 rounded-md" title="Unique Domains">
+                    <DatabaseIcon className="w-3.5 h-3.5 text-green-500" />
+                    <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.domainsCount}</span>
+                    <span className="text-gray-500 dark:text-gray-500">domains</span>
                   </div>
-                )}
-              </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 rounded-md" title="Data Analyzed">
+                    <FileTextIcon className="w-3.5 h-3.5 text-purple-500" />
+                    <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.dataSize}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/30 rounded-md" title="Execution Time">
+                    <RefreshCwIcon className="w-3.5 h-3.5 text-amber-500" />
+                    <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{(currentProgress.elapsedTime / 1000).toFixed(1)}s</span>
+                  </div>
+                </div>
+              )}
+            </div>
 
-              {/* Markdown Report Content - Enhanced Styling */}
-              <div className="prose-blockquote:border-l-blue-500 dark:prose-blockquote:border-l-blue-700 
+            {/* Markdown Report Content - Enhanced Styling */}
+            <div className="prose-blockquote:border-l-blue-500 dark:prose-blockquote:border-l-blue-700 
                           prose-blockquote:bg-blue-50/50 dark:prose-blockquote:bg-blue-900/20 
                           prose-blockquote:px-4 prose-blockquote:py-1 prose-blockquote:rounded-r-md 
                           prose-blockquote:not-italic prose-blockquote:text-gray-700 dark:prose-blockquote:text-gray-300 
@@ -1423,42 +1419,41 @@ export default function Home() {
                           prose-headings:font-serif prose-headings:tracking-tight
                           
                           max-w-none prose prose-lg dark:prose-invert">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeRaw]}
-                  components={renderers}
-                >
-                  {report}
-                </ReactMarkdown>
-              </div>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeRaw]}
+                components={renderers}
+              >
+                {report}
+              </ReactMarkdown>
+            </div>
 
-              {/* Report Footer */}
-              <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
-                <button
-                  onClick={() => {
-                    if (report) {
-                      navigator.clipboard.writeText(report)
-                        .then(() => alert('Report copied to clipboard!'))
-                        .catch(err => console.error('Failed to copy report:', err));
-                    }
-                  }}
-                  className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
-                >
-                  <CopyIcon className="w-4 h-4" />
-                  Copy Full Report
-                </button>
-                <button
-                  onClick={() => { setQuery(''); setReport(null); setError(null); }}
-                  className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
-                >
-                  <SearchIcon className="w-4 h-4" />
-                  New Research
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </main>
+            {/* Report Footer */}
+            <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
+              <button
+                onClick={() => {
+                  if (report) {
+                    navigator.clipboard.writeText(report)
+                      .then(() => alert('Report copied to clipboard!'))
+                      .catch(err => console.error('Failed to copy report:', err));
+                  }
+                }}
+                className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
+              >
+                <CopyIcon className="w-4 h-4" />
+                Copy Full Report
+              </button>
+              <button
+                onClick={() => { setQuery(''); setReport(null); setError(null); }}
+                className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
+              >
+                <SearchIcon className="w-4 h-4" />
+                New Research
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

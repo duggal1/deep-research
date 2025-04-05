@@ -21,9 +21,10 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  projects    Project[]
-  researches  Research[]
-  collections Collection[]
+  projects      Project[]
+  researches    Research[]
+  collections   Collection[]
+  searchHistory SearchHistory[]
 }
 
 // Project model for user projects
@@ -91,10 +92,28 @@ model Collection {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project    Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  researches Research[]
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  researches    Research[]
+  searchHistory SearchHistory[]
 
   @@index([userId])
   @@index([projectId])
+}
+
+// New model for Search History
+model SearchHistory {
+  id        String   @id @default(cuid())
+  query     String
+  userId    String
+  createdAt DateTime @default(now())
+  collectionId String?
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([collectionId])
+  @@index([userId, createdAt])
 }
