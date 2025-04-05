@@ -880,9 +880,9 @@ export default function Home() {
 
        if (sourceMatch && !ordered && url !== '#') {
           const domain = sourceMatch[2];
-          const relevance = sourceMatch[3] || 'N/A'; // Handle optional relevance
+          const relevance = sourceMatch[3] || 'N/A'; 
           const faviconUrl = getFaviconUrl(domain);
-          const isSecure = url.startsWith('https://'); // Check if URL is secure
+          const isSecure = url.startsWith('https://');
 
           return (
              <li className="group m-0 mb-3 p-0 list-none" {...props}>
