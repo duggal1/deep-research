@@ -33,6 +33,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ResearchError } from '@/lib/types';
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -286,9 +287,9 @@ export default function Home() {
 
         return (
            // Cleaner container: subtle border, less shadow
-          <div className="group code-block relative my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden bg-white dark:bg-gray-950 shadow-sm">
+          <div className="group code-block relative bg-white dark:bg-gray-950 shadow-sm my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden">
             {/* Cleaner Header Bar */}
-            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-b border-gray-200 dark:border-gray-700/80">
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-gray-200 dark:border-gray-700/80 border-b">
               <div className="flex items-center gap-2 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs">
                 {/* <TerminalIcon className="w-4 h-4" /> // Icon optional, can uncomment if desired */}
                 <span>{language.toUpperCase()}</span>
@@ -353,7 +354,7 @@ export default function Home() {
     // --- Table Renderer V6 - Clean & Simple Data Table ---
     table: ({ node, ...props }: any) => (
       // Simple container, subtle border, focus on content
-      <div className="my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden shadow-sm">
+      <div className="shadow-sm my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
           <table className="w-full text-sm border-collapse" {...props} />
         </div>
@@ -361,7 +362,7 @@ export default function Home() {
     ),
     tableHead: ({ node, ...props }: any) => (
       // Clean header, simple background, bottom border
-      <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-300 dark:border-gray-600" {...props} />
+      <thead className="bg-gray-50 dark:bg-gray-800/50 border-gray-300 dark:border-gray-600 border-b" {...props} />
     ),
     tr: ({ node, isHeader, ...props }: any) => (
       // Simple row separation, subtle hover
@@ -442,7 +443,7 @@ export default function Home() {
 
     // --- Heading Renderers - Clean, Serif, Clear Hierarchy ---
     h1: ({ node, children, ...props }: any) => (
-      <h1 className="mt-8 mb-5 pb-2 border-b border-gray-300 dark:border-gray-600 font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl tracking-tight" {...props}>
+      <h1 className="mt-8 mb-5 pb-2 border-gray-300 dark:border-gray-600 border-b font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl tracking-tight" {...props}>
         {children}
       </h1>
     ),
@@ -474,16 +475,16 @@ export default function Home() {
        if (matchingSection) {
          const SectionIcon = sectionIconMap[matchingSection];
          return (
-           <h2 className="flex items-center mt-10 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
+           <h2 className="flex items-center mt-10 mb-4 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
               {/* Cleaner icon presentation */}
-             <SectionIcon className="w-5 h-5 mr-2.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+             <SectionIcon className="flex-shrink-0 mr-2.5 w-5 h-5 text-blue-600 dark:text-blue-400" />
              {text}
            </h2>
          );
        }
        // Default H2 - simple border bottom
        return (
-         <h2 className="mt-10 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
+         <h2 className="mt-10 mb-4 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
            {children}
          </h2>
        );
@@ -519,11 +520,11 @@ export default function Home() {
       if (node?.children?.[0]?.tagName === 'img') {
         const imgNode = node.children[0];
         return (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="block my-5 group">
+          <a href={url} target="_blank" rel="noopener noreferrer" className="group block my-5">
             <img
               src={imgNode.properties.src}
               alt={imgNode.properties.alt || 'Embedded image'}
-              className="max-w-full h-auto rounded-md border border-gray-200 dark:border-gray-700 shadow-sm group-hover:shadow-md transition-shadow mx-auto"
+              className="shadow-sm group-hover:shadow-md mx-auto border border-gray-200 dark:border-gray-700 rounded-md max-w-full h-auto transition-shadow"
               loading="lazy"
             />
           </a>
@@ -532,11 +533,11 @@ export default function Home() {
       // Handle image links (keep simple wrapper) - Moved after wrapped image check
       if (url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i)) {
         return (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="block my-5 group">
+          <a href={url} target="_blank" rel="noopener noreferrer" className="group block my-5">
             <img
               src={url}
               alt={textContent || 'Linked image'}
-              className="max-w-full h-auto rounded-md border border-gray-200 dark:border-gray-700 shadow-sm group-hover:shadow-md transition-shadow"
+              className="shadow-sm group-hover:shadow-md border border-gray-200 dark:border-gray-700 rounded-md max-w-full h-auto transition-shadow"
               loading="lazy"
             />
           </a>
@@ -564,7 +565,7 @@ export default function Home() {
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noopener noreferrer' : undefined}
           // Simple, clean underline style
-          className="inline-flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline underline-offset-2 decoration-blue-600/30 dark:decoration-blue-400/30 hover:decoration-blue-600/70 dark:hover:decoration-blue-400/70 break-words transition-colors duration-150"
+          className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 dark:hover:text-blue-300 dark:text-blue-400 decoration-blue-600/30 hover:decoration-blue-600/70 dark:decoration-blue-400/30 dark:hover:decoration-blue-400/70 underline underline-offset-2 break-words transition-colors duration-150"
           {...props}
         >
            {/* Subtle Favicon */}
@@ -572,7 +573,7 @@ export default function Home() {
             <img
               src={faviconUrl}
               alt="" // Decorative
-              className="inline-block mr-0.5 w-4 h-4 rounded-sm flex-shrink-0 align-text-bottom object-contain" // Added object-contain
+              className="inline-block flex-shrink-0 mr-0.5 rounded-sm w-4 h-4 object-contain align-text-bottom" // Added object-contain
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -582,7 +583,7 @@ export default function Home() {
            <span>{isLinkTextUrl ? url.replace(/^(https?:)?\/\//, '').replace(/\/$/, '') : children}</span>
           {/* Subtle External Link Icon */}
           {isExternal && (
-            <ExternalLinkIcon className="inline-block ml-0.5 w-3.5 h-3.5 opacity-60 group-hover:opacity-90 transition-opacity flex-shrink-0 align-text-bottom" />
+            <ExternalLinkIcon className="inline-block flex-shrink-0 opacity-60 group-hover:opacity-90 ml-0.5 w-3.5 h-3.5 align-text-bottom transition-opacity" />
           )}
         </a>
       );
@@ -593,7 +594,7 @@ export default function Home() {
     // in the main report or will be handled by the separate sources list.
     li: ({ node, children, ordered, ...props }: any) => {
        return (
-         <li className="my-1 flex items-start font-serif" {...props}> {/* Added font-serif */}
+         <li className="flex items-start my-1 font-serif" {...props}> {/* Added font-serif */}
             {/* Simple marker */}
            <span className={`flex-shrink-0 mr-2.5 pt-1 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
             {ordered ? `${(props.index ?? 0) + 1}.` : (
@@ -609,10 +610,10 @@ export default function Home() {
     // --- List Wrappers - Remove specific class logic ---
     ul: ({ node, children, className, ...props }: any) => {
        // Default list styling - standard bullets
-       return <ul className="space-y-1 mb-5 pl-5 list-disc font-serif" {...props}>{children}</ul>; {/* Added font-serif */}
+       return <ul className="space-y-1 mb-5 pl-5 font-serif list-disc" {...props}>{children}</ul>; {/* Added font-serif */}
     },
     ol: ({ node, children, className, ...props }: any) => (
-       <ol className="space-y-1 mb-5 pl-5 list-decimal font-serif" {...props}>{children}</ol> // Standard ordered list, Added font-serif
+       <ol className="space-y-1 mb-5 pl-5 font-serif list-decimal" {...props}>{children}</ol> // Standard ordered list, Added font-serif
     ),
 
     // --- Paragraph Renderer - Use Serif ---
@@ -631,12 +632,12 @@ export default function Home() {
          return <>{children}</>;
        }
        // Default paragraph with serif font
-       return <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed font-serif" {...props}>{children}</p>;
+       return <p className="mb-4 font-serif text-gray-700 dark:text-gray-300 leading-relaxed" {...props}>{children}</p>;
     },
 
     // --- Blockquote Renderer - Clean & Simple ---
     blockquote: ({ node, children, ...props }: any) => (
-        <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 pr-2 py-1 my-5 italic text-gray-600 dark:text-gray-400 font-serif" {...props}>
+        <blockquote className="my-5 py-1 pr-2 pl-4 border-gray-300 dark:border-gray-600 border-l-4 font-serif text-gray-600 dark:text-gray-400 italic" {...props}>
             {children}
         </blockquote>
     ),
@@ -654,10 +655,10 @@ export default function Home() {
         href={source.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="flex items-start gap-3 bg-white dark:bg-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-700/60 p-3 border border-gray-200 dark:border-gray-700/80 hover:border-gray-300 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150 shadow-sm hover:shadow-md group"
+        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-gray-800/50 dark:hover:bg-gray-700/60 shadow-sm hover:shadow-md p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-700/80 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150"
       >
         {/* Subtle Favicon container */}
-        <div className="flex-shrink-0 flex justify-center items-center bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded w-8 h-8 mt-0.5">
+        <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 mt-0.5 border border-gray-200 dark:border-gray-600 rounded w-8 h-8">
           {faviconUrl ? (
             <img
               src={faviconUrl}
@@ -678,7 +679,7 @@ export default function Home() {
         </div>
         {/* Main content area */}
         <div className="flex-grow min-w-0 font-serif"> {/* Added font-serif */}
-          <h4 className="font-medium text-gray-800 dark:text-gray-100 group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors duration-150 line-clamp-1"> {/* Removed font-serif */}
+          <h4 className="font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 line-clamp-1 transition-colors duration-150"> {/* Removed font-serif */}
             {source.title || domain || source.url} {/* Show title, fallback to domain/url */}
           </h4>
           <p className="text-gray-500 dark:text-gray-400 text-sm line-clamp-2"> {/* Removed font-serif */}
@@ -690,13 +691,13 @@ export default function Home() {
              <span className="truncate">{domain}{isSecure ? ' 🔒' : ''}</span>
            </div>
         </div>
-        <ExternalLinkIcon className="flex-shrink-0 w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors self-center ml-2" />
+        <ExternalLinkIcon className="flex-shrink-0 self-center ml-2 w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
       </a>
     );
   };
 
   return (
-    <div className="py-12 px-4 sm:px-6 lg:px-8"> {/* Added padding */}
+    <div className="px-4 sm:px-6 lg:px-8 py-12"> {/* Added padding */}
       {/* Title and Description */}
       <div className="space-y-8 mx-auto mb-12 max-w-3xl">
         <motion.div
@@ -706,11 +707,11 @@ export default function Home() {
            className="space-y-4 text-center"
         >
           <h1 className="flex justify-center items-center font-serif font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
-            <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-300">
+            <span className="bg-clip-text bg-gradient-to-r from-blue-600 dark:from-blue-400 to-indigo-500 dark:to-indigo-300 text-transparent">
               Deep Research Engine
             </span>
           </h1>
-           <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg font-serif">
+           <p className="mx-auto max-w-2xl font-serif text-gray-600 dark:text-gray-400 text-lg">
              Enter a query to initiate AI-powered deep research. Choose &apos;Think&apos; for deeper analysis (Gemini Pro) or &apos;Research&apos; for faster results (Gemini Flash). {/* Updated description */}
           </p>
         </motion.div>
@@ -733,13 +734,13 @@ export default function Home() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g., Explain quantum entanglement with code examples"
               // Adjust right padding for buttons
-              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
+              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleDeepResearch('non-think')} // Default Enter triggers 'non-think'
               disabled={loading}
             />
 
             {/* --- Button Container --- */}
-            <div className="top-1/2 right-3 absolute flex items-center gap-2 -translate-y-1/2 h-[75%]">
+            <div className="top-1/2 right-3 absolute flex items-center gap-2 h-[75%] -translate-y-1/2">
               {/* --- Think Button (Gemini Pro) --- */}
               <button
                 onClick={() => handleDeepResearch('think')}
@@ -753,7 +754,7 @@ export default function Home() {
                 )}
                 aria-label="Think with Gemini Pro"
               >
-                <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+                <div className="flex flex-shrink-0 justify-center items-center w-5 h-5">
                   <motion.div
                      animate={{ rotate: loading && loadingMode === 'think' ? 360 : 0 }}
                      transition={{
@@ -763,7 +764,7 @@ export default function Home() {
                      }}
                   >
                     {loading && loadingMode === 'think' ? (
-                      <Loader2Icon className="w-5 h-5 animate-spin text-purple-500 dark:text-purple-400" />
+                      <Loader2Icon className="w-5 h-5 text-purple-500 dark:text-purple-400 animate-spin" />
                     ) : (
                       <BrainIcon className="w-5 h-5" />
                     )}
@@ -776,7 +777,7 @@ export default function Home() {
                       animate={{ width: "auto", opacity: 1 }}
                       exit={{ width: 0, opacity: 0 }}
                       transition={{ duration: 0.2 }}
-                      className="text-sm font-medium overflow-hidden whitespace-nowrap flex-shrink-0"
+                      className="flex-shrink-0 overflow-hidden font-medium text-sm whitespace-nowrap"
                     >
                       Think
                     </motion.span>
@@ -815,22 +816,29 @@ export default function Home() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.4, ease: "circOut" }}
-            className="bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-950/90 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl space-y-6 overflow-hidden"
+            className="space-y-6 bg-gradient-to-br from-white dark:from-gray-900 via-gray-50 dark:via-gray-950/90 to-gray-100 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl overflow-hidden"
           >
              {/* Header */}
-             <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+             <div className="flex sm:flex-row flex-col justify-between items-center gap-4">
                <div className="flex items-center gap-3">
-                 <div className="relative flex items-center justify-center w-10 h-10">
+                 <div className="relative flex justify-center items-center w-10 h-10">
                     {/* Simple Spinner */}
                     <Loader2Icon className="w-7 h-7 text-blue-600 dark:text-blue-500 animate-spin" />
                  </div>
-                 <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl md:text-2xl tracking-tight">
-                   Research in Progress...
-                 </h3>
+                 <TextShimmerWave
+      className='font-serif font-semibold text-lg [--base-color:#000dff] [--base-gradient-color:#ff0090] dark:[--base-gradient-color:##e3dce0]'
+      duration={1}
+      spread={1}
+      zDistance={1}
+      scaleDistance={1.1}
+      rotateYDistance={20}
+    >
+     Researching...
+    </TextShimmerWave>
                </div>
                {/* Elapsed time */}
-                <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">
-                   <ClockIcon className="inline-block w-4 h-4 mr-1.5 align-text-bottom" />
+                <div className="bg-gradient-to-r from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">
+                   <ClockIcon className="inline-block mr-1.5 w-4 h-4 align-text-bottom" />
                    {`${(elapsedTime / 1000).toFixed(1)}s`}
                  </div>
              </div>
@@ -842,11 +850,11 @@ export default function Home() {
                  animate={{ opacity: 1, height: 'auto' }}
                  exit={{ opacity: 0, height: 0 }}
                  transition={{ duration: 0.3, delay: 0.1 }}
-                 className="border-l-4 border-purple-500 bg-purple-50 dark:bg-purple-900/30 px-4 py-3 text-purple-700 dark:text-purple-300 rounded-r-lg shadow-sm"
+                 className="bg-purple-50 dark:bg-purple-900/30 shadow-sm px-4 py-3 border-purple-500 border-l-4 rounded-r-lg text-purple-700 dark:text-purple-300"
                >
                  <div className="flex items-center gap-2">
-                   <BrainIcon className="w-5 h-5 flex-shrink-0 text-purple-600 dark:text-purple-400" />
-                   <p className="text-sm font-medium font-serif"> {/* Added font-serif */}
+                   <BrainIcon className="flex-shrink-0 w-5 h-5 text-purple-600 dark:text-purple-400" />
+                   <p className="font-serif font-medium text-sm"> {/* Added font-serif */}
                      Engaging Gemini Pro for deeper analysis... this may take 1-3 minutes.
                    </p>
                  </div>
@@ -854,9 +862,9 @@ export default function Home() {
               )}
 
              {/* Indeterminate Progress Bar */}
-             <div className="w-full bg-gray-200 dark:bg-gray-700/50 rounded-full h-2 overflow-hidden relative">
+             <div className="relative bg-gray-200 dark:bg-gray-700/50 rounded-full w-full h-2 overflow-hidden">
                <motion.div
-                 className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full"
+                 className="top-0 left-0 absolute bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full h-full"
                  initial={{ x: "-100%" }}
                  animate={{ x: ["-100%", "100%"] }} // Moves across
                  transition={{
@@ -869,7 +877,7 @@ export default function Home() {
              </div>
 
              {/* Simplified message */}
-              <div className="text-center text-gray-600 dark:text-gray-400 font-serif">
+              <div className="font-serif text-gray-600 dark:text-gray-400 text-center">
                 Gathering and synthesizing information from the web...
              </div>
 
@@ -894,10 +902,10 @@ export default function Home() {
             </div>
             <div className="flex-grow">
               <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
-              <p className="text-red-700 dark:text-red-300 text-sm font-serif break-words">{error.message || 'An unknown error occurred.'}</p>
+              <p className="font-serif text-red-700 dark:text-red-300 text-sm break-words">{error.message || 'An unknown error occurred.'}</p>
               {/* Optionally show partial report/sources if available in error state */}
               {(report || sources.length > 0) && (
-                 <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs font-serif"> {/* Added font-serif */}
+                 <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 font-serif text-xs"> {/* Added font-serif */}
                    <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer">Show partial data</summary> {/* Removed font-serif (inherits) */}
                    {report && <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">Report: {report}</div>}
                    {sources.length > 0 && <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">Sources: {JSON.stringify(sources, null, 2)}</div>}
@@ -935,22 +943,22 @@ export default function Home() {
                   Research Report
                 </h2>
                 {/* Final Metrics Display - Simplified */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs font-serif"> {/* Added font-serif */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg font-serif text-gray-600 dark:text-gray-400 text-xs"> {/* Added font-serif */}
                   {finalSourceCount !== null && (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-md" title="Sources Analyzed">
+                    <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded-md" title="Sources Analyzed">
                       <LinkIcon className="w-3.5 h-3.5 text-blue-500" />
                       <span className="font-semibold text-gray-700 dark:text-gray-300">{finalSourceCount.toLocaleString()}</span> {/* Removed font-serif */}
                       <span className="text-gray-500 dark:text-gray-500">sources</span>
                     </div>
                   )}
                   {elapsedTime > 0 && (
-                    <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/30 rounded-md" title="Execution Time">
+                    <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-md" title="Execution Time">
                       <ClockIcon className="w-3.5 h-3.5 text-amber-500" />
                       <span className="font-semibold text-gray-700 dark:text-gray-300">{(elapsedTime / 1000).toFixed(1)}s</span> {/* Removed font-serif */}
                     </div>
                   )}
                   {finalModelUsed && (
-                     <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 rounded-md" title="Model Used">
+                     <div className="flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded-md" title="Model Used">
                        <BrainIcon className="w-3.5 h-3.5 text-purple-500" />
                        <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize">{finalModelUsed.replace('gemini-2.5-pro-exp-03-25', 'Gemini Pro Exp').replace('gemini-2.0-flash', 'Gemini Flash')}</span> {/* Updated model name display, Removed font-serif */}
                      </div>
@@ -959,23 +967,7 @@ export default function Home() {
               </div>
 
               {/* Markdown Report Content */}
-              <div className="prose prose-base lg:prose-lg dark:prose-invert // Base prose styles
-                            max-w-none // Allow content to fill container
-                            prose-p:font-serif prose-li:font-serif // Serif for paragraphs & lists
-                            prose-headings:font-serif prose-headings:tracking-tight // Serif for headings
-                            prose-a:text-blue-600 dark:prose-a:text-blue-400 // Default link color (overridden by renderer)
-                            prose-strong:font-semibold prose-strong:text-gray-800 dark:prose-strong:text-gray-200 // Strong styling
-                            prose-blockquote:font-serif // Serif for blockquotes
-                            prose-code:font-mono // Mono for code (overridden by renderer)
-                            prose-img:rounded-md prose-img:border prose-img:border-gray-200 dark:prose-img:border-gray-700 prose-img:shadow-sm // Image styling
-                            prose-hr:border-gray-200 dark:prose-hr:border-gray-700 // HR styling
-                            prose-table:text-sm prose-table:font-serif // Base table font size, Added font-serif
-                            prose-thead:border-b prose-thead:border-gray-300 dark:prose-thead:border-gray-600 // Table head border
-                            prose-th:font-semibold prose-th:px-4 prose-th:py-2 prose-th:text-left // Table header styling
-                            prose-td:px-4 prose-td:py-2 // Table cell padding
-                            prose-tr:border-b prose-tr:border-gray-200 dark:prose-tr:border-gray-700/60 // Table row borders
-                            dark:prose-td:text-gray-300 dark:prose-th:text-gray-200 // Dark mode tables text
-                            ">
+              <div className="blockquotes table tables prose-img:shadow-sm dark:prose-invert prose-td:px-4 prose-th:px-4 prose-td:py-2 prose-th:py-2 border borders prose-img:border dark:prose-hr:border-gray-700 dark:prose-img:border-gray-700 dark:prose-thead:border-gray-600 dark:prose-tr:border-gray-700/60 prose-hr:border-gray-200 prose-img:border-gray-200 prose-thead:border-gray-300 prose-tr:border-gray-200 prose-thead:border-b prose-tr:border-b prose-img:rounded-md max-w-none font-serif prose-blockquote:font-serif prose-headings:font-serif prose-li:font-serif prose-p:font-serif prose-table:font-serif prose-code:font-mono prose-strong:font-semibold prose-th:font-semibold dark:prose-a:text-blue-400 dark:prose-strong:text-gray-200 dark:prose-td:text-gray-300 dark:prose-th:text-gray-200 prose-a:text-blue-600 prose-strong:text-gray-800 prose-table:text-sm prose-th:text-left prose-headings:tracking-tight prose prose-base lg:prose-lg // Base prose styles // Allow content to fill container // Serif for paragraphs & lists // Serif for headings // Default link color (overridden by renderer) // Strong styling // Serif for // Mono for code (overridden by renderer) // Image styling // HR styling // Base font size, Added // Table head // Table header styling // Table cell padding // Table row // Dark mode text">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   rehypePlugins={[rehypeRaw]}
@@ -987,12 +979,12 @@ export default function Home() {
 
              {/* Sources Section */}
              {sources && sources.length > 0 && (
-                <div className="mt-12 pt-8 border-t border-gray-200 dark:border-gray-700/80">
-                  <h3 className="flex items-center gap-3 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl mb-6">
+                <div className="mt-12 pt-8 border-gray-200 dark:border-gray-700/80 border-t">
+                  <h3 className="flex items-center gap-3 mb-6 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl">
                      <LinkIcon className="w-6 h-6 text-green-600 dark:text-green-400" />
                      Sources Used ({sources.length})
                    </h3>
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                   <div className="gap-3 grid grid-cols-1 md:grid-cols-2">
                      {sources.map((source, index) => (
                        <SourceItem key={source.url + '-' + index} source={source} />
                      ))}
