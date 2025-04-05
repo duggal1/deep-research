@@ -11,14 +11,14 @@ interface EmbeddingVector {
 
 // --- Constants Adjustment ---
 // Target more sources, higher parallelism, longer overall time, but keep individual request timeouts reasonable.
-const MAX_TARGET_SOURCES = 50000; // Increased from 30000 to 50000
-const MAX_TOKEN_OUTPUT_TARGET = 150000; // Increased from 120000 to 150000
-const MAX_PARALLEL_FETCHES = 250; // Increased from 180 to 250
-const MAX_OVERALL_RESEARCH_TIME_MS = 220 * 1000; // Reduced from 240s to 220s for faster results
-const FETCH_TIMEOUT_MS = 12000; // Decreased from 15000 to 12000ms
-const MAX_FETCH_RETRIES = 3; // Increased from 2 to 3
-const RETRY_DELAY_MS = 1200; // Reduced from 1500 to 1200
-const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 3; // Increased from 2.5 to 3
+const MAX_TARGET_SOURCES = 60000; // Increased slightly from 50000
+const MAX_TOKEN_OUTPUT_TARGET = 180000; // Increased from 150000
+const MAX_PARALLEL_FETCHES = 250; // Keep as is
+const MAX_OVERALL_RESEARCH_TIME_MS = 210 * 1000; // Slightly reduced again to manage expectations (3.5 mins)
+const FETCH_TIMEOUT_MS = 12000; // Keep as is
+const MAX_FETCH_RETRIES = 3; // Keep as is
+const RETRY_DELAY_MS = 1200; // Keep as is
+const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2.5; // Adjust context based on new token target
 // ---
 
 // --- Increased Intra-Domain Crawl Limits ---
@@ -50,13 +50,13 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
-  private MAX_DATA_SOURCES = 150000; // Increased from 100000 to 150000 for more comprehensive research
-  private MAX_TOKEN_OUTPUT = 350000; // Increased from 250000 to 350000 for more detailed output
-  private CHUNK_SIZE = 40000; // Increased from 35000 to 40000
-  private SEARCH_DEPTH = 30; // Increased from 25 to 30
-  private MAX_PARALLEL_REQUESTS = 300; // Increased from 250 to 300
-  private ADDITIONAL_DOMAINS = 50; // Increased from 30 to 50
-  private MAX_RESEARCH_TIME = 200000; // Reduced from 220000 to 200000ms (3.33 minutes) for faster processing
+  private MAX_DATA_SOURCES = 180000; // Increased from 150000
+  private MAX_TOKEN_OUTPUT = 400000; // Increased from 350000 for synthesis
+  private CHUNK_SIZE = 45000; // Increased from 40000
+  private SEARCH_DEPTH = 30; // Keep at 30
+  private MAX_PARALLEL_REQUESTS = 300; // Keep as is
+  private ADDITIONAL_DOMAINS = 50; // Keep as is
+  private MAX_RESEARCH_TIME = 190000; // Reduced further to target ~3.15 mins max internal engine time
   private DEEP_RESEARCH_MODE = true;
   private firecrawlApiKey: string;
 
@@ -1921,68 +1921,65 @@ export class ResearchEngine {
       ${followUpData.map((d, i) => `--- Follow-up Area ${i+1} ---\n${d.substring(0, followUpDataSize)}${d.length > followUpDataSize ? '\n[...]' : ''}`).join('\n\n')}
     `;
 
-    // Refined Synthesis Prompt
+    // Create a more comprehensive prompt that utilizes our higher token capacity
     const prompt = `
-      Task: Synthesize the provided research context into a highly detailed, accurate, and well-structured report answering the query: "${query}".
-      Audience: Assumed to be knowledgeable and seeking comprehensive, factual information.
+      Task: Synthesize all research data into an exceptionally comprehensive, highly accurate, evidence-based report answering the specific query: "${query}".
+      Audience: Knowledgeable users seeking detailed, factual insights and structured analysis.
       
       Research Context Summary:
       ${researchContext}
       --- End of Context ---
 
       **CRITICAL Instructions for High-Quality Synthesis:**
-      1.  **Answer the Core Question:** Structure the entire response to directly and thoroughly answer "${query}".
-      2.  **Evidence is Paramount:** Base ALL statements strictly on the provided research context snippets. Use inline citations frequently, formatted as \`(Source: [domain.com](https://domain.com))\`. Group citations where multiple sources support a point, e.g., \`(Sources: [domain1.com](https://domain1.com), [domain2.com](https://domain2.com))\`. DO NOT use URLs directly in citations, only domain names hyperlinked.
-      3.  **Deep Synthesis & Analysis:** Go beyond summarizing. Integrate findings, identify patterns, contradictions, and nuances from the data. Explain *why* things are the way the context describes them.
-      4.  **Highlight Consensus & Disagreement:** Explicitly point out where the source data agrees and where it conflicts. Quantify if possible (e.g., "Most sources state X, but [domain.com](https://domain.com) offers a counterpoint...").
-      5.  **Technical Precision (If Applicable):** If the query is technical, provide exact details, version numbers, configurations, and potential code examples (using markdown \`\`\`language\`\`\` blocks) as found *only* in the context. Avoid oversimplification.
-      6.  **Mandatory Markdown Tables:** For any comparisons (features, pros/cons, versions, pricing, etc.), **YOU MUST use standard, clearly formatted markdown tables**. Ensure correct header/separator lines (\`| Header | Header |\n|---|---|\`). **Double-check table formatting for correctness.**
-      7.  **Structure & Readability:** Use clear headings (##), subheadings (###), bullet points (* or -), and bold text for emphasis. Ensure logical flow.
-      8.  **Acknowledge Context Limitations:** If the provided context is insufficient or ambiguous for parts of the query, state this clearly. Do not invent or extrapolate beyond the supplied data.
-      9.  **Professional Tone:** Maintain an objective, factual, and analytical tone.
-      10. **Output Length:** Utilize the available token space to provide maximum detail and depth.
+      1.  **Directly Answer the Core Question:** The primary focus must be a thorough and direct answer to "${query}". Structure the entire response logically around this.
+      2.  **Evidence is Paramount:** Base ALL statements strictly on the provided research context snippets. Use frequent inline citations formatted as \`(Source: [domain.com](https://domain.com))\`. Group citations for points supported by multiple sources: \`(Sources: [domain1.com](https://domain1.com), [domain2.com](https://domain2.com))\`. **Do not use raw URLs in citations.** Verify information by cross-referencing between sources in the context whenever possible.
+      3.  **Deep Synthesis & Analysis:** Go beyond simple summaries. Integrate findings into a coherent narrative. Identify key themes, patterns, nuanced arguments, conflicting data points (and quantify them if possible), and critical technical details found *only* in the context. Explain the 'why' behind the facts presented.
+      4.  **Highlight Consensus & Disagreement:** Explicitly state where sources agree and disagree. Use phrases like "Multiple sources ([domain1.com](https://domain1.com), [domain2.com)) concur that..." or "While [domainA.com](https://domainA.com) suggests X, [domainB.com](https://domainB.com) presents Y...".
+      5.  **Technical Precision (If Applicable):** For technical queries, provide exact details, version numbers, configurations, code patterns (using markdown \`\`\`language\`\`\` blocks with appropriate language hints), and implications derived *solely* from the provided context. Avoid oversimplification; aim for technical depth.
+      6.  **Mandatory & Correct Markdown Tables:** For *any* comparisons (features, pros/cons, versions, financials, benchmarks, etc.), **YOU MUST use standard, clearly formatted markdown tables.** Ensure correct header/separator lines (\`| Header | Header |\n|---|---|\`). **Verify table markdown syntax for correctness.** Populate tables fully based *only* on the context; if data for a cell isn't in the context, explicitly state "N/A" or "Not specified in context".
+      7.  **Structure & Readability:** Organize using clear headings (##), subheadings (###), bullet points (* or -), numbered lists for steps/sequences, and **bold text** for emphasis on key terms or findings. Ensure logical flow and clarity.
+      8.  **Acknowledge Context Limitations:** If the provided context is insufficient, ambiguous, or contradictory for parts of the query, state this explicitly within the relevant section and the 'Limitations' section. Do not invent, assume, or extrapolate beyond the supplied data. Accuracy and transparency are critical.
+      9.  **Professional Tone:** Maintain an objective, factual, and analytical tone throughout.
+      10. **Output Length & Detail:** Maximize the detail and depth of the analysis. Utilize the available output token space effectively to provide a comprehensive answer.
 
       **Required Report Structure:**
 
       ## Comprehensive Analysis: ${query}
 
       ### Executive Summary
-      (Concise, high-level answer to the query, summarizing the most critical findings from the context. Aim for ~150-250 words.)
+      (Concise, high-level answer to the query, summarizing the absolute most critical findings and conclusions derived *only* from the provided context. Aim for ~200-300 words.)
 
       ### Key Findings & Detailed Breakdown
-      (The main body. Organize by theme or sub-topic related to the query. Synthesize information deeply, integrating facts and citations (\`(Source: [domain.com](https://domain.com))\`) as per instruction #2. Use subheadings (###) liberally.)
+      (The main body. Organize by theme or sub-topic relevant to the query. Synthesize information deeply, integrating facts with frequent inline citations \`(Source: [domain.com](https://domain.com))\`. Use subheadings (###) liberally for structure. This should be the most substantial section.)
 
-      ### Comparative Analysis (Use Tables if Applicable)
-      (Present comparisons using **correctly formatted markdown tables**. Discuss nuances, pros/cons, or differing perspectives found in the context.)
+      ### Comparative Analysis (Use Tables Here)
+      (Present comparisons using **correctly formatted markdown tables**. Discuss nuances, pros/cons, differing perspectives, or benchmarks found *within the context*. Clearly state if context for comparisons is limited.)
 
       ### Technical Specifications / Implementation Details (If Applicable)
-      (Detailed technical information, configurations, code patterns found in context.)
+      (Detailed technical information, configurations, code patterns, API usage, etc., found *only* in the context. Use code blocks where appropriate.)
 
       ### Limitations & Uncertainties in Data
-      (Explicitly mention any gaps, contradictions, or ambiguities identified in the provided research context.)
+      (Explicitly discuss gaps, contradictions, ambiguities, or lack of recent data identified *within the provided research context*. Explain how these limitations might affect the conclusions.)
 
       ### Conclusion
-      (Summarize the main conclusions drawn *strictly* from the analyzed data in relation to the original query. Reiterate the confidence level based on source consensus/conflict.)
+      (Summarize the main conclusions drawn *strictly* from the analyzed data in direct relation to the original query. Briefly reiterate the confidence level based on source consensus/conflict and identified limitations.)
 
       ---
       *Analysis derived from ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains. Key domains include: ${sourceSummary}.*
     `;
 
-
     try {
       console.log(`Synthesizing comprehensive research with ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains. Prompt length: ${prompt.length}`);
-      addLog(`Synthesizing final report from ${finalSources.length} sources... (Using enhanced prompt)`);
+      addLog(`Synthesizing final report from ${finalSources.length} sources... (Using enhanced prompt, Target Tokens: ${this.MAX_TOKEN_OUTPUT})`);
+      // Generate content with maximum model capacity
       const result = await this.model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: this.MAX_TOKEN_OUTPUT,
-          temperature: 0.15, // Slightly increased for potentially better flow while staying factual
-          // Add safety settings if needed, e.g., block none for max flexibility if appropriate
-          // safetySettings: [
-          //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-          //   // ... other categories
-          // ]
+          maxOutputTokens: this.MAX_TOKEN_OUTPUT, // Use increased token limit
+          temperature: 0.15, // Keep temperature relatively low for factuality
+          // topP: 0.95, // Optional: Adjust top-p sampling
         }
+        // Add safety settings if necessary
       });
 
       const responseText = result.response?.text(); // Use optional chaining
@@ -2009,7 +2006,7 @@ export class ResearchEngine {
       // Regex to find potential markdown tables, including those with inconsistent separators
       const tableRegex = /(\|.*?\n\|[ \t]*[-:|]+[ \t]*\|.*\n(?:\|.*?\n)+)/g;
 
-      text = text.replace(tableRegex, (tableMatch) => {
+      text = text.replace(tableRegex, (tableMatch: string) => {
           const lines = tableMatch.trim().split('\n');
           if (lines.length < 2) return tableMatch; // Not a valid table structure
 
@@ -2031,7 +2028,7 @@ export class ResearchEngine {
                   fixedTable += '\n' + row;
               } else {
                    // Attempt to fix rows with missing/extra pipes (basic fix)
-                   const cells = row.split('|').map(c => c.trim());
+                   const cells = row.split('|').map((c: string) => c.trim());
                    // Remove potential empty strings from start/end split
                    if (cells[0] === '') cells.shift();
                    if (cells[cells.length - 1] === '') cells.pop();

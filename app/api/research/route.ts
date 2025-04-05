@@ -7,198 +7,154 @@ const researchEngine = new ResearchEngine();
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'edge';
-export const maxDuration = 300; // 5 minutes (matches Edge limit, allows for MAX_OVERALL_RESEARCH_TIME_MS)
+export const maxDuration = 300; // Keep at 300s (5 min) Edge limit
 
 export async function POST(req: Request) {
   let query = '';
-  let startTime = Date.now(); // Define startTime outside the try block
+  let startTime = Date.now();
 
   try {
     const body = await req.json();
     query = body.query;
-    
-    // Process custom options from client
     const options = body.options || {};
-    
-    // Greatly increase limits for a more comprehensive research
-    const maxDepth = Math.min(options.maxDepth || 30, 35); // Increased from 25 to 30, cap at 35
-    const timeLimit = Math.min(options.timeLimit || 240, 290); // Default 240s, cap at 290s
-    const maxUrls = Math.min(options.maxUrls || 120000, 200000); // Increased to handle more sources
-    
-    // Parse client-side domain maximums
-    const maxDomains = Math.min(options.maxDomains || 70, 100); // Allow up to 100 domains
-    const maxSources = Math.min(options.maxSources || 70, 100); // Allow up to 100 sources
+
+    // Configuration - Allow more sources/domains from client, but cap reasonably
+    const maxDepth = Math.min(options.maxDepth || 30, 35);
+    const timeLimit = Math.min(options.timeLimit || 210, 280); // Slightly reduced default, cap near 5min Edge limit
+    const maxUrls = Math.min(options.maxUrls || 150000, 250000); // Increased max
+    const maxDomains = Math.min(options.maxDomains || 80, 120); // Increased max domains
+    const maxSources = Math.min(options.maxSources || 80, 120); // Increased max sources
+
+    // Define display limits (can be different from processing limits)
+    const MAX_DISPLAY_SOURCES = 40; // Increased number of sources to display
 
     if (!query?.trim()) {
-        console.log("API Error: Invalid query received."); // Added Log
+        console.log("API Error: Invalid query received.");
         return NextResponse.json({
             error: { code: 'INVALID_QUERY', message: 'Please provide a valid research query' } as ResearchError
         }, { status: 400 });
     }
 
-    clearLogs(); // Clear logs for the new request
-    clearMetrics(); // Also clear metrics for the new request
+    clearLogs();
+    clearMetrics();
     addLog(`Received research request: "${query}"`);
-    console.log(`[API Route] Starting deep research API call for: "${query}" with maxDepth=${maxDepth}, timeLimit=${timeLimit}s, maxUrls=${maxUrls}, maxDomains=${maxDomains}, maxSources=${maxSources}`);
+    console.log(`[API Route] Starting research: query="${query}", maxDepth=${maxDepth}, timeLimit=${timeLimit}s, maxUrls=${maxUrls}, maxDomains=${maxDomains}, maxSources=${maxSources}, displaySources=${MAX_DISPLAY_SOURCES}`);
 
-    // Call the research engine with enhanced configuration options
+    // Call the research engine
     const result: ResearchResult = await researchEngine.research(query, {
       maxDepth,
       timeLimit: timeLimit * 1000, // Convert to ms
       maxUrls,
-      useFirecrawl: true,
-      maxDomains, // Pass through the domain limit 
-      maxSources, // Pass through the source limit
-      highQuality: true // Ensure highest quality output
+      useFirecrawl: true, // Assuming Firecrawl usage is desired
+      maxDomains,
+      maxSources,
+      highQuality: true
     });
 
     const endTime = Date.now();
     const duration = (endTime - startTime) / 1000;
-    // Log metrics received from the engine
     console.log(`[API Route] Research engine process completed for: "${query}" in ${duration.toFixed(1)}s`);
     console.log(`[API Route] Engine Metrics: Sources=${result.researchMetrics.sourcesCount}, Domains=${result.researchMetrics.domainsCount}, Size=${result.researchMetrics.dataSize}, EngineTime=${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s`);
     addLog(`Research engine finished. Metrics: ${result.researchMetrics.sourcesCount} sources, ${result.researchMetrics.domainsCount} domains.`);
-    
-    // Update metrics in the progress tracking
     updateMetrics(result.researchMetrics);
 
-    // Check if the result itself indicates an error occurred (e.g., from timeout or critical failure within the engine)
+    // Handle engine errors
     if (result.metadata?.error) {
         console.error(`[API Route] Research for "${query}" completed with an error state: ${result.metadata.error}`);
         addLog(`Research finished with error: ${result.metadata.error}`);
-        // Return a 500 status but include the partial results/error message
+        markResearchComplete(); // Ensure progress stops
         return NextResponse.json({
             error: { code: 'RESEARCH_EXECUTION_ERROR', message: result.metadata.error } as ResearchError,
-            // Include more substantial partial data
-            report: result.analysis, // Contains error details or partial analysis
+            report: result.analysis,
             metrics: result.researchMetrics,
-            sources: result.sources?.slice(0, maxSources || 70) // Use maxSources from client or default to 70
+            // Use MAX_DISPLAY_SOURCES for slicing partial sources on error
+            sources: result.sources?.slice(0, MAX_DISPLAY_SOURCES)
         }, { status: 500 });
     }
 
     // --- Result Processing for Success Case ---
-    console.log(`[API Route] Processing successful result for: "${query}"`); // Added Log
-    let analysisReport = result.analysis || "Analysis could not be generated."; // Use 'let' to allow modification
+    console.log(`[API Route] Processing successful result for: "${query}"`);
+    let analysisReport = result.analysis || "Analysis could not be generated.";
     const sources = Array.isArray(result.sources) ? result.sources : [];
 
     // Post-process analysisReport to make inline domain citations clickable
-    // Regex to find "(according to domain.com)" patterns
-    const citationRegex = /\(according to ([\w.-]+\.[a-zA-Z]{2,})\)/g;
-    analysisReport = analysisReport.replace(citationRegex, (match, domain) => {
-        // Ensure domain has a protocol for the link
-        const url = domain.startsWith('http') ? domain : `https://${domain}`;
-        return `(according to [${domain}](${url}))`;
+    const citationRegex = /\(Source(?:s)?:\s*([\w\s.,-[\]()]+)\)/gi; // Match "Source: [domain.com](url)" or "Sources: [d1](u1), [d2](u2)"
+    analysisReport = analysisReport.replace(citationRegex, (match, content) => {
+      // Check if it already contains markdown links
+      if (content.includes('](')) {
+          return match; // Already formatted, return as is
+      }
+      // Handle cases where it might just be domain names (fallback)
+      const domains = content.split(/,\s*|\s+and\s+/);
+      const linkedDomains = domains.map((domain: string) => {
+         const cleanDomain = domain.replace(/[\[\]()]/g, '').trim();
+          if (cleanDomain.includes('.')) { // Basic check for domain-like string
+             const url = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
+             return `[${cleanDomain}](${url})`;
+          }
+          return domain; // Return original if not domain-like
+      }).join(', ');
+
+      return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
     });
-    console.log(`[API Route] Processed inline citations in the analysis report.`); // Added Log
+    console.log(`[API Route] Processed inline citations in the analysis report.`);
 
-    // Format Sources (Reduced based on user feedback)
-    // Create a domain-to-favicon map for the entire source set to prevent duplication
+
+    // Format Sources (apply display limits)
     const faviconCache: Record<string, string> = {};
-    const MAX_DISPLAY_SOURCES = 25; // Reduced from 70/60
-    const MAX_DOMAIN_SAMPLES = 15;  // Reduced from 60
-
     const formattedSources = sources
-      .slice(0, maxSources || MAX_DISPLAY_SOURCES) // Show fewer sources in the response
+      .slice(0, MAX_DISPLAY_SOURCES) // Use display limit
       .map((s: ResearchSource) => {
-          let domain = "Unknown Domain";
-          let displayUrl = s.url || "#";
-          let favicon = "";
+        let domain = "Unknown Domain";
+        let displayUrl = s.url || "#";
+        let favicon = "";
 
-          try {
-            // Use pre-extracted domain and favicon if available from enhanced source objects
-            if ((s as any).domain) {
-              domain = (s as any).domain;
-            } else {
-              let urlToParse = s.url || '';
-              if (!urlToParse.startsWith('http://') && !urlToParse.startsWith('https://')) {
-                urlToParse = 'https://' + urlToParse;
-              }
-              const parsedUrl = new URL(urlToParse);
-              domain = parsedUrl.hostname.replace(/^www\./, '');
-            }
+        try {
+          // Extract domain (prefer pre-extracted if available)
+          domain = (s as any).domain || new URL(s.url && s.url.startsWith('http') ? s.url : `https://${s.url}`).hostname.replace(/^www\./, '');
 
-            // Use domain-specific favicon caching to prevent duplication
-            // Use existing favicon if already provided in source object
-            if ((s as any).favicon) {
-              favicon = (s as any).favicon;
-              // Also store in cache for future use
-              faviconCache[domain] = favicon;
-            } else {
-              // Check if this domain already has a cached favicon
-              if (faviconCache[domain]) {
-                favicon = faviconCache[domain];
-              } else {
-                // Use domain-specific favicons for common domains
-                if (domain.includes('github.com')) {
-                  favicon = 'https://github.githubassets.com/favicons/favicon.svg';
-                } else if (domain.includes('youtube.com') || domain.includes('youtu.be')) {
-                  favicon = 'https://www.youtube.com/s/desktop/22617fde/img/favicon.ico';
-                } else if (domain.includes('linkedin.com')) {
-                  favicon = 'https://static.licdn.com/aero-v1/sc/h/al2o9zrvru7aqj8e1x2rzsrca';
-                } else if (domain.includes('twitter.com') || domain.includes('x.com')) {
-                  favicon = 'https://abs.twimg.com/responsive-web/client-web/icon-svg.168b89d5.svg';
-                } else if (domain.includes('medium.com') || domain.endsWith('medium.com')) {
-                  favicon = 'https://miro.medium.com/v2/1*m-R_BkNf1Qjr1YbyOIJY2w.png';
-                } else if (domain.includes('dev.to')) {
-                  favicon = 'https://dev.to/favicon.ico';
-                } else if (domain.includes('nextjs.org')) {
-                  favicon = 'https://nextjs.org/static/favicon/favicon.ico';
-                } else if (domain.includes('vercel.com')) {
-                  favicon = 'https://assets.vercel.com/image/upload/front/favicon/vercel/180x180.png';
-                } else {
-                  // Fallback using Google Favicons API with a larger size request
-                  favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                }
-
-                // Cache the favicon for this domain
-                faviconCache[domain] = favicon;
-              }
-            }
-
-            // Use clean URL if it exists in the enhanced source object
-            if ((s as any).cleanUrl) {
-              displayUrl = (s as any).cleanUrl;
-            } else {
-              // Ensure the URL has a protocol for display
-              displayUrl = s.url && s.url.startsWith('http') ? s.url : (s.url ? `https://${s.url}` : '#');
-            }
-          } catch (e) { /* Keep existing fallback */
-            console.warn(`[API Route] Error processing source URL: ${s.url}, Error: ${e instanceof Error ? e.message : String(e)}`);
-            const domainMatch = s.url?.match(/([a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)/);
-            domain = domainMatch ? domainMatch[0] : (s.url || "Invalid URL");
-            if (!faviconCache[domain]) {
-              favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-              faviconCache[domain] = favicon;
-            } else {
-              favicon = faviconCache[domain];
-            }
-            displayUrl = s.url || '#'; // Fallback display URL
+          // Favicon logic (using cache)
+          favicon = (s as any).favicon || faviconCache[domain];
+          if (!favicon) {
+            // Generate favicon URL if not cached/provided
+            if (domain.includes('github.com')) favicon = 'https://github.githubassets.com/favicons/favicon.svg';
+            else if (domain.includes('youtube.com') || domain.includes('youtu.be')) favicon = 'https://www.youtube.com/s/desktop/22617fde/img/favicon.ico';
+            else if (domain.includes('linkedin.com')) favicon = 'https://static.licdn.com/aero-v1/sc/h/al2o9zrvru7aqj8e1x2rzsrca';
+            else if (domain.includes('twitter.com') || domain.includes('x.com')) favicon = 'https://abs.twimg.com/responsive-web/client-web/icon-svg.168b89d5.svg';
+            else if (domain.includes('medium.com') || domain.endsWith('medium.com')) favicon = 'https://miro.medium.com/v2/1*m-R_BkNf1Qjr1YbyOIJY2w.png';
+            else if (domain.includes('dev.to')) favicon = 'https://dev.to/favicon.ico';
+            else if (domain.includes('nextjs.org')) favicon = 'https://nextjs.org/static/favicon/favicon.ico';
+            else if (domain.includes('vercel.com')) favicon = 'https://assets.vercel.com/image/upload/front/favicon/vercel/180x180.png';
+            else favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+            faviconCache[domain] = favicon; // Cache it
           }
 
-          let title = s.title?.trim() || domain; // Fallback title to domain
-          // Use relevance score directly from source if available, otherwise N/A
-          const relevanceScore = typeof s.relevance === 'number' ? `${(s.relevance * 100).toFixed(1)}%` : "N/A";
+          // Display URL (prefer cleanUrl, ensure protocol)
+          displayUrl = (s as any).cleanUrl || (s.url && s.url.startsWith('http') ? s.url : (s.url ? `https://${s.url}` : '#'));
 
-          // Add validation score if available
-          const validationScore = typeof s.validationScore === 'number' ? `${(s.validationScore * 100).toFixed(1)}%` : "N/A";
+        } catch (e) {
+          console.warn(`[API Route] Error processing source URL: ${s.url}, Error: ${e instanceof Error ? e.message : String(e)}`);
+          const domainMatch = s.url?.match(/([a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)/);
+          domain = domainMatch ? domainMatch[0] : (s.url || "Invalid URL");
+          favicon = faviconCache[domain] || `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+          faviconCache[domain] = favicon;
+          displayUrl = s.url || '#';
+        }
 
-          // Include sourcePriority if available
-          const sourcePriority = (s as any).sourcePriority ? `${((s as any).sourcePriority * 100).toFixed(1)}%` : "N/A";
+        const title = s.title?.trim() || domain;
+        const relevanceScore = typeof s.relevance === 'number' ? `${(s.relevance * 100).toFixed(1)}%` : "N/A";
+        const validationScore = typeof s.validationScore === 'number' ? `${(s.validationScore * 100).toFixed(1)}%` : "N/A";
+        const sourcePriority = (s as any).sourcePriority ? `${((s as any).sourcePriority * 100).toFixed(1)}%` : "N/A";
 
         return {
-          title,
-          url: displayUrl,
-          domain,
-          relevance: relevanceScore,
-          validation: validationScore,
-          priority: sourcePriority,
-          favicon,
+          title, url: displayUrl, domain, relevance: relevanceScore,
+          validation: validationScore, priority: sourcePriority, favicon,
           dataType: (s as any).dataType || 'webpage',
-          isSecure: (s as any).isSecure === undefined ? displayUrl.startsWith('https') : !!(s as any).isSecure, // Ensure boolean
+          isSecure: (s as any).isSecure === undefined ? displayUrl.startsWith('https') : !!(s as any).isSecure,
           timestamp: (s as any).timestamp || new Date().toISOString()
         };
       });
-    console.log(`[API Route] Formatted ${formattedSources.length} sources for display.`); // Added Log
+    console.log(`[API Route] Formatted ${formattedSources.length} sources for display.`);
 
     // Format Research Path
     const researchPath = Array.isArray(result.researchPath) ? result.researchPath : [query];
@@ -207,63 +163,31 @@ export async function POST(req: Request) {
 ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${path}"`).join('\n')}
     `;
 
-    // Source Statistics using metrics directly from result.researchMetrics
+    // Data collection note
     const uniqueDomainsCount = result.researchMetrics.domainsCount;
     const totalSourcesFound = result.researchMetrics.sourcesCount;
-    // Regenerate sample set from actual sources for display consistency
-    const uniqueDomainsSample = Array.from(new Set(sources.map((s: ResearchSource) => {
-      try {
-        if ((s as any).domain) return (s as any).domain;
-        let urlToParse = s.url || '';
-        if (!urlToParse.startsWith('http://') && !urlToParse.startsWith('https://')) urlToParse = 'https://' + urlToParse;
-        return new URL(urlToParse).hostname.replace(/^www\./, '');
-      } catch {
-        // Fallback for potentially invalid URLs stored in sources
-        const domainMatch = s.url?.match(/([a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+)/);
-        return domainMatch ? domainMatch[0] : (s.url || "Invalid URL");
-      }
-    }))).slice(0, MAX_DOMAIN_SAMPLES); // Show fewer domain samples
-
-    const sourceStats = `
-## Source Analysis Overview
-- **Sources Found & Analyzed:** ${totalSourcesFound} (Report includes Top ${MAX_DISPLAY_SOURCES} for review)
-- **Unique Domains Encountered:** ${uniqueDomainsCount}
-- **Top Domains Sample:** ${uniqueDomainsSample.map(d => `\`${d}\``).join(', ')}
-    `;
-    console.log(`[API Route] Generated Source Stats: Found=${totalSourcesFound}, UniqueDomains=${uniqueDomainsCount}`); // Added Log
-
-    // Add data collection note based on which method was used (Firecrawl or legacy)
     const firecrawlInfo = result.metadata?.error ?
-      `\n**Enhanced Data Collection:** This research utilized our internal research engine to gather comprehensive information from across ${uniqueDomainsCount} domains.` :
-      `\n**Enhanced Data Collection:** This research utilized Firecrawl's deep research capability to gather comprehensive information from across ${uniqueDomainsCount} domains.`;
+      `\n**Data Collection:** Utilized internal engine (${uniqueDomainsCount} domains).` :
+      `\n**Data Collection:** Utilized Firecrawl API (${uniqueDomainsCount} domains).`;
 
-    // Format Top Sources Sample with improved formatting including favicons and additional metadata
-    // Use the already populated faviconCache for sources display - much more efficient
+    // Format Top Sources Sample (No changes needed here from previous step)
     const formattedTopSources = `
 ## Top Sources Sample
-${formattedSources.map(s => { // Display fewer sources
-    // Create a more informative source entry with additional metadata
-    // Use the domain favicon map to avoid duplication
-    let sourceEntry = `- ![](${s.favicon}) **[${s.title}](${s.url})**`;
-
-    // Add domain info with secure indicator
+${formattedSources.map(s => {
+    // Construct the list item string WITHOUT the ![]() markdown image
+    let sourceEntry = `- **[${s.title}](${s.url})**`; // Link title directly
     sourceEntry += ` (Domain: ${s.domain}${s.isSecure ? ' 🔒' : ''})`;
-
-    // Add quality metrics but avoid repetition
     sourceEntry += ` | Relevance: ${s.relevance}`;
-
-    // Conditionally add validation score if it varies among displayed sources
-    const isUniformValidation = formattedSources.every(src => src.validation === s.validation);
-    if (!isUniformValidation) {
-      sourceEntry += ` | Validation: ${s.validation}`;
+    // Conditionally add other scores if they vary significantly
+    const validationScores = formattedSources.map(fs => fs.validation).filter(v => v !== "N/A");
+    if (new Set(validationScores).size > 1) {
+        sourceEntry += ` | Validation: ${s.validation}`;
     }
-    
-    // Conditionally add priority score if it varies
-    const isUniformPriority = formattedSources.every(src => src.priority === s.priority);
-     if (!isUniformPriority) {
+    const priorityScores = formattedSources.map(fs => fs.priority).filter(p => p !== "N/A");
+     if (new Set(priorityScores).size > 1) {
        sourceEntry += ` | Priority: ${s.priority}`;
      }
-
+    // The 'li' renderer in page.tsx will add the favicon image tag
     return sourceEntry;
 }).join('\n')}
     `;
@@ -272,10 +196,10 @@ ${formattedSources.map(s => { // Display fewer sources
     const confidenceLevel = result.confidenceLevel ? result.confidenceLevel.toUpperCase() : "MEDIUM";
     const avgValidationScore = result.metadata?.avgValidationScore;
     const confidenceReason = result.metadata
-      ? `Based on ${result.metadata.totalSources || 0} sources across ${uniqueDomainsCount} domains.${avgValidationScore ? ` Avg Validation: ${(avgValidationScore * 100).toFixed(1)}%.` : ''} Exec Time: ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s.`
-      : `Based on source quantity (${totalSourcesFound}), diversity (${uniqueDomainsCount} domains), and internal analysis quality.`;
+      ? `Based on ${totalSourcesFound || 0} sources across ${uniqueDomainsCount} domains.${avgValidationScore ? ` Avg Validation: ${(avgValidationScore * 100).toFixed(1)}%.` : ''} Engine Time: ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)}s.`
+      : `Based on source quantity (${totalSourcesFound}), diversity (${uniqueDomainsCount} domains), and analysis quality.`;
 
-    // --- Assemble the Final Report ---
+    // --- Assemble the Final Report (Removed sourceStats) ---
     const finalReport = `
 ${analysisReport}
 
@@ -285,13 +209,11 @@ ${analysisReport}
 
 ${formattedResearchPath}
 
-${sourceStats}
-
 ${formattedTopSources}
 
 ${result.metadata?.error ? `
 ## Note on Data Collection
-This research was conducted using our fallback research engine after an initial attempt to use Firecrawl's deep research API encountered an issue. The fallback engine successfully analyzed ${uniqueDomainsCount} domains with ${totalSourcesFound} sources to provide comprehensive results.
+This research used our fallback engine due to an issue with the primary data source. Results are based on ${totalSourcesFound} sources from ${uniqueDomainsCount} domains.
 ` : ''}
 
 ## Confidence Level Assessment
@@ -299,60 +221,53 @@ This research was conducted using our fallback research engine after an initial 
 *${confidenceReason}*
 
 ## Additional Research Insights
-- **Data Quality Score:** ${(result.metadata?.avgValidationScore * 100 || 85).toFixed(1)}%
-- **Source Diversity Index:** ${(uniqueDomainsCount / (totalSourcesFound || 1) * 100).toFixed(2)}%
-- **Research Depth:** ${result.researchPath?.length || 1} iterations
-- **Processing Time:** ${(result.researchMetrics.elapsedTime / 1000).toFixed(2)} seconds
+- **Data Quality Score (Avg Validation):** ${(result.metadata?.avgValidationScore ? result.metadata.avgValidationScore * 100 : 80).toFixed(1)}%
+- **Source Diversity Index:** ${(uniqueDomainsCount / (totalSourcesFound || 1) * 100).toFixed(1)}%
+- **Research Depth:** ${result.researchPath?.length || 1} steps
+- **Processing Time:** ${(result.researchMetrics.elapsedTime / 1000).toFixed(1)} seconds
     `.trim();
 
-    console.log(`[API Route] Final report assembled. Length: ${finalReport.length}`); // Added Log
-    // Use metrics directly from the successful result
+    console.log(`[API Route] Final report assembled. Length: ${finalReport.length}`);
     const researchMetrics = result.researchMetrics;
 
-    // Include extra data points in the response for client-side enhancement
+    // Enhanced response for client
     const enhancedResponse = {
       report: finalReport,
       metrics: researchMetrics,
-      // Add extra data for richer client-side rendering
       enhancedData: {
-        sources: formattedSources, // Already sliced
+        sources: formattedSources, // Contains full data for the displayed sources
         researchPath: researchPath,
         confidenceLevel: confidenceLevel,
         domainStats: {
           total: uniqueDomainsCount,
-          sample: uniqueDomainsSample // Already sliced
         },
-        usesFallback: !!result.metadata?.error
+        usesFallback: !!result.metadata?.error,
+        // Placeholder for future HTML content if needed
+        // htmlContent: generatedHtmlContent || null
       }
     };
 
     addLog("Successfully generated final report.");
-    // Mark research as complete after successful processing
     markResearchComplete();
 
     return NextResponse.json(enhancedResponse, {
       status: 200,
-      headers: { 'Cache-Control': 'no-store' } // Don't cache deep research results aggressively
+      headers: { 'Cache-Control': 'no-store' }
     });
 
   } catch (error: any) {
-    // Catch errors from req.json() or unexpected errors during API route processing
-    console.error(`[API Route] Unhandled API Route Error for query "${query}":`, error); // More specific log
-    addLog(`API Route Error: ${error.message}`);
-    // Calculate fallback metrics for the error response using startTime defined outside try
-    const finalElapsedTimeOnError = Date.now() - startTime; // Use startTime from outer scope
+    console.error(`[API Route] Unhandled API Route Error for query "${query}":`, error);
+    addLog(`API Route Error: ${error.message || 'Unknown error'}`);
+    const finalElapsedTimeOnError = Date.now() - startTime;
     const errorMetrics = { sourcesCount: 0, domainsCount: 0, dataSize: '0KB', elapsedTime: finalElapsedTimeOnError };
-
-    // Mark research as complete on error too
     markResearchComplete();
 
-    // Return a generic server error
     return NextResponse.json({
       error: {
         code: 'INTERNAL_SERVER_ERROR',
         message: error.message || 'An unexpected error occurred handling the request.'
       } as ResearchError,
-      metrics: errorMetrics // Provide fallback metrics
+      metrics: errorMetrics
     }, { status: 500 });
   }
 }

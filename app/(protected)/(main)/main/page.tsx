@@ -368,9 +368,8 @@ export default function Home() {
   const renderers = {
     // --- Horizontal Rule Renderer ---
     hr: () => (
-      <div className="flex justify-center items-center my-10">
-        <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
-      </div>
+      // Using a slightly thinner, more subtle divider
+      <div className="my-8 border-t border-gray-200 dark:border-gray-700/50"></div>
     ),
     // --- Code Block Renderer ---
     code({ node, inline, className, children, ...props }: any) {
@@ -588,7 +587,7 @@ export default function Home() {
           displayContent = formatCurrency(trimmedContent);
           // Mark as currency for proper styling
           if (!isCurrency) {
-            isCurrency = true;
+            // isCurrency = true;
           }
         }
       }
@@ -822,8 +821,8 @@ export default function Home() {
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           )}
-          <span className={isLinkTextUrl ? 'truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px]' : ''}>
-            {isLinkTextUrl ? url.replace(/^(https?:|)\/\//, '').replace(/\/$/, '') : children}
+          <span className={isLinkTextUrl ? 'truncate max-w-[20ch] sm:max-w-[30ch] md:max-w-[40ch]' : ''}>
+            {isLinkTextUrl ? url.replace(/^(https?:)?\/\//, '').replace(/\/$/, '') : children}
           </span>
           {isExternal && (
             <ExternalLinkIcon className="inline-block opacity-60 group-hover:opacity-100 ml-0.5 w-3.5 h-3.5 align-text-bottom transition-opacity shrink-0" />
