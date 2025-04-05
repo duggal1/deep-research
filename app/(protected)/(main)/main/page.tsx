@@ -1010,6 +1010,75 @@ export default function Home() {
 
   };
 
+  const metricCard = (metricKey: keyof ResearchMetrics, icon: React.ElementType, label: string, color: string) => {
+    // Map color names to actual Tailwind classes
+    // Add more colors if needed
+    const colorClasses: Record<string, Record<string, string>> = {
+      blue: {
+        gradientFrom: 'from-blue-50 dark:from-gray-800/80',
+        gradientTo: 'to-blue-100 dark:to-blue-900/40',
+        border: 'border-blue-200 dark:border-blue-700/50',
+        bgPattern: 'bg-[radial-gradient(#4299e1_1px,transparent_1px)]', // text-blue-500
+        iconBg: 'bg-blue-100 dark:bg-blue-900/60',
+        iconText: 'text-blue-600 dark:text-blue-400',
+        label: 'text-blue-800 dark:text-blue-300',
+      },
+      green: {
+        gradientFrom: 'from-green-50 dark:from-gray-800/80',
+        gradientTo: 'to-green-100 dark:to-green-900/40',
+        border: 'border-green-200 dark:border-green-700/50',
+        bgPattern: 'bg-[radial-gradient(#48bb78_1px,transparent_1px)]', // text-green-500
+        iconBg: 'bg-green-100 dark:bg-green-900/60',
+        iconText: 'text-green-600 dark:text-green-400',
+        label: 'text-green-800 dark:text-green-300',
+      },
+      purple: {
+        gradientFrom: 'from-purple-50 dark:from-gray-800/80',
+        gradientTo: 'to-purple-100 dark:to-purple-900/40',
+        border: 'border-purple-200 dark:border-purple-700/50',
+        bgPattern: 'bg-[radial-gradient(#9f7aea_1px,transparent_1px)]', // text-purple-500
+        iconBg: 'bg-purple-100 dark:bg-purple-900/60',
+        iconText: 'text-purple-600 dark:text-purple-400',
+        label: 'text-purple-800 dark:text-purple-300',
+      },
+      amber: { // Added amber for potential elapsedTime card
+        gradientFrom: 'from-amber-50 dark:from-gray-800/80',
+        gradientTo: 'to-amber-100 dark:to-amber-900/40',
+        border: 'border-amber-200 dark:border-amber-700/50',
+        bgPattern: 'bg-[radial-gradient(#f6ad55_1px,transparent_1px)]', // text-amber-500
+        iconBg: 'bg-amber-100 dark:bg-amber-900/60',
+        iconText: 'text-amber-600 dark:text-amber-400',
+        label: 'text-amber-800 dark:text-amber-300',
+      },
+      // Add more colors as needed
+    };
+
+    const styles = colorClasses[color] || colorClasses.blue; // Default to blue if color not found
+
+    const metricValue = currentProgress?.[metricKey]; // Use optional chaining
+
+    return (
+      <div key={metricKey} className={`flex items-center gap-3 bg-gradient-to-br ${styles.gradientFrom} ${styles.gradientTo} shadow-lg p-4 border ${styles.border} rounded-xl relative overflow-hidden`}>
+        {/* Subtle background pattern */}
+        <div className={`absolute inset-0 opacity-5 dark:opacity-[3%] ${styles.bgPattern} [background-size:16px_16px]`}></div>
+        <div className={`flex-shrink-0 ${styles.iconBg} p-3 rounded-full shadow-inner`}>
+          {React.createElement(icon, { className: `w-5 h-5 ${styles.iconText}` })}
+        </div>
+        <div className="relative">
+          <div className={`mb-0.5 font-medium ${styles.label} text-xs uppercase tracking-wider`}>{label}</div>
+          <div className="font-bold font-mono tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+            {metricKey === 'elapsedTime'
+              ? `${((metricValue ?? 0) as number / 1000).toFixed(1)}s`
+              : typeof metricValue === 'number'
+                ? (metricValue ?? 0).toLocaleString()
+                : (metricValue ?? 'N/A') // Handle null/undefined safely
+            }
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // --- Component Return ---
   return (
     <div className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-950 dark:to-black min-h-screen font-serif text-gray-800 dark:text-gray-200">
@@ -1101,107 +1170,95 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* Loading State V4 - Modern Design with Real-time Metrics */}
+        {/* --- Enhanced Loading State V5 - Sleek & Engaging --- */}
         <AnimatePresence>
           {loading && (
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-5 bg-white dark:bg-gray-900/80 shadow-xl backdrop-blur-lg p-6 border border-gray-200 dark:border-gray-700/80 rounded-xl"
+              initial={{ opacity: 0, y: 30, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.4, ease: "circOut" }}
+              className="bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-950/90 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl space-y-6 overflow-hidden"
             >
-              {/* Header with Animated Progress */}
-              <div className="flex justify-between items-center pb-4 border-gray-200 dark:border-gray-700/80 border-b">
-                <div className="flex items-center gap-3">
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-                        {Math.floor((currentProgress?.elapsedTime ?? 0) / 1000)}s
-                      </span>
+              {/* Header & Overall Progress Bar */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-3">
+                    <div className="relative flex items-center justify-center w-10 h-10">
+                      {/* Spinner */}
+                      <svg className="absolute inset-0 w-full h-full animate-spin text-blue-500/30 dark:text-blue-400/30" viewBox="0 0 36 36" fill="none">
+                        <circle className="opacity-25" cx="18" cy="18" r="16" stroke="currentColor" strokeWidth="3"></circle>
+                      </svg>
+                      {/* Progress Arc - Placeholder, replace with actual progress if available */}
+                      <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 36 36" fill="none">
+                        <circle
+                          className="text-blue-600 dark:text-blue-500 transition-all duration-500"
+                          cx="18" cy="18" r="16"
+                          stroke="currentColor" strokeWidth="3"
+                          strokeDasharray={100.5} // Circumference
+                          strokeDashoffset={100.5 - ((currentProgress?.elapsedTime ?? 0) / (180 * 10))} // Placeholder: % of 3min timeout
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <BrainIcon className="relative w-5 h-5 text-blue-600 dark:text-blue-500" />
                     </div>
-                    <svg className="w-8 h-8 animate-spin text-blue-600/20 dark:text-blue-400/20" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path 
-                        className="opacity-75" 
-                        fill="currentColor" 
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                      </path>
-                    </svg>
+                    <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl md:text-2xl tracking-tight">
+                      Research in Progress...
+                    </h3>
                   </div>
-                  <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl">
-                    Researching...
-                  </h3>
+                  {/* Elapsed time */}
+                  <div className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-blue-900/50 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm">
+                    {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
+                  </div>
                 </div>
-                {/* Elapsed time with modern badge design */}
-                <div className="bg-blue-100 dark:bg-blue-900/50 shadow-inner px-3 py-1.5 rounded-full font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm">
-                  {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
-                </div>
-              </div>
-
-              {/* Current Status Card */}
-              <div className="bg-gradient-to-r from-blue-50 dark:from-gray-800 to-indigo-50 dark:to-indigo-900/30 shadow-sm p-4 border border-blue-200 dark:border-blue-800/50 rounded-lg">
-                <div className="flex items-center gap-2.5 font-serif font-medium text-gray-800 dark:text-gray-200 text-sm">
-                  <BrainIcon className="flex-shrink-0 w-4 h-4 text-blue-500 dark:text-blue-400" />
-                  <span className="truncate">{currentStatus || 'Initializing research...'}</span>
+                {/* Simplified Overall Progress Bar */}
+                <div className="w-full bg-gray-200 dark:bg-gray-700/50 rounded-full h-2 overflow-hidden">
+                  <motion.div
+                     className="bg-gradient-to-r from-blue-500 to-indigo-600 h-2 rounded-full"
+                     initial={{ width: "0%" }}
+                     animate={{ width: `${Math.min(100, ((currentProgress?.elapsedTime ?? 0) / (180 * 10)))}%` }} // Placeholder %
+                     transition={{ duration: 0.5, ease: "linear" }}
+                  />
                 </div>
               </div>
 
-              {/* Metrics Grid V4 - Animated and Modern */}
+              {/* Current Status Display */}
+              <div className="bg-gradient-to-r from-gray-100 to-white dark:from-gray-800/70 dark:to-gray-900/50 shadow-inner p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
+                <div className="flex items-center gap-3 font-serif text-gray-800 dark:text-gray-200 text-base">
+                  <div className="flex-shrink-0 w-5 h-5">
+                     {/* Dynamic Icon based on status - add more cases if needed */}
+                     {currentStatus.toLowerCase().includes('fetching') || currentStatus.toLowerCase().includes('searching') ? <SearchIcon className="text-blue-500 dark:text-blue-400 animate-pulse"/> :
+                      currentStatus.toLowerCase().includes('crawling') ? <GlobeIcon className="text-green-500 dark:text-green-400 animate-pulse"/> :
+                      currentStatus.toLowerCase().includes('analyzing') ? <BrainIcon className="text-purple-500 dark:text-purple-400 animate-pulse"/> :
+                      currentStatus.toLowerCase().includes('generating') || currentStatus.toLowerCase().includes('finalizing') ? <FileTextIcon className="text-orange-500 dark:text-orange-400 animate-pulse"/> :
+                      <Loader2Icon className="text-gray-500 dark:text-gray-400 animate-spin"/>
+                     }
+                  </div>
+                  <span className="font-medium truncate">{currentStatus || 'Initializing research...'}</span>
+                </div>
+              </div>
+
+              {/* Metrics Grid V5 - Cleaner & More Visual */}
               <div className="gap-4 grid grid-cols-1 sm:grid-cols-3">
-                {/* Sources */}
-                <div className="flex items-center gap-3 bg-gradient-to-br from-blue-50 dark:from-gray-800/70 to-blue-100 dark:to-blue-900/40 shadow-md p-4 border border-blue-200 dark:border-blue-700/50 rounded-lg overflow-hidden relative">
-                  <div className="absolute bottom-0 left-0 h-1 bg-blue-400 dark:bg-blue-600" style={{ 
-                    width: `${Math.min(100, Math.max(5, (currentProgress?.sourcesCount ?? 0) / 10))}%`,
-                    transition: 'width 0.5s ease-in-out'
-                  }}></div>
-                  <div className="flex-shrink-0 bg-blue-100 dark:bg-blue-900/50 p-2 rounded-full">
-                    <GlobeIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <div className="mb-0.5 font-medium text-blue-800 dark:text-blue-300 text-xs uppercase tracking-wider">Sources Found</div>
-                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                      {(currentProgress?.sourcesCount ?? 0).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Domains */}
-                <div className="flex items-center gap-3 bg-gradient-to-br from-green-50 dark:from-gray-800/70 to-green-100 dark:to-green-900/40 shadow-md p-4 border border-green-200 dark:border-green-700/50 rounded-lg">
-                  <div className="flex-shrink-0 bg-green-100 dark:bg-green-900/50 p-2 rounded-full">
-                    <DatabaseIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <div>
-                    <div className="mb-0.5 font-medium text-green-800 dark:text-green-300 text-xs uppercase tracking-wider">Unique Domains</div>
-                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                      {(currentProgress?.domainsCount ?? 0).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Data Size */}
-                <div className="flex items-center gap-3 bg-gradient-to-br from-purple-50 dark:from-gray-800/70 to-purple-100 dark:to-purple-900/40 shadow-md p-4 border border-purple-200 dark:border-purple-700/50 rounded-lg">
-                  <div className="flex-shrink-0 bg-purple-100 dark:bg-purple-900/50 p-2 rounded-full">
-                    <FileTextIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  </div>
-                  <div>
-                    <div className="mb-0.5 font-medium text-purple-800 dark:text-purple-300 text-xs uppercase tracking-wider">Data Size</div>
-                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                      {currentProgress?.dataSize ?? '0KB'}
-                    </div>
-                  </div>
-                </div>
+                {/* Metric Card Template */}
+                {metricCard('sourcesCount', GlobeIcon, 'Sources Found', 'blue')}
+                {metricCard('domainsCount', DatabaseIcon, 'Unique Domains', 'green')}
+                {metricCard('dataSize', FileTextIcon, 'Data Size', 'purple')}
+                {metricCard('elapsedTime', RefreshCwIcon, 'Time Elapsed', 'amber')}
               </div>
 
-              {/* Live Logs V3 - Show initial log immediately */}
-              <div className="space-y-2">
-                <div className="flex justify-end items-center">
+              {/* Live Logs V4 - Improved Styling & Visibility */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2 font-serif font-medium text-gray-600 dark:text-gray-400 text-sm">
+                     <TerminalIcon className="w-4 h-4"/>
+                     <span>Activity Log</span>
+                  </div>
                   <button
                     onClick={() => setShowLiveLogs(!showLiveLogs)}
-                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
+                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700/60 dark:hover:bg-gray-600/80 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
                   >
-                    <FileTextIcon className="w-3.5 h-3.5" />
-                    {showLiveLogs ? 'Hide Logs' : 'Show Logs'}
+                    {showLiveLogs ? 'Hide' : 'Show'}
                   </button>
                 </div>
 
@@ -1209,17 +1266,47 @@ export default function Home() {
                   {showLiveLogs && (
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto', maxHeight: '300px' }}
+                      animate={{ opacity: 1, height: 'auto', maxHeight: '350px' }} // Increased max height
                       exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
+                      transition={{ duration: 0.35, ease: "easeInOut" }}
                       className="overflow-hidden"
                     >
-                      <div className="bg-gradient-to-br from-gray-50 dark:from-black/70 to-gray-100 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/80 rounded-lg max-h-[300px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50">
-                        {liveLogs.map((log, index) => (
-                          <div key={index} className="mb-1.5 last:mb-0 tabular-nums text-gray-600 dark:text-gray-400/90 break-words leading-relaxed whitespace-pre-wrap">
-                            {log}
-                          </div>
-                        ))}
+                      <div className="bg-gradient-to-b from-gray-100 dark:from-black/60 to-gray-200/70 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/70 rounded-lg max-h-[350px] overflow-y-auto font-mono text-xs space-y-1.5 scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+                        {liveLogs.length === 0 ? (
+                           <p className="text-gray-500 italic">Waiting for logs...</p>
+                        ) : (
+                           liveLogs.map((log, index) => {
+                              // Basic log parsing for styling
+                              const timeMatch = log.match(/^\[(.*?)\]/);
+                              const time = timeMatch ? timeMatch[1] : '';
+                              let content = timeMatch ? log.substring(timeMatch[0].length).trim() : log;
+                              let icon = null;
+                              let colorClass = "text-gray-600 dark:text-gray-400/90";
+
+                              if (content.toLowerCase().includes('fetching') || content.toLowerCase().includes('searching')) { icon = <SearchIcon className="w-3 h-3 text-blue-500"/>; colorClass="text-blue-700 dark:text-blue-400"; }
+                              else if (content.toLowerCase().includes('crawling') || content.toLowerCase().includes('found') || content.toLowerCase().includes('added')) { icon = <GlobeIcon className="w-3 h-3 text-green-500"/>; colorClass="text-green-700 dark:text-green-400"; }
+                              else if (content.toLowerCase().includes('analyzing')) { icon = <BrainIcon className="w-3 h-3 text-purple-500"/>; colorClass="text-purple-700 dark:text-purple-400"; }
+                              else if (content.toLowerCase().includes('generating') || content.toLowerCase().includes('finalizing')) { icon = <FileTextIcon className="w-3 h-3 text-orange-500"/>; colorClass="text-orange-700 dark:text-orange-400"; }
+                              else if (content.toLowerCase().includes('error') || content.toLowerCase().includes('failed')) { icon = <AlertCircleIcon className="w-3 h-3 text-red-500"/>; colorClass="text-red-600 dark:text-red-400 font-medium"; }
+                              else if (content.toLowerCase().includes('warn')) { icon = <AlertCircleIcon className="w-3 h-3 text-yellow-500"/>; colorClass="text-yellow-600 dark:text-yellow-400"; }
+
+                              // Highlight domain fetching
+                              if (content.match(/Fetching (L1|L2): (.+?)\.\.\./)) {
+                                 content = content.replace(/Fetching (L1|L2): (.+?)\.\.\./, `Fetching $1: <span class="font-semibold text-indigo-600 dark:text-indigo-400">$2</span>...`);
+                              }
+
+
+                              return (
+                              <div key={index} className={`flex items-start gap-2 break-words leading-relaxed whitespace-pre-wrap ${colorClass}`}>
+                                 {time && <span className="flex-shrink-0 opacity-60 tabular-nums">[{time}]</span>}
+                                 {icon && <span className="flex-shrink-0 mt-[1px]">{icon}</span>}
+                                 <span dangerouslySetInnerHTML={{ __html: content }} />
+                              </div>
+                              );
+                           })
+                        )}
+                         {/* Auto-scroll placeholder - implement with useRef and useEffect if needed */}
+                         {/* <div ref={logEndRef} /> */}
                       </div>
                     </motion.div>
                   )}

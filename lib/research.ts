@@ -985,8 +985,17 @@ export class ResearchEngine {
 
         const batchPromises = batch.map(async (url) => {
               if (overallAbortSignal.aborted || crawledUrls.has(url)) return null;
+              // ---> ADD THIS <---
+              let domain = 'unknown';
+              try {
+                  domain = new URL(url).hostname.replace(/^www\./, '');
+                  if (domain && domain.length > 3 && domain.includes('.')) {
+                     addLog(`Fetching L1: ${domain}...`); // Log domain fetch
+                  }
+              } catch { /* ignore logging errors */ }
+              // ---> END ADD <---
               crawledUrls.add(url);
-            totalCrawledCount++;
+              totalCrawledCount++;
               try {
                   const response = await this.fetchWithRetry(url, { signal: overallAbortSignal });
                   const text = await response.text();
@@ -1079,6 +1088,15 @@ export class ResearchEngine {
               const batchPromises = batch.map(async (url) => {
                   // Similar fetching logic as Level 1
                    if (overallAbortSignal.aborted || crawledUrls.has(url)) return null;
+                   // ---> ADD THIS <---
+                   let domain = 'unknown';
+                   try {
+                       domain = new URL(url).hostname.replace(/^www\./, '');
+                        if (domain && domain.length > 3 && domain.includes('.')) {
+                           addLog(`Fetching L2: ${domain}...`); // Log domain fetch
+                        }
+                   } catch { /* ignore logging errors */ }
+                   // ---> END ADD <---
                    crawledUrls.add(url);
                    totalCrawledCount++;
             try {
