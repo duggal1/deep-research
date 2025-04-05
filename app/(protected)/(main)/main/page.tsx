@@ -288,7 +288,7 @@ export default function Home() {
            // Cleaner container: subtle border, less shadow
           <div className="group code-block relative my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden bg-white dark:bg-gray-950 shadow-sm">
             {/* Cleaner Header Bar */}
-            <div className="flex justify-between items-center bg-gray-200 dark:bg-gray-900/70 px-4 py-2 border-b border-gray-200 dark:border-gray-700/80">
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-b border-gray-200 dark:border-gray-700/80">
               <div className="flex items-center gap-2 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs">
                 {/* <TerminalIcon className="w-4 h-4" /> // Icon optional, can uncomment if desired */}
                 <span>{language.toUpperCase()}</span>

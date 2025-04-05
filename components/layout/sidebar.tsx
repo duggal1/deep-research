@@ -132,12 +132,13 @@ export default function Sidebar() {
       {/* Desktop Sidebar */}
       <aside
         className={`
-          hidden md:flex flex-col 
+          hidden md:flex flex-col
           transition-all duration-300 ease-in-out
+          bg-background border-r border-gray-200 dark:border-gray-700/80
           ${isExpanded ? 'w-64' : 'w-20'}
         `}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700/80">
+        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700/80 flex-shrink-0">
           {isExpanded && (
             <Link href="/main" className="font-bold text-lg text-blue-600 dark:text-blue-400">
               Deep Research
@@ -216,7 +217,7 @@ export default function Sidebar() {
         </ScrollArea>
 
         {/* Footer Section - Settings & User */}
-        <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700/80">
+        <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700/80 flex-shrink-0">
             <TooltipProvider delayDuration={100}>
                 {/* Settings Link */}
                 <Tooltip>
@@ -249,9 +250,9 @@ export default function Sidebar() {
               <PanelRightOpen className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-64 p-0 flex flex-col">
+          <SheetContent side="left" className="w-64 p-0 flex flex-col bg-background">
             {/* Reuse sidebar content structure for mobile */}
-            <div className="flex items-center justify-between h-16 px-4 border-b">
+            <div className="flex items-center justify-between h-16 px-4 border-b flex-shrink-0">
               <Link href="/main" className="font-bold text-lg">
                 Deep Research
               </Link>
@@ -301,7 +302,7 @@ export default function Sidebar() {
 
                 </nav>
              </ScrollArea>
-             <div className="mt-auto p-3 border-t">
+             <div className="mt-auto p-3 border-t flex-shrink-0">
                  <SheetClose asChild>
                     <Link href="/settings">
                         <Button variant={pathname === '/settings' ? "secondary" : "ghost"} className="w-full justify-start">
