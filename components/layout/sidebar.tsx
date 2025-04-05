@@ -132,7 +132,7 @@ export default function Sidebar() {
       {/* Desktop Sidebar */}
       <aside
         className={`
-          hidden md:flex flex-col bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700/80
+          hidden md:flex flex-col 
           transition-all duration-300 ease-in-out
           ${isExpanded ? 'w-64' : 'w-20'}
         `}

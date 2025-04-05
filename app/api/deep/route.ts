@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
   let query: string | undefined;
   let params: ResearchParams | undefined;
-  let mode: 'non-think' | 'think' = 'think'; // Default to think mode (gemini-2.5-pro)
+  let mode: 'non-think' | 'think' = 'think'; // Default mode
 
   try {
     const rawBody = await req.text();
@@ -154,16 +154,26 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
     
     // Select model based on mode
-    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro';
+   // ... existing code ...
+
+    // Step 3: Gemini Synthesis with Model Selection
+    console.log('[GEMINI START] Initializing Gemini synthesis');
+  
+    // Select model based on mode
+    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro-exp-03-25'; // Updated 'think' model name
     console.log(`[MODEL SELECTED] Using ${selectedModel} based on mode: ${mode}`);
     
     const model = genAI.getGenerativeModel({
       model: selectedModel,
       generationConfig: {
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro' ? 8192 : 4096, // Higher for pro, lower for flash
-        temperature: selectedModel === 'gemini-2.5-pro' ? 0.2 : 0.5,     // More precise for pro, faster for flash
+        // Adjusted token/temp based on the new 'think' model potentially having different characteristics or defaults.
+        // Keeping the previous logic, but you might want to fine-tune these if needed for the experimental model.
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 8192 : 4096, 
+        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.2 : 0.5,     
       },
     });
+
+// ... existing code ...
 
     const synthesisPrompt = `
       Synthesize the following information into a comprehensive, detailed research report formatted in Markdown.
