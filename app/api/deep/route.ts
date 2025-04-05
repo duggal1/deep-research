@@ -168,8 +168,8 @@ export async function POST(req: Request) {
       generationConfig: {
         // Adjusted token/temp based on the new 'think' model potentially having different characteristics or defaults.
         // Keeping the previous logic, but you might want to fine-tune these if needed for the experimental model.
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 30000 : 7500, 
-        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,     
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 60000 : 7500, 
+        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.2 : 0.3,     
       },
     });
 

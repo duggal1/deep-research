@@ -34,6 +34,8 @@ import { ResearchError } from '@/lib/types';
 import React from 'react';
 import { cn } from '@/lib/utils';
 import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
+import { ModernProgress } from '@/components/ui/modern-progress';
+import { LiveLogs } from '@/components/ui/live-logs';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -114,6 +116,7 @@ export default function Home() {
   const [elapsedTime, setElapsedTime] = useState<number>(0); // Track elapsed time locally
   const [finalModelUsed, setFinalModelUsed] = useState<string | null>(null); // Store model used
   const [finalSourceCount, setFinalSourceCount] = useState<number | null>(null); // Store source count
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null); // Store current job ID
   const startTimeRef = useRef<number | null>(null); // Ref to store start time
   const { theme } = useTheme();
 
@@ -136,6 +139,10 @@ export default function Home() {
   // Consolidated function to handle deep research
   const handleDeepResearch = async (mode: 'think' | 'non-think') => {
     if (!query.trim() || loading) return;
+
+    // Generate a new job ID for this research session
+    const newJobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    setCurrentJobId(newJobId);
 
     setLoading(true);
     setLoadingMode(mode); // Set which mode is loading
@@ -826,7 +833,7 @@ export default function Home() {
                     <Loader2Icon className="w-7 h-7 text-blue-600 dark:text-blue-500 animate-spin" />
                  </div>
                  <TextShimmerWave
-      className='font-serif font-semibold text-lg [--base-color:#000dff] [--base-gradient-color:#ff0090] dark:[--base-gradient-color:##e3dce0]'
+      className='[--base-color:#0D74CE] [--base-gradient-color:#5EB1EF]'
       duration={1}
       spread={1}
       zDistance={1}
@@ -861,27 +868,30 @@ export default function Home() {
                </motion.div>
               )}
 
-             {/* Indeterminate Progress Bar */}
-             <div className="relative bg-gray-200 dark:bg-gray-700/50 rounded-full w-full h-2 overflow-hidden">
-               <motion.div
-                 className="top-0 left-0 absolute bg-gradient-to-r from-blue-400 to-indigo-500 rounded-full h-full"
-                 initial={{ x: "-100%" }}
-                 animate={{ x: ["-100%", "100%"] }} // Moves across
-                 transition={{
-                   duration: 2.5,
-                   repeat: Infinity,
-                   ease: "linear",
-                 }}
-                 style={{ width: "60%" }} // Visual width of the moving bar
-               />
-             </div>
+             {/* Modern Progress Bar with Gradient Effect */}
+             <ModernProgress
+               indeterminate={true}
+               className="shadow-inner backdrop-blur-md rounded-full h-3"
+               indicatorClassName={cn(
+                 "rounded-full bg-gradient-to-r",
+                 loadingMode === 'think'
+                   ? "from-purple-500 via-pink-600 to-blue-500"
+                   : "from-blue-600 via-pink-600 to-blue-500"
+               )}
+             />
 
              {/* Simplified message */}
               <div className="font-serif text-gray-600 dark:text-gray-400 text-center">
                 Gathering and synthesizing information from the web...
              </div>
 
-            {/* Removed detailed metrics and live logs during loading */}
+            {/* Live Logs Display */}
+            <LiveLogs
+              jobId={currentJobId || undefined}
+              mode={loadingMode}
+              query={query}
+              className="mt-4"
+            />
 
           </motion.div>
         )}
