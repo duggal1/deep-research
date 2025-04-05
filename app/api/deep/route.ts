@@ -21,17 +21,24 @@ interface ResearchSource {
 }
 
 interface ResearchResponse {
-    success: boolean;
-    data: {
-      finalAnalysis: string;
-      sources: ResearchSource[];
-    };
-    status: string;
-    id?: string;
-    currentDepth?: number; // Added to match Firecrawl's response
-  }
+  success: boolean;
+  data: {
+    finalAnalysis: string;
+    sources: ResearchSource[];
+  };
+  status: string;
+  id?: string;
+  currentDepth?: number;
+}
+
+interface RequestBody {
+  query: string;
+  params?: ResearchParams;
+  mode?: 'non-think' | 'think'; // Added mode to select model
+}
+
 // Poll status with logging
-async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise<ResearchResponse> { // 15min timeout
+async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise<ResearchResponse> {
   console.log(`[POLLING START] Job ID: ${jobId}, Timeout: ${timeoutMs}ms`);
   const startTime = Date.now();
 
@@ -49,7 +56,7 @@ async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise
         return statusData;
       }
       console.log(`[POLLING WAIT] Status not completed, waiting 3s...`);
-      await new Promise((resolve) => setTimeout(resolve, 3000)); // Slower polling for longer jobs
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     } catch (error) {
       console.error(`[POLLING ERROR] Failed to check status: ${(error as Error).message}`);
     }
@@ -58,19 +65,20 @@ async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise
   throw new Error('Research timed out');
 }
 
-// POST Handler with advanced deep research
+// POST Handler with model selection
 export async function POST(req: Request) {
   console.log('[REQUEST START] Incoming POST request');
 
   let query: string | undefined;
   let params: ResearchParams | undefined;
+  let mode: 'non-think' | 'think' = 'think'; // Default to think mode (gemini-2.5-pro)
 
   try {
     const rawBody = await req.text();
     console.log(`[RAW BODY] ${rawBody}`);
-    const body = JSON.parse(rawBody);
-    ({ query, params } = body as { query: string; params?: ResearchParams });
-    console.log(`[REQUEST DATA] Query: ${query}, Params: ${JSON.stringify(params)}`);
+    const body = JSON.parse(rawBody) as RequestBody;
+    ({ query, params, mode = 'think' } = body);
+    console.log(`[REQUEST DATA] Query: ${query}, Params: ${JSON.stringify(params)}, Mode: ${mode}`);
   } catch (error) {
     console.error(`[JSON PARSE ERROR] Invalid JSON: ${(error as Error).message}`);
     return NextResponse.json(
@@ -91,9 +99,9 @@ export async function POST(req: Request) {
       FIRECRAWL_URL,
       {
         query,
-        maxDepth: params?.maxDepth || 10, // Max depth for exhaustive crawl
-        maxUrls: params?.maxUrls || 50,   // Max URLs for broad coverage
-        timeLimit: params?.timeLimit || 600, // 10min for deep digging
+        maxDepth: params?.maxDepth || 10,
+        maxUrls: params?.maxUrls || 50,
+        timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
@@ -141,22 +149,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'No sources found for deep research' }, { status: 404 });
     }
 
-    // Step 3: Gemini Synthesis with Advanced Config
+    // Step 3: Gemini Synthesis with Model Selection
     console.log('[GEMINI START] Initializing Gemini synthesis');
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+    
+    // Select model based on mode
+    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro';
+    console.log(`[MODEL SELECTED] Using ${selectedModel} based on mode: ${mode}`);
+    
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-pro-exp-03-25',
+      model: selectedModel,
       generationConfig: {
-        maxOutputTokens: 8192, // Max tokens for detailed output
-        temperature: 0.2,      // Balanced creativity and precision
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro' ? 8192 : 4096, // Higher for pro, lower for flash
+        temperature: selectedModel === 'gemini-2.5-pro' ? 0.2 : 0.5,     // More precise for pro, faster for flash
       },
     });
 
     const synthesisPrompt = `
-      Synthesize the following into a comprehensive, detailed research report. Include technical specifics, examples, and critical analysis where possible. Cross-reference sources to highlight trends, contradictions, or gaps. Aim for depth and actionable insights
-      - Please return the report in markdown format.
-      Sources: ${JSON.stringify(research.data.sources)}
-      Initial Analysis: ${research.data.finalAnalysis}
+      Synthesize the following information into a comprehensive, detailed research report formatted in Markdown.
+      
+      Instructions:
+      - Structure the report logically with clear headings and sections.
+      - Include technical specifics, examples, and critical analysis where possible.
+      - Cross-reference sources to highlight trends, contradictions, or gaps.
+      - **If the query is technical or involves concepts that can be illustrated with code, include relevant code examples in appropriate Markdown code blocks.**
+      - **Where appropriate, summarize key comparisons, data points, or findings in a Markdown table.**
+      - Aim for depth and actionable insights based *only* on the provided sources and initial analysis.
+      - Ensure the final output is well-organized and easy to read.
+
+      Sources: 
+      ${JSON.stringify(research.data.sources)}
+
+      Initial Analysis: 
+      ${research.data.finalAnalysis}
     `;
     console.log(`[GEMINI PROMPT] ${synthesisPrompt}`);
 
@@ -171,8 +196,9 @@ export async function POST(req: Request) {
       report,
       sources: research.data.sources,
       originalAnalysis: research.data.finalAnalysis,
-      depthAchieved: research.currentDepth || 'unknown', // Log actual depth if available
+      depthAchieved: research.currentDepth || 'unknown',
       sourceCount: research.data.sources.length,
+      modelUsed: selectedModel, // Include model used in response
     };
     console.log(`[RESPONSE SENT] ${JSON.stringify(response, null, 2)}`);
     return NextResponse.json(response);

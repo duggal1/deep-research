@@ -1127,7 +1127,7 @@ export default function Home() {
         }}
         exit={{ width: 0, opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="text-sm overflow-hidden whitespace-nowrap text-blue-700 flex-shrink-0"
+        className="text-sm overflow-hidden whitespace-nowrap text-gray-800  dark:text-white flex-shrink-0"
       >
         Think
       </motion.span>
