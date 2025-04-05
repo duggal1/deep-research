@@ -355,45 +355,42 @@ export default function Home() {
   }, []);
 
   const renderers = {
-    // --- Horizontal Rule Renderer ---
+    // --- Horizontal Rule Renderer - Clean & Simple ---
     hr: () => (
-      // Using a slightly thinner, more subtle divider
-      <div className="my-8 border-t border-gray-200 dark:border-gray-700/50"></div>
+      <hr className="my-8 border-gray-200 dark:border-gray-700" /> // Simplified
     ),
-    // --- Code Block Renderer ---
+
+    // --- Code Block Renderer - Kept structure, refined container/header ---
     code({ node, inline, className, children, ...props }: any) {
       const match = /language-(\w+)/.exec(className || '');
       const codeString = String(children).replace(/\n$/, '');
-      const language = match ? match[1] : 'text'; // Default to 'text' if no language detected
+      const language = match ? match[1] : 'text'; // Default to 'text'
 
-      // Determine if it should be rendered as a block or inline
-       const isBlock = !inline || codeString.includes('\n') || (language === 'text' && codeString.length > 60);
-
+      const isBlock = !inline || codeString.includes('\n') || (language === 'text' && codeString.length > 60);
 
       // --- BLOCK CODE ---
-       // Style adjustments for better visual hierarchy and theme consistency
-      if (isBlock && language !== 'text') { // Only apply syntax highlighting if language is detected
-        const style = theme === 'dark' ? oneDark : oneLight; // Use better themes
+      if (isBlock && language !== 'text') {
+        const style = theme === 'dark' ? oneDark : oneLight;
 
         return (
-           // Added elevation and refined border
-          <div className="group code-block relative shadow-md dark:shadow-gray-900/50 dark:shadow-lg mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-            {/* Header Bar Styling Adjustment */}
-            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/60 px-4 py-2 border-gray-200 dark:border-gray-700 border-b">
-                <div className="flex items-center gap-2 font-medium text-gray-500 dark:text-gray-400 text-xs">
-                    <TerminalIcon className="w-4 h-4" />
-                    <span>{language.toUpperCase()}</span>
-                </div>
+           // Cleaner container: subtle border, less shadow
+          <div className="group code-block relative my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden bg-white dark:bg-gray-950 shadow-sm">
+            {/* Cleaner Header Bar */}
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-b border-gray-200 dark:border-gray-700/80">
+              <div className="flex items-center gap-2 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs">
+                {/* <TerminalIcon className="w-4 h-4" /> // Icon optional, can uncomment if desired */}
+                <span>{language.toUpperCase()}</span>
+              </div>
               <button
                 onClick={() => handleCopyCode(codeString)}
-                 // Slightly softer button style
-                 className="flex items-center gap-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600/80 px-2.5 py-1 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-gray-700 dark:text-gray-300 text-xs transition-colors duration-150"
+                 // Simple button style
+                 className="flex items-center gap-1 bg-gray-200/70 hover:bg-gray-300/70 dark:bg-gray-700/70 dark:hover:bg-gray-600/70 px-2 py-0.5 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-gray-700 dark:text-gray-300 text-xs transition-colors duration-150"
                 aria-label="Copy code"
               >
                 {copiedCode === codeString ? (
-                   <> <CheckIcon className="w-3.5 h-3.5 text-green-500 dark:text-green-400" /> Copied </>
+                   <> <CheckIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-500" /> <span className="hidden sm:inline">Copied</span> </>
                 ) : (
-                   <> <CopyIcon className="w-3.5 h-3.5" /> Copy </>
+                   <> <CopyIcon className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Copy</span> </>
                 )}
               </button>
             </div>
@@ -401,21 +398,21 @@ export default function Home() {
               style={style}
               language={language}
               PreTag="div"
-               // Removed specific bg-white/dark:bg-gray-900 to inherit from style, adjusted padding
-               className="!px-4 !py-4 overflow-x-auto !text-sm !leading-relaxed scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50"
-              showLineNumbers={codeString.split('\n').length > 3} // Show line numbers for more than 3 lines
-              wrapLongLines={false} // Disable wrapping for code blocks
-               // Adjusted line number style for subtlety
-              lineNumberStyle={{ color: theme === 'dark' ? '#555e6e' : '#a0aec0', fontSize: '0.8em', paddingRight: '1.2em', userSelect: 'none' }}
+               // Adjusted padding, ensure bg from style is used
+               className="!p-4 overflow-x-auto !text-sm !leading-relaxed scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50"
+              showLineNumbers={codeString.split('\n').length > 3}
+              wrapLongLines={false}
+               // Subtle line number style
+              lineNumberStyle={{ color: theme === 'dark' ? '#6b7280' : '#9ca3af', fontSize: '0.8em', paddingRight: '1.2em', userSelect: 'none' }}
               customStyle={{
                 margin: 0,
-                borderRadius: '0', // No border radius needed since parent has it
+                borderRadius: '0',
                 fontSize: '0.875rem', // text-sm
                 lineHeight: '1.6',
-                 // Ensure background from theme is applied
-                 backgroundColor: theme === 'dark' ? style['pre[class*="language-"]'].backgroundColor : style['pre[class*="language-"]'].backgroundColor,
+                // Ensure background from theme is applied, removing double bg definition
+                backgroundColor: style['pre[class*="language-"]'].backgroundColor,
               }}
-              codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }} // Ensure monospace font
+              codeTagProps={{ style: { fontFamily: 'var(--font-mono)' } }}
               {...props}
             >
               {codeString}
@@ -425,72 +422,41 @@ export default function Home() {
       }
 
       // --- INLINE CODE ---
-       // Enhanced inline code styling
+      // Simple, subtle inline style
       return (
          isBlock ? (
-              // Basic block format for text/long inline code - improved styling
-             <pre className="block bg-gray-100 dark:bg-gray-800/70 shadow-sm mb-4 p-3.5 border border-gray-200 dark:border-gray-700 rounded-md overflow-x-auto font-mono text-gray-800 dark:text-gray-200 text-sm break-words whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-200 dark:scrollbar-track-gray-700">
+             // Basic block for plain text code - cleaner styling
+             <pre className="block bg-gray-100 dark:bg-gray-800/50 my-4 p-3 border border-gray-200 dark:border-gray-700/80 rounded-md overflow-x-auto font-mono text-gray-800 dark:text-gray-200 text-sm whitespace-pre-wrap scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-200 dark:scrollbar-track-gray-700">
                  <code>{children}</code>
              </pre>
          ) : (
-            // Inline code styling - modern with subtle blue tones
-            <code className="bg-blue-100/50 dark:bg-blue-900/30 mx-[0.1em] px-[0.5em] py-[0.2em] border border-blue-200/80 dark:border-blue-800/50 rounded-md font-mono text-[0.875em] text-blue-800 dark:text-blue-300 break-words" {...props}>
+            // Cleaner inline code
+            <code className="bg-gray-100 dark:bg-gray-800/60 mx-[0.1em] px-[0.4em] py-[0.1em] border border-gray-200 dark:border-gray-700/60 rounded font-mono text-[0.9em] text-gray-800 dark:text-gray-300 break-words" {...props}>
               {children}
             </code>
          )
       );
     },
 
-    // --- Table Renderer V5 - Ultra Modern Data Table Styling ---
-    table: ({ node, ...props }: any) => {
-      // Check if this is likely a financial table by looking at the headers
-      const isFinancialTable = node.children?.[0]?.children?.[0]?.children?.some((cell: any) => {
-        const content = cell.children?.map((c: any) => c.value || '').join('') || '';
-        return content.toLowerCase().includes('valuation') || 
-               content.toLowerCase().includes('funding') ||
-               content.toLowerCase().includes('revenue') ||
-               content.toLowerCase().includes('investment');
-      });
-
-      return (
-        // Enhanced container with elegant glass effect and stronger visual hierarchy
-        <div className={`bg-white/90 dark:bg-gray-900/80 shadow-xl dark:shadow-blue-900/10 backdrop-blur-sm my-8 border ${
-          isFinancialTable 
-            ? 'border-green-200/80 dark:border-green-800/60' 
-            : 'border-gray-200/80 dark:border-gray-700/60'
-        } rounded-xl overflow-hidden`}>
-          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-            <table className="w-full text-sm border-separate border-spacing-0" {...props} />
-          </div>
+    // --- Table Renderer V6 - Clean & Simple Data Table ---
+    table: ({ node, ...props }: any) => (
+      // Simple container, subtle border, focus on content
+      <div className="my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden shadow-sm">
+        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+          <table className="w-full text-sm border-collapse" {...props} />
         </div>
-      );
-    },
-    tableHead: ({ node, ...props }: any) => {
-      // Check if this is likely a financial table by looking at the headers
-      const isFinancialTable = node.children?.[0]?.children?.some((cell: any) => {
-        const content = cell.children?.map((c: any) => c.value || '').join('') || '';
-        return content.toLowerCase().includes('valuation') || 
-               content.toLowerCase().includes('funding') ||
-               content.toLowerCase().includes('revenue') ||
-               content.toLowerCase().includes('investment');
-      });
-
-      return (
-        // Modern gradient header with strong hierarchy and blur effect
-        <thead className={`top-0 z-10 sticky backdrop-blur-sm ${
-          isFinancialTable 
-            ? 'bg-gradient-to-r from-green-50 via-green-50/90 to-green-50/80 dark:from-gray-800 dark:via-green-900/20 dark:to-gray-800/95 border-b-2 border-green-200 dark:border-green-800/60' 
-            : 'bg-gradient-to-r from-blue-50 via-blue-50/90 to-indigo-50/80 dark:from-gray-800 dark:via-blue-900/20 dark:to-gray-800/95 border-b-2 border-blue-200 dark:border-blue-800/60'
-        } shadow-sm`} {...props} />
-      );
-    },
+      </div>
+    ),
+    tableHead: ({ node, ...props }: any) => (
+      // Clean header, simple background, bottom border
+      <thead className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-300 dark:border-gray-600" {...props} />
+    ),
     tr: ({ node, isHeader, ...props }: any) => (
+      // Simple row separation, subtle hover
       <tr
         className={`
-          border-b border-gray-200/70 dark:border-gray-700/50
-          ${!isHeader ?
-            "odd:bg-white/70 dark:odd:bg-gray-800/40 even:bg-blue-50/40 dark:even:bg-blue-900/20 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-colors duration-200"
-            : ""}
+          border-b border-gray-200 dark:border-gray-700/60 last:border-b-0
+          ${!isHeader ? "hover:bg-gray-50/70 dark:hover:bg-gray-800/40 transition-colors duration-100" : ""}
         `}
         {...props}
       />
@@ -501,539 +467,385 @@ export default function Home() {
       if (align === 'right') alignClass = 'text-right';
       if (align === 'center') alignClass = 'text-center';
 
-      // Get cell content as string
       const content = node.children?.map((c: any) => c.value || '').join('') || '';
       const trimmedContent = content.trim();
-      
-      // Enhanced pattern matching for financial and numeric data
-      const isCurrency = /^\s*[\$€£¥₹₽₩][\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent) || 
+
+      // Simplified checks for styling
+      const isCurrency = /^\s*[\$€£¥₹₽₩][\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent) ||
                         /^\s*[\d,.]+[KMBTkmbt]?\s*[\$€£¥₹₽₩]\s*$/.test(trimmedContent);
       const isPercentage = /^\s*[\d,.]+\s*%\s*$/.test(trimmedContent);
-      const isNumeric = /^\s*[\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent);
-      const hasRange = trimmedContent.includes('-') && 
-                      /^\s*[\d,.]+\s*-\s*[\d,.]+\s*$/.test(trimmedContent.replace(/[KMBTkmbt%\$€£¥₹₽₩]/g, ''));
-      
-      // Check for valuation table headers and financial metrics
-      const isValuationHeader = isHeader && (
-        content.toLowerCase().includes('valuation') || 
-        content.toLowerCase().includes('funding') || 
-        content.toLowerCase().includes('revenue') ||
-        content.toLowerCase().includes('investment') || 
-        content.toLowerCase().includes('round') ||
-        content.toLowerCase().includes('amount')
-      );
-      
-      // Check if this is a financial metric row
-      const isFinancialMetric = !isHeader && (
-        content.toLowerCase().includes('revenue') || 
-        content.toLowerCase().includes('profit') || 
-        content.toLowerCase().includes('valuation') ||
-        content.toLowerCase().includes('funding') ||
-        content.toLowerCase().includes('investment') ||
-        content.toLowerCase().includes('cash flow') ||
-        content.toLowerCase().includes('round')
-      );
-      
-      // Check if this is likely a feature/comparison table
-      const isFeatureTable = isHeader && (
-        content.toLowerCase().includes('feature') || 
-        content.toLowerCase().includes('property') || 
-        content.toLowerCase().includes('capability')
-      );
-      
-      // Check if this is a comparison value cell (pros/cons)
-      const isPositiveValue = !isHeader && (
-        content.toLowerCase().includes('yes') || 
-        content.toLowerCase().includes('supported') || 
-        content.toLowerCase().includes('available') ||
-        content.toLowerCase().includes('better') ||
-        content.toLowerCase().includes('faster')
-      );
-      
-      const isNegativeValue = !isHeader && (
-        content.toLowerCase().includes('no') || 
-        content.toLowerCase().includes('not supported') || 
-        content.toLowerCase().includes('unavailable') ||
-        content.toLowerCase().includes('worse') ||
-        content.toLowerCase().includes('slower')
-      );
+      const isNumeric = /^\s*[\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent) && !isCurrency && !isPercentage; // Exclude currency/percentage
+      const hasRange = trimmedContent.includes('-') && /^\s*[\d,.]+\s*-\s*[\d,.]+\s*$/.test(trimmedContent.replace(/[KMBTkmbt%\$€£¥₹₽₩]/g, ''));
 
-      // Format content for display - apply currency formatting intelligently
+      // Example: Check for 'Valuation' or 'Funding' in header for potential financial context
+       const isFinancialHeader = isHeader && (
+         content.toLowerCase().includes('valuation') ||
+         content.toLowerCase().includes('funding') ||
+         content.toLowerCase().includes('revenue') ||
+         content.toLowerCase().includes('investment') ||
+         content.toLowerCase().includes('round') ||
+         content.toLowerCase().includes('amount')
+       );
+
+      // Formatting logic (simplified)
       let displayContent = content;
-      // Only apply currency formatting in specific cases - tables with financial data
-      if (!isHeader && (isCurrency || (isNumeric && isFinancialMetric))) {
-        const tableElement = node.parent?.parent?.parent?.parent;
-        const isFinancialTable = tableElement?.children?.[0]?.children?.[0]?.children?.some((cell: any) => {
-          const cellContent = cell.children?.map((c: any) => c.value || '').join('') || '';
-          return cellContent.toLowerCase().includes('valuation') || 
-                 cellContent.toLowerCase().includes('funding') ||
-                 cellContent.toLowerCase().includes('revenue') ||
-                 cellContent.toLowerCase().includes('investment');
-        });
-        
-        if (isFinancialTable) {
-          // Apply currency formatting
-          displayContent = formatCurrency(trimmedContent);
-          // Mark as currency for proper styling
-          if (!isCurrency) {
-            // isCurrency = true;
-          }
-        }
+      // Only apply currency formatting if it strictly matches the pattern or in financial context
+      if (!isHeader && isCurrency) {
+        displayContent = formatCurrency(trimmedContent); // Assuming formatCurrency exists and works
       }
-      
+
       const cellProps = {
         className: `
-          px-6 py-4 ${alignClass}
+          px-4 py-2.5 ${alignClass} font-serif // Use serif by default
           ${isHeader
-            ? `font-serif font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider ${isValuationHeader ? 'bg-green-50/50 dark:bg-green-900/30' : isFeatureTable ? 'bg-blue-50/50 dark:bg-blue-900/30' : ''}`
-            : isCurrency
-              ? 'font-mono text-green-700 dark:text-green-300 font-medium tabular-nums'
-              : isPercentage
-                ? 'font-mono text-purple-700 dark:text-purple-300 font-medium tabular-nums'
-                : isNumeric || hasRange
-                  ? 'font-mono text-blue-700 dark:text-blue-300 font-medium tabular-nums'
-                  : isFinancialMetric
-                    ? 'font-serif text-gray-800 dark:text-gray-200 font-medium'
-                    : isPositiveValue
-                      ? 'text-green-700 dark:text-green-300 font-medium'
-                      : isNegativeValue
-                        ? 'text-red-600 dark:text-red-300 font-medium'
-                        : 'text-gray-700 dark:text-gray-300'
-        }
-      `,
+            ? 'font-semibold text-gray-700 dark:text-gray-200 text-xs uppercase tracking-wider' // Simpler header
+            : 'text-gray-700 dark:text-gray-300' // Default cell style
+          }
+          // Specific styling based on content type (subtle)
+          ${isCurrency ? 'font-mono text-green-700 dark:text-green-400' : ''}
+          ${isPercentage ? 'font-mono text-purple-700 dark:text-purple-400' : ''}
+          ${(isNumeric || hasRange) ? 'font-mono text-blue-700 dark:text-blue-400' : ''}
+          ${isFinancialHeader ? 'bg-gray-100 dark:bg-gray-700/50' : ''} // Subtle highlight for financial headers
+        `,
         ...props,
       };
 
       return isHeader
-        ? <th scope="col" {...cellProps} />
-        : <td {...cellProps} />;
+        ? <th scope="col" {...cellProps}>{displayContent}</th> // Render th for headers
+        : <td {...cellProps}>{displayContent}</td>;
     },
 
-    // --- Heading Renderers with Serif Font and Enhanced Visual Hierarchy ---
+    // --- Heading Renderers - Clean, Serif, Clear Hierarchy ---
     h1: ({ node, children, ...props }: any) => (
-      <h1 className="mt-10 mb-6 pb-4 border-gray-300 dark:border-gray-600/80 border-b font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl md:text-4xl tracking-tight" {...props}>
+      <h1 className="mt-8 mb-5 pb-2 border-b border-gray-300 dark:border-gray-600 font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl tracking-tight" {...props}>
         {children}
       </h1>
     ),
     h2: ({ node, children, ...props }: any) => {
-      const text = String(children);
-      const sectionIconMap: Record<string, React.ElementType> = {
-        'Research Path': ArrowRightIcon, 
-        'Top Sources Sample': GlobeIcon, 
-        'Source Analysis Overview': DatabaseIcon,
-        'Comparative Assessment': RefreshCwIcon, 
-        'Executive Summary': BookOpenIcon, 
-        'Key Findings': CheckIcon,
-        'Detailed Analysis': SearchIcon, 
-        'Technical Details': FileTextIcon, 
-        'Research Methodology': BrainIcon,
-        'Code Examples': TerminalIcon, 
-        'Visual References': ImageIcon, 
-        'Key Insights': AlertCircleIcon,
-        'Confidence Level Assessment': CheckIcon, 
-        'Conclusions': CheckIcon, 
-        'References': BookOpenIcon,
-        'Limitations': AlertCircleIcon, 
-        'Future Directions': ArrowRightIcon, 
-        'Introduction': BookOpenIcon,
-        // Added from synthesis prompt
-        'Methodology': BrainIcon, 
-        'Technical Detail': FileTextIcon, 
-        'Future Direction': ArrowRightIcon, 
-        'Comprehensive Analysis': SearchIcon, 
-        'Key Findings & Detailed Breakdown': FileTextIcon, 
-        'Comparison & Nuances': RefreshCwIcon, 
-        'Technical Deep Dive & Code Examples': TerminalIcon, 
-        'Conclusion from Research Data': CheckIcon
-      };
-       // Find best matching section using startsWith
-      const matchingSection = Object.keys(sectionIconMap).find(section => text.trim().startsWith(section));
+       const text = String(children);
+        // Keep icon logic, but make it visually cleaner
+       const sectionIconMap: Record<string, React.ElementType> = {
+         'Research Path': ArrowRightIcon,
+         'Top Sources Sample': GlobeIcon,
+         'Source Analysis Overview': DatabaseIcon,
+         'Comparative Assessment': RefreshCwIcon,
+         'Executive Summary': BookOpenIcon,
+         'Key Findings': CheckIcon,
+         'Detailed Analysis': SearchIcon,
+         'Technical Details': FileTextIcon,
+         'Research Methodology': BrainIcon,
+         'Code Examples': TerminalIcon,
+         'Visual References': ImageIcon,
+         'Key Insights': AlertCircleIcon,
+         'Confidence Level Assessment': CheckIcon,
+         'Conclusions': CheckIcon,
+         'References': BookOpenIcon,
+         'Limitations': AlertCircleIcon,
+         'Future Directions': ArrowRightIcon,
+         'Introduction': BookOpenIcon,
+         'Methodology': BrainIcon,
+         'Technical Detail': FileTextIcon,
+         'Future Direction': ArrowRightIcon,
+         'Comprehensive Analysis': SearchIcon,
+         'Key Findings & Detailed Breakdown': FileTextIcon,
+         'Comparison & Nuances': RefreshCwIcon,
+         'Technical Deep Dive & Code Examples': TerminalIcon,
+         'Conclusion from Research Data': CheckIcon,
+         'Research Process & Sources': BrainIcon, // Added from route.ts structure
+         'Additional Research Insights': AlertCircleIcon, // Added from route.ts structure
+         'Extended Research Analysis': SearchIcon, // Added from route.ts potential padding
+       };
+       const matchingSection = Object.keys(sectionIconMap).find(section => text.trim().startsWith(section));
 
-      if (matchingSection) {
-        const SectionIcon = sectionIconMap[matchingSection];
-        return (
-          <h2 className="flex items-center mt-12 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/60 font-serif font-semibold text-blue-700 dark:text-blue-300 text-2xl md:text-3xl tracking-tight" {...props}>
-            <div className="bg-gradient-to-br from-blue-50 dark:from-blue-900/40 to-blue-100 dark:to-blue-800/60 shadow-sm mr-3.5 p-2.5 rounded-lg">
-              <SectionIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            {text}
-          </h2>
-        );
-      }
-      // Default H2 style improved
-      return (
-        <h2 className="mt-10 mb-5 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl md:text-3xl tracking-tight" {...props}>
-          {children}
-        </h2>
-      );
-    },
+       if (matchingSection) {
+         const SectionIcon = sectionIconMap[matchingSection];
+         return (
+           <h2 className="flex items-center mt-10 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
+              {/* Cleaner icon presentation */}
+             <SectionIcon className="w-5 h-5 mr-2.5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+             {text}
+           </h2>
+         );
+       }
+       // Default H2 - simple border bottom
+       return (
+         <h2 className="mt-10 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700 font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl tracking-tight" {...props}>
+           {children}
+         </h2>
+       );
+     },
     h3: ({ node, children, ...props }: any) => (
-      <h3 className="mt-8 mb-4 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl" {...props}>
+      <h3 className="mt-8 mb-3 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl" {...props}>
         {children}
       </h3>
     ),
     h4: ({ node, children, ...props }: any) => (
-      <h4 className="mt-6 mb-3 font-serif font-semibold text-gray-700 dark:text-gray-300 text-lg md:text-xl" {...props}>
+      <h4 className="mt-6 mb-2 font-serif font-semibold text-gray-700 dark:text-gray-300 text-lg" {...props}>
         {children}
       </h4>
     ),
     h5: ({ node, children, ...props }: any) => (
-      <h5 className="mt-4 mb-2 font-serif font-semibold text-gray-700 dark:text-gray-300 text-base md:text-lg" {...props}>
+      <h5 className="mt-5 mb-2 font-serif font-semibold text-gray-700 dark:text-gray-300 text-base" {...props}>
         {children}
       </h5>
     ),
     h6: ({ node, children, ...props }: any) => (
-      <h6 className="mt-4 mb-2 font-serif font-semibold text-gray-600 dark:text-gray-400 text-sm md:text-base" {...props}>
+      <h6 className="mt-4 mb-1 font-serif font-semibold text-gray-600 dark:text-gray-400 text-sm" {...props}>
         {children}
       </h6>
     ),
 
-    // --- Link Renderer V5 (Complete Overhaul) ---
+    // --- Link Renderer V6 - Clean & Minimal ---
     a: ({ node, href, children, ...props }: any) => {
       const url = href || '';
       const isExternal = url.startsWith('http://') || url.startsWith('https://');
       const textContent = Array.isArray(children) ? children.join('') : String(children);
 
-      // Check if this link is inside a source list item (identified by the specific text pattern)
-      const parentLi = node?.parent;
-      let isSourceListItemLink = false;
-      if (parentLi && parentLi.tagName === 'li') {
-        let parentTextContent = '';
-        parentLi.children?.forEach((child: any) => {
-           if (child.type === 'text') parentTextContent += child.value;
-           else if (child.tagName === 'strong' || child.tagName === 'a') {
-               child.children?.forEach((grandChild: any) => {
-                   if (grandChild.type === 'text') parentTextContent += grandChild.value;
-               });
-           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') {
-               parentTextContent += child.children[0].value;
-           }
-        });
-        parentTextContent = parentTextContent.trim();
-        if (parentTextContent.includes('(Domain:') && parentTextContent.includes('| Relevance:')) {
-          isSourceListItemLink = true;
-        }
-      }
+      // Basic check for source list items (simplified logic, relies on parent 'ul' class)
+      const isSourceListItemLink = node?.parent?.parent?.properties?.className?.includes('source-list');
 
-      // If it's a link within our custom source list item, render it simply.
-      // The `li` renderer handles the overall structure and styling.
+      // Render source list links plainly, styling is handled by the li/ul
       if (isSourceListItemLink) {
         return (
-          <a href={url} target="_blank" rel="noopener noreferrer" {...props}>
+          <a href={url} target="_blank" rel="noopener noreferrer" className="font-medium text-gray-800 dark:text-gray-100 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-150 line-clamp-2" {...props}>
             {children}
           </a>
         );
       }
 
-      // --- Existing logic for other links (images, code links, standard external/internal links) ---
-
-      // Handle image links
+      // Handle image links (keep simple wrapper)
       if (url.match(/\.(jpg|jpeg|png|gif|webp|svg|avif)(\?.*)?$/i)) {
         return (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group block shadow-lg hover:shadow-xl my-6 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden transition-all duration-300"
-          >
+          <a href={url} target="_blank" rel="noopener noreferrer" className="block my-5 group">
             <img
               src={url}
               alt={textContent || 'Linked image'}
-              className="block group-hover:opacity-90 max-w-full h-auto transition-opacity"
+              className="max-w-full h-auto rounded-md border border-gray-200 dark:border-gray-700 shadow-sm group-hover:shadow-md transition-shadow"
               loading="lazy"
             />
           </a>
         );
       }
-
       // Handle images wrapped in links
       if (node?.children?.[0]?.tagName === 'img') {
         const imgNode = node.children[0];
         return (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group block my-6"
-          >
+          <a href={url} target="_blank" rel="noopener noreferrer" className="block my-5 group">
             <img
               src={imgNode.properties.src}
               alt={imgNode.properties.alt || 'Embedded image'}
-              className="group-hover:opacity-90 shadow-lg hover:shadow-xl mx-auto border border-gray-200 dark:border-gray-700 rounded-xl max-w-full h-auto transition-all duration-300"
+              className="max-w-full h-auto rounded-md border border-gray-200 dark:border-gray-700 shadow-sm group-hover:shadow-md transition-shadow mx-auto"
               loading="lazy"
             />
           </a>
         );
       }
 
-      // --- Improved Link Styling for Modern UI ---
+      // --- Standard Link Styling (Clean Underline) ---
       let domain = '';
       let faviconUrl = '';
-
       if (isExternal) {
         try {
-          domain = extractDomain(url);
-          // Only set favicon if we have a valid domain
+          domain = extractDomain(url); // Assuming extractDomain exists
           if (domain && domain.length > 0) {
-            faviconUrl = getFaviconUrl(domain);
+             // Use a smaller favicon size
+            faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=32`;
           }
-        } catch (e) {
-          console.warn("Could not parse domain for favicon:", url);
-        }
+        } catch (e) { console.warn("Could not parse domain for favicon:", url); }
       }
-
-      // Determine if the link text itself is a URL (common in markdown)
       const isLinkTextUrl = textContent === url;
 
-      // Check if this is a code-like link (e.g., nextjs.org/docs)
-      const isCodeLink = textContent.match(/^`[^`]+`$/);
-      const codeContent = isCodeLink ? textContent.replace(/^`|`$/g, '') : '';
-
-      // Special styling for code-like links
-      if (isCodeLink) {
-        return (
-          <a
-            href={url}
-            target={isExternal ? '_blank' : undefined}
-            rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow-md active:shadow px-3 py-2 border border-blue-200 dark:border-blue-700/50 hover:border-blue-300 dark:hover:border-blue-600 rounded-md font-serif text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200 cursor-pointer"
-            {...props}
-          >
-            {isExternal && faviconUrl && domain && (
-              <img
-                src={faviconUrl}
-                alt={`${domain} favicon`}
-                className="inline-block mr-2 rounded-sm w-4 h-4"
-                loading="lazy"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
-            )}
-            <span>{codeContent}</span>
-            {isExternal && (
-              <ExternalLinkIcon className="inline-block opacity-70 group-hover:opacity-100 ml-1.5 w-3.5 h-3.5 transition-opacity shrink-0" />
-            )}
-          </a>
-        );
-      }
-
-      // Modern link styling for regular links
       return (
         <a
           href={url}
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noopener noreferrer' : undefined}
-          className="group relative inline-flex items-center gap-1.5 hover:bg-blue-50/80 active:bg-blue-100/80 dark:hover:bg-blue-900/40 dark:active:bg-blue-800/50 -mx-1.5 -my-1 px-1.5 py-1 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 rounded-md font-medium text-blue-600 hover:text-blue-700 active:text-blue-800 dark:hover:text-blue-300 dark:active:text-blue-200 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-150 cursor-pointer"
+          // Simple, clean underline style
+          className="inline-flex items-center gap-1 font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 underline underline-offset-2 decoration-blue-600/30 dark:decoration-blue-400/30 hover:decoration-blue-600/70 dark:hover:decoration-blue-400/70 break-words transition-colors duration-150"
           {...props}
         >
-          {isExternal && faviconUrl && domain && domain.length > 0 && (
+           {/* Subtle Favicon */}
+          {isExternal && faviconUrl && (
             <img
               src={faviconUrl}
-              alt={`${domain} favicon`}
-              className="inline-block shadow-sm mr-0.5 rounded-sm w-4 h-4 align-text-bottom flex-shrink-0"
+              alt="" // Decorative
+              className="inline-block mr-0.5 w-4 h-4 rounded-sm flex-shrink-0 align-text-bottom"
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
           )}
-          <span className={isLinkTextUrl ? 'truncate max-w-[20ch] sm:max-w-[30ch] md:max-w-[40ch]' : ''}>
-            {isLinkTextUrl ? url.replace(/^(https?:)?\/\//, '').replace(/\/$/, '') : children}
-          </span>
+           {/* Display clean URL if text is URL, otherwise display children */}
+          <span>{isLinkTextUrl ? url.replace(/^(https?:)?\/\//, '').replace(/\/$/, '') : children}</span>
+          {/* Subtle External Link Icon */}
           {isExternal && (
-            <ExternalLinkIcon className="inline-block opacity-60 group-hover:opacity-100 ml-0.5 w-3.5 h-3.5 align-text-bottom transition-opacity shrink-0" />
+            <ExternalLinkIcon className="inline-block ml-0.5 w-3.5 h-3.5 opacity-60 group-hover:opacity-90 transition-opacity flex-shrink-0 align-text-bottom" />
           )}
         </a>
       );
     },
 
-    // --- List Item Renderer V5 (Enhanced Modern) ---
+    // --- List Item Renderer V6 (Clean & Modern) ---
     li: ({ node, children, ordered, ...props }: any) => {
-       // Get text content cleanly, handling nested strong/a tags
        let textContent = '';
-       let linkNode: any = null; // Initialize linkNode
-
+       let linkNode: any = null;
        node.children?.forEach((child: any) => {
-           if (child.type === 'text') {
-             textContent += child.value;
-           } else if (child.tagName === 'strong') {
-             child.children?.forEach((grandChild: any) => {
-                 if (grandChild.type === 'text') textContent += grandChild.value;
-             });
-           } else if (child.tagName === 'a') {
-              linkNode = child; // Store the link node
-              child.children?.forEach((grandChild: any) => {
-                  if (grandChild.type === 'text') textContent += grandChild.value;
-              });
-           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') {
-              textContent += child.children[0].value;
-           }
+         // Simplified text extraction for pattern matching
+         if (child.type === 'text') textContent += child.value;
+         else if (child.tagName === 'a') linkNode = child;
+         else if (child.children?.length > 0 && child.children[0].type === 'text') textContent += child.children[0].value;
        });
        textContent = textContent.trim();
 
-       // Match source pattern more robustly - allow for more variations in formatting from route.ts
-       const sourcePattern = /^\s*\[?(.*?)\]?\(.*?\)\s*\(Domain:\s*\*{0,2}(.*?)\*{0,2}(?:\s*🔒)?\)\s*(?:\|\s*Relevance:\s*\*{0,2}(.*?)\*{0,2})?(?:.*?)$/;
+       // Simplified source pattern matching
+       const sourcePattern = /\(Domain:\s*\*{0,2}(.*?)\*{0,2}.*?\|\s*Relevance:\s*\*{0,2}(.*?)\*{0,2}/;
        const sourceMatch = textContent.match(sourcePattern);
-       // Find the link node again if needed (if the first child isn't the link)
-       if (!linkNode) {
-         linkNode = node.children?.find((child: any) => child.tagName === 'a');
-       }
        const url = linkNode?.properties?.href || '#';
-       const title = sourceMatch?.[1] || linkNode?.children?.find((c:any) => c.type === 'text')?.value || textContent.split('(')[0].trim() || ''; // Extract title more robustly
+       const title = linkNode?.children?.find((c:any) => c.type === 'text')?.value || textContent.split('(')[0].trim() || '';
 
-       if (sourceMatch && !ordered && url !== '#') {
-          const domain = sourceMatch[2];
-          const relevance = sourceMatch[3] || 'N/A'; 
-          const faviconUrl = getFaviconUrl(domain);
+       // --- Source List Item Styling ---
+       if (sourceMatch && !ordered && url !== '#' && node?.parent?.parent?.properties?.className?.includes('source-list')) {
+          const domain = sourceMatch[1];
+          const relevance = sourceMatch[2] || 'N/A';
+          const faviconUrl = getFaviconUrl(domain); // Assuming getFaviconUrl exists
           const isSecure = url.startsWith('https://');
 
           return (
-             <li className="group m-0 mb-3 p-0 list-none" {...props}>
+             <li className="m-0 p-0 list-none" {...props}>
               <a
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                // Apply the full styling here for the source item link
-                className="flex items-center gap-3 bg-white hover:bg-blue-50 dark:bg-gray-800/60 dark:hover:bg-blue-900/40 shadow-sm hover:shadow-md p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
+                // Clean card-like style for sources
+                className="flex items-center gap-3 bg-white dark:bg-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-700/60 p-3 border border-gray-200 dark:border-gray-700/80 hover:border-gray-300 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150 shadow-sm hover:shadow-md"
               >
+                {/* Subtle Favicon container */}
                 {domain && (
-                  <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1 border border-gray-200 dark:border-gray-600 rounded-md w-9 h-9 overflow-hidden shadow-sm">
+                  <div className="flex-shrink-0 flex justify-center items-center bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded w-7 h-7">
                     {faviconUrl ? (
-                      <img
-                        src={faviconUrl}
-                        alt={domain}
-                        className="w-5 h-5 object-contain"
-                        loading="lazy"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          const parent = target.parentElement;
-                          if (parent) {
-                            parent.innerHTML = `<span class="font-bold text-blue-500 text-md dark:text-blue-400">${domain.charAt(0).toUpperCase()}</span>`;
-                          }
-                          target.style.display = 'none';
-                        }}
-                      />
+                      <img src={faviconUrl} alt="" className="w-4 h-4" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
-                      <span className="font-bold text-blue-500 text-md dark:text-blue-400">{domain.charAt(0).toUpperCase()}</span>
+                      <GlobeIcon className="w-4 h-4 text-gray-500" />
                     )}
                   </div>
                 )}
+                {/* Main content area */}
                 <div className="flex-grow min-w-0">
-                   <div className="font-serif font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 text-sm line-clamp-2 leading-snug transition-colors">
-                     {title} {/* Use the extracted title */}
-                   </div>
-                   <div className="flex items-center gap-1 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
+                   {/* Render the link content (title) using the 'a' renderer's logic */}
+                   {children}
+                   {/* Domain info */}
+                   <div className="flex items-center gap-1 mt-0.5 text-gray-500 dark:text-gray-400 text-xs truncate">
                      <GlobeIcon className="flex-shrink-0 w-3 h-3" />
                      <span className="truncate">{domain}{isSecure ? ' 🔒' : ''}</span>
                    </div>
                  </div>
-                 <div className="flex flex-shrink-0 items-center gap-2 ml-3">
-                    <div className="bg-blue-100 dark:bg-blue-900/50 shadow-inner px-2.5 py-1 rounded-full font-semibold text-blue-700 dark:text-blue-300 text-xs whitespace-nowrap">
+                 {/* Relevance on the right */}
+                 <div className="flex-shrink-0 ml-2">
+                    <span className="inline-block bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap">
                       {relevance}
-                    </div>
-                    <ExternalLinkIcon className="w-4 h-4 text-gray-400 dark:group-hover:text-blue-400 dark:text-gray-500 group-hover:text-blue-500 transition-colors" />
-                  </div>
+                    </span>
+                 </div>
               </a>
             </li>
           );
        }
 
-       // Check for path item
-       const startsWithPathKeyword = pathKeywords.some(keyword =>
-           textContent?.trim().startsWith(keyword) ||
-           (node.children?.[0]?.type === 'text' && node.children[0].value?.trim().startsWith(keyword))
-       );
-       if (startsWithPathKeyword && !ordered) {
-           // Extract step number and query text more robustly
-           const stepMatch = textContent?.match(/^- Step (\d+):\s*"(.*)"$/) || textContent?.match(/^(.*?):\s*"(.*)"$/);
-           const prefix = stepMatch ? (stepMatch[0].includes("Step") ? `Step ${stepMatch[1]}` : stepMatch[1]) : textContent?.split('"')[0] || '';
-           const queryText = stepMatch ? stepMatch[2] : textContent?.match(/"([^"]+)"/)?.[1] || textContent;
+       // --- Research Path Item Styling ---
+       const pathKeywords = ['Initial query:', 'Research area', 'Follow-up query', 'Step ', '- Step ']; // Keep keywords
+       const startsWithPathKeyword = pathKeywords.some(keyword => textContent.trim().startsWith(keyword));
 
-           let PathIcon = ArrowRightIcon;
-           if (prefix.includes('Initial') || prefix.includes('Step 1')) PathIcon = SearchIcon;
-           else if (prefix.includes('area') || prefix.includes('Step')) PathIcon = BrainIcon;
+       if (startsWithPathKeyword && !ordered && node?.parent?.parent?.properties?.className?.includes('research-path')) {
+            const stepMatch = textContent.match(/^- Step (\d+):\s*"(.*)"$/) || textContent.match(/^(.*?):\s*"(.*)"$/);
+            const prefix = stepMatch ? (stepMatch[0].includes("Step") ? `Step ${stepMatch[1]}` : stepMatch[1]) : textContent.split('"')[0].trim().replace(':', '');
+            const queryText = stepMatch ? stepMatch[2] : textContent.match(/"([^"]+)"/)?.[1] || textContent;
+            let PathIcon = ArrowRightIcon; // Default
+            if (prefix.includes('Initial') || prefix.includes('Step 1')) PathIcon = SearchIcon;
+            else if (prefix.includes('area')) PathIcon = BrainIcon;
 
-        return (
-           <li className="group m-0 mb-2 p-0 list-none" {...props}>
-               <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-2 pr-3 pl-3 border-l-3 border-blue-400 hover:border-blue-500 dark:border-blue-700 dark:hover:border-blue-500 rounded-r-md transition-colors">
-                   <div className="flex-shrink-0 mr-2.5 text-blue-500 dark:text-blue-400">
-                       <PathIcon className="w-4 h-4" />
-                   </div>
-                   <div className="text-gray-600 dark:text-gray-300 text-sm">
-                       {prefix && <span className="mr-1.5 font-medium font-serif text-gray-500 dark:text-gray-400">{prefix.replace(':', '').trim()}:</span>}
-                       <span className="font-medium font-serif text-gray-800 dark:group-hover:text-white dark:text-gray-200 group-hover:text-black transition-colors">
+         return (
+            <li className="m-0 p-0 list-none" {...props}>
+                {/* Cleaner path item style */}
+               <div className="flex items-center bg-gray-50 dark:bg-gray-800/40 py-1.5 px-3 border-l-2 border-blue-400 dark:border-blue-600 rounded-r-md">
+                   <PathIcon className="w-4 h-4 mr-2 flex-shrink-0 text-blue-500 dark:text-blue-400" />
+                   <div className="text-gray-600 dark:text-gray-300 text-sm font-serif">
+                       {prefix && <span className="font-semibold text-gray-500 dark:text-gray-400 mr-1.5">{prefix}:</span>}
+                       <span className="text-gray-800 dark:text-gray-200">
                            {stepMatch ? `"${queryText}"` : queryText}
                        </span>
                    </div>
                </div>
            </li>
-         );
-      }
+          );
+       }
 
-      // --- Default List Item Renderer ---
-      return (
-        <li className="group flex items-start mb-2.5" {...props}>
-           <span className={`flex-shrink-0 mt-1 mr-3 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
+       // --- Default List Item Renderer (Clean) ---
+       return (
+         <li className="my-1 flex items-start" {...props}>
+            {/* Simple marker */}
+           <span className={`flex-shrink-0 mr-2.5 pt-1 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
             {ordered ? `${(props.index ?? 0) + 1}.` : (
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="group-hover:scale-110 transition-transform">
-               <circle cx="4" cy="4" r="3" fill="currentColor" />
-               <circle cx="4" cy="4" r="3.75" stroke="currentColor" strokeOpacity="0.3" strokeWidth="0.5"/>
-            </svg>
+              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="mt-0.5"><circle cx="3" cy="3" r="3" /></svg>
             )}
           </span>
+            {/* Serif font for content */}
            <span className="text-gray-700 dark:text-gray-300 leading-relaxed font-serif">{children}</span>
-        </li>
-      );
+         </li>
+       );
     },
 
-    // --- List Wrappers ---
+    // --- List Wrappers - Add specific classes for context ---
     ul: ({ node, children, className, ...props }: any) => {
-       // Check if this list contains our custom source or path list items
-       const containsCustomItems = node.children.some((child: any) => {
-            if (child.tagName !== 'li') return false;
-            const childText = child.children?.map((c:any) => c.value || '').join('');
-            const isSourceItem = childText.includes('(Domain:') && childText.includes(', Relevance:');
-            const isPathItem = pathKeywords.some((keyword: any) => childText.trim().startsWith(keyword));
-            return isSourceItem || isPathItem;
+       // Check if this list contains source or path items for specific styling
+       const isSourceList = node.children.some((child: any) => {
+          if (child.tagName !== 'li') return false;
+          const childText = child.children?.map((c:any) => c.type === 'text' ? c.value : (c.children?.[0]?.value || '')).join('');
+          return childText.includes('(Domain:') && childText.includes('Relevance:');
+       });
+       const isPathList = node.children.some((child: any) => {
+           if (child.tagName !== 'li') return false;
+           const childText = child.children?.map((c:any) => c.type === 'text' ? c.value : (c.children?.[0]?.value || '')).join('');
+           return pathKeywords.some((keyword: string) => childText.trim().startsWith(keyword));
        });
 
-       // Apply specific class if it's a list of sources or paths
-       if (containsCustomItems) {
-           return <ul className="m-0 p-0 list-none space-y-2" {...props}>{children}</ul>;
+       if (isSourceList) {
+           // No bullets, custom spacing handled by li
+           return <ul className="m-0 p-0 list-none space-y-2.5 source-list" {...props}>{children}</ul>;
        }
-       // Default list styling
-       return <ul className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-disc" {...props}>{children}</ul>;
+       if (isPathList) {
+           // No bullets, custom spacing handled by li
+           return <ul className="m-0 p-0 list-none space-y-1.5 research-path" {...props}>{children}</ul>;
+       }
+       // Default list styling - standard bullets/numbers
+       return <ul className="space-y-1 mb-5 pl-5 list-disc" {...props}>{children}</ul>;
     },
     ol: ({ node, children, className, ...props }: any) => (
-       <ol className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-decimal" {...props}>{children}</ol>
+       <ol className="space-y-1 mb-5 pl-5 list-decimal" {...props}>{children}</ol> // Standard ordered list
     ),
 
-    // --- Paragraph Renderer ---
+    // --- Paragraph Renderer - Use Serif ---
     p: ({ node, children, ...props }: any) => {
-       // Simple check for empty paragraphs
+       // Handle empty paragraphs
        if (React.Children.count(children) === 0 || (typeof children[0] === 'string' && children[0].trim() === '')) {
-         return null; // Render nothing for empty paragraphs
+         return null;
        }
-
-       // Check if paragraph contains only "---" (which should be rendered as hr)
-       if (node.children.length === 1 &&
-           node.children[0].type === 'text' &&
-           node.children[0].value.trim() === '---') {
-         // Render a custom horizontal rule instead
-         return (
-           <div className="flex justify-center items-center my-8">
-             <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
-           </div>
-         );
+       // Handle '---' for hr rendering (keep this logic)
+       if (node.children.length === 1 && node.children[0].type === 'text' && node.children[0].value.trim() === '---') {
+         return <hr className="my-8 border-gray-200 dark:border-gray-700" />; // Render simple hr
        }
-
-       // Check if paragraph only contains an image
+       // Render images directly if paragraph only contains an image
        const containsOnlyImage = node.children.length === 1 && (node.children[0].tagName === 'img' || (node.children[0].tagName === 'a' && node.children[0].children?.[0]?.tagName === 'img'));
        if (containsOnlyImage) {
-         // Render children directly, the 'a' or 'img' renderer will handle it
          return <>{children}</>;
        }
-
-       // Default paragraph rendering with font-serif and improved spacing
-       return <p className="mb-5 text-gray-700 dark:text-gray-300 leading-relaxed font-serif" {...props}>{children}</p>;
+       // Default paragraph with serif font
+       return <p className="mb-4 text-gray-700 dark:text-gray-300 leading-relaxed font-serif" {...props}>{children}</p>;
     },
+
+    // --- Blockquote Renderer - Clean & Simple ---
+    blockquote: ({ node, children, ...props }: any) => (
+        <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 pr-2 py-1 my-5 italic text-gray-600 dark:text-gray-400 font-serif" {...props}>
+            {children}
+        </blockquote>
+    ),
 
   };
 
@@ -1391,38 +1203,28 @@ export default function Home() {
               )}
             </div>
 
-            {/* Markdown Report Content - Enhanced Styling */}
-            <div className="prose-blockquote:border-l-blue-500 dark:prose-blockquote:border-l-blue-700 
-                          prose-blockquote:bg-blue-50/50 dark:prose-blockquote:bg-blue-900/20 
-                          prose-blockquote:px-4 prose-blockquote:py-1 prose-blockquote:rounded-r-md 
-                          prose-blockquote:not-italic prose-blockquote:text-gray-700 dark:prose-blockquote:text-gray-300 
-                          prose-blockquote:font-normal prose-blockquote:shadow-sm
-
-                          prose-code:bg-blue-100/50 dark:prose-code:bg-blue-900/30 prose-code:border 
-                          prose-code:border-blue-200/80 dark:prose-code:border-blue-800/50 
-                          prose-code:rounded-md prose-code:px-1 prose-code:py-0.5 prose-code:font-mono 
-                          prose-code:text-blue-800 dark:prose-code:text-blue-300 prose-code:text-sm
-                          prose-code:before:content-none prose-code:after:content-none
-
-                          prose-img:shadow-lg prose-img:rounded-xl prose-img:border 
-                          prose-img:border-gray-200 dark:prose-img:border-gray-700
-
-                          prose-hr:border-none prose-hr:my-10 prose-hr:h-0 
-
-                          prose-li:marker:text-blue-600 dark:prose-li:marker:text-blue-400
-
-                          prose-a:text-blue-600 dark:prose-a:text-blue-400 
-                          prose-a:font-medium prose-a:no-underline hover:prose-a:underline
-                          
-                          prose-strong:text-blue-700 dark:prose-strong:text-blue-300 prose-strong:font-semibold
-
-                          prose-headings:font-serif prose-headings:tracking-tight
-                          
-                          max-w-none prose prose-lg dark:prose-invert">
+            {/* Markdown Report Content - Updated Prose Styles */}
+            <div className="prose prose-base lg:prose-lg dark:prose-invert // Base prose styles
+                          max-w-none // Allow content to fill container
+                          prose-p:font-serif prose-li:font-serif // Serif for paragraphs & lists
+                          prose-headings:font-serif prose-headings:tracking-tight // Serif for headings
+                          prose-a:text-blue-600 dark:prose-a:text-blue-400 // Default link color (overridden by renderer)
+                          prose-strong:font-semibold prose-strong:text-gray-800 dark:prose-strong:text-gray-200 // Strong styling
+                          prose-blockquote:font-serif // Serif for blockquotes
+                          prose-code:font-mono // Mono for code (overridden by renderer)
+                          prose-img:rounded-md prose-img:border prose-img:border-gray-200 dark:prose-img:border-gray-700 prose-img:shadow-sm // Image styling
+                          prose-hr:border-gray-200 dark:prose-hr:border-gray-700 // HR styling
+                          prose-table:text-sm // Base table font size
+                          prose-thead:border-b prose-thead:border-gray-300 dark:prose-thead:border-gray-600 // Table head border
+                          prose-th:font-semibold prose-th:px-4 prose-th:py-2 prose-th:text-left // Table header styling
+                          prose-td:px-4 prose-td:py-2 // Table cell padding
+                          prose-tr:border-b prose-tr:border-gray-200 dark:prose-tr:border-gray-700/60 // Table row border
+                          dark:prose-td:text-gray-300 dark:prose-th:text-gray-200 // Dark mode table text
+                          ">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 rehypePlugins={[rehypeRaw]}
-                components={renderers}
+                components={renderers} // Use the updated renderers
               >
                 {report}
               </ReactMarkdown>

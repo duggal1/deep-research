@@ -11,21 +11,22 @@ interface EmbeddingVector {
 
 // --- Constants Adjustment ---
 // Target more sources, higher parallelism, longer overall time, but keep individual request timeouts reasonable.
-const MAX_TARGET_SOURCES = 75000; // Increase target sources slightly
-const MAX_TOKEN_OUTPUT_TARGET = 250000; // **Significantly Increase Token Output Target**
-const MAX_PARALLEL_FETCHES = 250; // Keep as is
-const MAX_OVERALL_RESEARCH_TIME_MS = 240 * 1000; // Increase overall time slightly (4 mins)
+const MAX_TARGET_SOURCES = 150000; // Significantly increased to ensure we get more sources
+const MAX_TOKEN_OUTPUT_TARGET = 400000; // **Dramatically Increased Token Output Target for 60-80K character output**
+const MAX_PARALLEL_FETCHES = 300; // Increased for faster collection
+const MAX_OVERALL_RESEARCH_TIME_MS = 270 * 1000; // Increase overall time (4.5 mins)
 const FETCH_TIMEOUT_MS = 12000; // Keep as is
 const MAX_FETCH_RETRIES = 3; // Keep as is
 const RETRY_DELAY_MS = 1200; // Keep as is
-const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2.0; // Reduce multiplier slightly to conserve context space if needed
+const MAX_ANALYSIS_CONTEXT_CHARS = MAX_TOKEN_OUTPUT_TARGET * 2.5; // Increased multiplier to provide more context for analysis
 // ---
 
 // --- Increased Intra-Domain Crawl Limits ---
-const SECOND_LEVEL_CRAWL_LIMIT = 50; // Increased from 30 to 50
-const SECOND_LEVEL_TOP_N_SOURCES = 15; // Increased from 10 to 15
+const SECOND_LEVEL_CRAWL_LIMIT = 100; // Significantly increased from 50 to 100
+const SECOND_LEVEL_TOP_N_SOURCES = 25; // Increased from 15 to 25
 // ---
-const INITIAL_RELEVANCE_THRESHOLD = 0.35; // Decreased from 0.40 to 0.35 to collect more sources
+const INITIAL_RELEVANCE_THRESHOLD = 0.30; // Further decreased from 0.35 to 0.30 to collect even more sources
+const MINIMUM_REQUIRED_SOURCES = 100; // FORCE a minimum of 100 sources
 
 // Add interface for research options
 interface ResearchOptions {
@@ -53,14 +54,15 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
-  private MAX_DATA_SOURCES = 200000; // Increase URLs slightly
-  private MAX_TOKEN_OUTPUT = 450000; // Increase synthesis token limit
-  private CHUNK_SIZE = 45000; // Increased from 40000
-  private SEARCH_DEPTH = 30; // Keep at 30
-  private MAX_PARALLEL_REQUESTS = 300; // Keep as is
-  private ADDITIONAL_DOMAINS = 50; // Keep as is
-  private MAX_RESEARCH_TIME = 190000; // Reduced further to target ~3.15 mins max internal engine time
+  private MAX_DATA_SOURCES = 300000; // Significantly increased URLs
+  private MAX_TOKEN_OUTPUT = 600000; // Dramatically increased synthesis token limit
+  private CHUNK_SIZE = 60000; // Increased from 45000
+  private SEARCH_DEPTH = 40; // Increased from 30
+  private MAX_PARALLEL_REQUESTS = 400; // Increased from 300
+  private ADDITIONAL_DOMAINS = 100; // Doubled from 50
+  private MAX_RESEARCH_TIME = 220000; // Increased to ~3.7 mins max internal engine time
   private DEEP_RESEARCH_MODE = true;
+  private MINIMUM_SOURCES_REQUIRED = 100; // Force minimum of 100 sources
   private firecrawlApiKey: string;
 
   constructor() {
@@ -1646,61 +1648,83 @@ export class ResearchEngine {
     // ... (keep existing code extraction if desired, pass overallAbortSignal) ...
     // let codeExamples = ""; // Example if skipping
 
-    // Main Synthesis Prompt (Revised for Depth, Accuracy, and **Stronger Table Instructions**)
+    // Enhanced Synthesis Prompt with Extreme Depth, Accuracy, and GUARANTEED Table Generation
     const prompt = `
-      Task: Synthesize the collected research data into an **extremely in-depth, highly accurate, factual, and comprehensive analysis** answering the query: "${query}"
+      Task: Synthesize the collected research data into an **EXTREMELY IN-DEPTH, HIGHLY ACCURATE, FACTUAL, AND COMPREHENSIVE ANALYSIS** answering the query: "${query}"
       Query: ${query}
 
-      Available Data: Synthesized from ${sources.length} sources. Context below is from the top ${sourcesInContext} most relevant sources identified during extensive web crawling.
+      Available Data: Synthesized from ${sources.length} sources (MINIMUM 100 SOURCES REQUIRED). Context below is from the top ${sourcesInContext} most relevant sources identified during extensive web crawling.
 
       Research Data Context (Truncated at ${MAX_ANALYSIS_CONTEXT_CHARS} chars):
       ${combinedDataContext}
       --- End of Context ---
 
-      **Instructions for MAXIMUM Quality Analysis:**
-      1.  **Directly Address Query:** Structure the entire analysis to definitively answer "${query}" with exhaustive detail.
-      2.  **Evidence-Based & Rigorous:** Base ALL claims strictly on the provided research context. Implicitly cite source domains \`(e.g., according to domain.com)\` frequently, but prioritize deep synthesis over per-fact citation noise. Cross-reference facts across multiple sources whenever possible.
-      3.  **Deep Synthesis, Not Listing:** Integrate findings into a coherent, insightful narrative. Identify key themes, nuanced arguments, conflicting data points, and critical technical details. Go beyond surface-level summaries.
-      4.  **Identify Consensus & Conflict Explicitly:** Clearly highlight areas of strong agreement AND specific points of disagreement found within the context data. Explain the nuances of differing perspectives.
-      5.  **Maximize Technical Depth:** If the query is technical, provide exceptionally detailed explanations, concepts, potential code patterns (use markdown \`\`\`language: any\`\`\`), configurations, and discuss implications based *only* on the provided context. Do not oversimplify.
-      6.  **Structure and Clarity:** Organize logically (e.g., Executive Summary, Deep Dive Sections, Comparison Tables, Conclusion). Use markdown formatting extensively (headings, subheadings, nested lists, bolding, italics).
-      7.  **MANDATORY & COMPLETE TABLES:** If the research involves comparisons (products, techniques, versions, pros/cons, features, etc.), you **MUST** use well-structured, **COMPLETE** markdown tables to present the comparison clearly.
+      **CRITICAL INSTRUCTIONS FOR MAXIMUM QUALITY ANALYSIS:**
+      1.  **GENERATE 60,000-80,000 CHARACTERS OF EXTREMELY VALUABLE CONTENT:** Your analysis MUST be extremely comprehensive, with 80-85% being extremely meaningful text data directly addressing the query, and the remainder being well-structured tables, code examples, and formatting.
+
+      2.  **Directly Address Query:** Structure the entire analysis to definitively answer "${query}" with exhaustive detail. Leave no aspect of the query unexplored.
+
+      3.  **Evidence-Based & Rigorous:** Base ALL claims strictly on the provided research context. Implicitly cite source domains \`(e.g., according to domain.com)\` frequently, but prioritize deep synthesis over per-fact citation noise. Cross-reference facts across multiple sources whenever possible.
+
+      4.  **Deep Synthesis, Not Listing:** Integrate findings into a coherent, insightful narrative. Identify key themes, nuanced arguments, conflicting data points, and critical technical details. Go beyond surface-level summaries to provide expert-level analysis.
+
+      5.  **Identify Consensus & Conflict Explicitly:** Clearly highlight areas of strong agreement AND specific points of disagreement found within the context data. Explain the nuances of differing perspectives with detailed examples.
+
+      6.  **Maximize Technical Depth:** If the query is technical, provide exceptionally detailed explanations, concepts, potential code patterns (use markdown \`\`\`language: any\`\`\`), configurations, and discuss implications based *only* on the provided context. Do not oversimplify. Include multiple code examples where relevant.
+
+      7.  **Structure and Clarity:** Organize logically with a hierarchical structure (e.g., Executive Summary, Deep Dive Sections, Comparison Tables, Conclusion). Use markdown formatting extensively (headings, subheadings, nested lists, bolding, italics).
+
+      8.  **GUARANTEED COMPLETE TABLES:** For ANY query that involves comparisons (products, techniques, versions, pros/cons, features, etc.), you **MUST** use multiple well-structured, **COMPLETE** markdown tables to present the comparison clearly. This is NON-NEGOTIABLE.
           *   **Include ALL relevant data points** found in the context for each item being compared. Do not omit data.
           *   Ensure tables have clear headers (\`| Header 1 | Header 2 |\`) and proper separators (\`|---|---|\`).
-          *   Example Table Structure:
+          *   **ALWAYS COMPLETE TABLES FULLY** - never truncate or abbreviate tables.
+          *   **MULTIPLE TABLES ARE REQUIRED** - create separate tables for different aspects of comparison.
+          *   Example Table Structure (YOU MUST FOLLOW THIS FORMAT EXACTLY):
               \`\`\`markdown
-              | Feature         | Option A        | Option B        | Notes                      |
-              |-----------------|-----------------|-----------------|----------------------------|
-              | Speed           | Fast            | Very Fast       | Based on benchmark X       |
-              | Cost            | $10/month       | $25/month       | Includes support           |
-              | Ease of Use     | Moderate        | Easy            | Subjective rating          |
+              | Feature         | Option A        | Option B        | Option C        | Notes                      |
+              |-----------------|-----------------|-----------------|-----------------|----------------------------|
+              | Speed           | Fast            | Very Fast       | Moderate        | Based on benchmark X       |
+              | Cost            | $10/month       | $25/month       | $5/month        | Includes support           |
+              | Ease of Use     | Moderate        | Easy            | Complex         | Subjective rating          |
+              | Documentation   | Excellent       | Good            | Limited         | Based on community feedback|
+              | Community Size  | Large           | Very Large      | Small           | As of [recent date]        |
               \`\`\`
-          *   **DO NOT TRUNCATE TABLE CONTENT.** Generate the full table even if it becomes long.
-      8.  **Acknowledge Limitations Honestly:** Explicitly state if the provided context is insufficient to fully answer parts of the query or if data is conflicting/sparse. DO NOT HALLUCINATE or invent information. Accuracy is paramount.
-      9.  **Conciseness WHERE APPROPRIATE:** Be factual and direct, but prioritize completeness and depth over brevity. Use the available output tokens fully.
-      10. **Summary Table (Optional but Recommended):** Consider including a high-level summary table of key findings or comparisons near the beginning or end, if appropriate for the query.
+          *   **NEVER TRUNCATE TABLE CONTENT.** Generate the full table even if it becomes long.
+          *   **ALWAYS INCLUDE AT LEAST 5-10 ROWS** in each comparison table for comprehensive coverage.
 
-      **Output Format (Mandatory Sections):**
+      9.  **Acknowledge Limitations Honestly:** Explicitly state if the provided context is insufficient to fully answer parts of the query or if data is conflicting/sparse. DO NOT HALLUCINATE or invent information. Accuracy is paramount.
+
+      10. **MAXIMIZE OUTPUT LENGTH:** Your analysis MUST be 60,000-80,000 characters long. Use the available output tokens fully to provide the most comprehensive analysis possible. This is CRITICAL.
+
+      11. **MULTIPLE SUMMARY TABLES REQUIRED:** Include at least 2-3 high-level summary tables of key findings or comparisons throughout the document. These should be in addition to any detailed comparison tables.
+
+      **OUTPUT FORMAT (MANDATORY SECTIONS - ALL MUST BE INCLUDED):**
 
       ## Comprehensive Analysis: ${query}
 
       ### Executive Summary
-      (Brief overview of the absolute main findings based *only* on the provided context. Focus on the core answer.)
+      (Detailed overview of the main findings based *only* on the provided context. Focus on the core answer but include sufficient detail - at least 1000 characters.)
 
       ### Key Findings & Detailed Breakdown
-      (Structured synthesis of information from the context. Use multiple relevant subheadings. Integrate facts and technical details deeply. This should be the longest section.)
+      (Extremely thorough synthesis of information from the context. Use multiple relevant subheadings. Integrate facts and technical details deeply. This should be the longest section - at least 30,000 characters.)
 
-      ### Comparison & Nuances (Use COMPLETE Markdown Tables Here if Applicable)
-      (Detailed comparison using **complete** markdown tables if query involves comparison. Discuss differing viewpoints or conflicting information found *within the context*.)
+      ### Comparison & Analysis Tables (MANDATORY)
+      (Multiple detailed comparison tables using **complete** markdown tables. Each table must have at least 5-10 rows of data. Include at least 2-3 different tables comparing different aspects of the query. Discuss each table in detail.)
 
       ### Technical Deep Dive (If Applicable)
-      (Focus on technical specifics, code examples, configurations if the query is technical.)
+      (Focus on technical specifics, multiple code examples, configurations if the query is technical. Include at least 3-5 code examples if relevant.)
+
+      ### Practical Applications & Implications
+      (Discuss how the findings can be applied in real-world scenarios, based only on the context provided.)
+
+      ### Future Directions & Trends
+      (Based only on the context, discuss potential future developments related to the query.)
 
       ### Conclusion from Research Data
-      (Concise summary directly answering the query based *only* on the analyzed context. Reiterate confidence and state limitations clearly.)
+      (Comprehensive summary directly answering the query based *only* on the analyzed context. Reiterate confidence and state limitations clearly. At least 1500 characters.)
 
       ---
-      *Analysis based on data from ${sources.length} sources. Context derived from the top ${sourcesInContext} sources.*
+      *Analysis based on data from ${sources.length} sources (minimum 100 sources required). Context derived from the top ${sourcesInContext} sources.*
       `;
       
       try {
@@ -2011,19 +2035,22 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
   async research(query: string, options?: ResearchOptions): Promise<ResearchResult> {
     this.startTime = Date.now();
     console.log(`Starting enhanced research for: "${query}"`);
-    
-    // Apply options if provided
+
+    // Apply options if provided, but ensure minimum sources requirement
     if (options) {
-      if (options.maxDepth) this.SEARCH_DEPTH = options.maxDepth;
-      if (options.timeLimit) this.MAX_RESEARCH_TIME = options.timeLimit;
-      if (options.maxUrls) this.MAX_DATA_SOURCES = options.maxUrls;
+      if (options.maxDepth) this.SEARCH_DEPTH = Math.max(options.maxDepth, 40); // Ensure minimum depth
+      if (options.timeLimit) this.MAX_RESEARCH_TIME = Math.max(options.timeLimit, 220000); // Ensure minimum time
+      if (options.maxUrls) this.MAX_DATA_SOURCES = Math.max(options.maxUrls, 300000); // Ensure minimum URLs
+      if (options.maxSources) options.maxSources = Math.max(options.maxSources, this.MINIMUM_SOURCES_REQUIRED); // Force minimum sources
     }
-    
+
     // Check cache first
     const cachedResult = this.getCachedResult(query);
-    if (cachedResult) {
-      console.log(`Returning cached result for: "${query}"`);
+    if (cachedResult && cachedResult.sources && cachedResult.sources.length >= this.MINIMUM_SOURCES_REQUIRED) {
+      console.log(`Returning cached result for: "${query}" with ${cachedResult.sources.length} sources`);
       return cachedResult;
+    } else if (cachedResult) {
+      console.log(`Cached result found but only has ${cachedResult.sources?.length || 0} sources. Minimum required: ${this.MINIMUM_SOURCES_REQUIRED}. Refreshing research.`);
     }
 
     // Create abort controller for timeout management
@@ -2041,18 +2068,57 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
       console.log(`Research plan created for "${query}" with ${researchSteps.length} steps`);
 
       // Execute deep research with Firecrawl integration
-      const { sources, crawledUrlCount, failedUrlCount } = 
+      let { sources, crawledUrlCount, failedUrlCount } =
         await this.crawlWeb(query, controller.signal);
-      
+
       console.log(`Web crawling completed: Found ${sources.length} sources (${crawledUrlCount} crawled, ${failedUrlCount} failed)`);
 
-      // Prioritize and validate sources
-      const prioritizedSources = this.prioritizeSources(sources, query)
-        .slice(0, this.MAX_DATA_SOURCES);
-      
-      console.log(`Sources prioritized. Working with top ${prioritizedSources.length} sources`);
+      // Check if we have enough sources, if not, try to get more
+      if (sources.length < this.MINIMUM_SOURCES_REQUIRED && !controller.signal.aborted) {
+        console.log(`Not enough sources (${sources.length}). Minimum required: ${this.MINIMUM_SOURCES_REQUIRED}. Attempting to gather more...`);
+        addLog(`Expanding search to gather at least ${this.MINIMUM_SOURCES_REQUIRED} sources (currently have ${sources.length})...`);
 
-      // Analyze the data
+        // Try additional crawling with expanded parameters
+        const additionalCrawlResult = await this.crawlWeb(
+          query + " comprehensive information", // Slightly modify query to get different results
+          controller.signal
+        );
+
+        // Combine sources, removing duplicates by URL
+        const urlSet = new Set(sources.map(s => s.url));
+        const newSources = additionalCrawlResult.sources.filter(s => !urlSet.has(s.url));
+
+        sources = [...sources, ...newSources];
+        crawledUrlCount += additionalCrawlResult.crawledUrlCount;
+        failedUrlCount += additionalCrawlResult.failedUrlCount;
+
+        console.log(`After expanded search: ${sources.length} total sources`);
+        addLog(`Expanded search complete. Total sources: ${sources.length}`);
+      }
+
+      // Prioritize and validate sources
+      let prioritizedSources = this.prioritizeSources(sources, query);
+
+      // FORCE minimum sources requirement by adjusting relevance threshold if needed
+      if (prioritizedSources.length < this.MINIMUM_SOURCES_REQUIRED) {
+        console.log(`After prioritization, only ${prioritizedSources.length} sources remain. Adjusting relevance threshold to ensure minimum ${this.MINIMUM_SOURCES_REQUIRED} sources.`);
+
+        // Sort all sources by relevance
+        const allSortedSources = [...sources].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
+
+        // Take at least MINIMUM_SOURCES_REQUIRED sources
+        prioritizedSources = allSortedSources.slice(0, Math.max(this.MINIMUM_SOURCES_REQUIRED, prioritizedSources.length));
+
+        console.log(`Adjusted to ${prioritizedSources.length} sources by lowering relevance threshold.`);
+        addLog(`Ensuring minimum of ${this.MINIMUM_SOURCES_REQUIRED} sources for comprehensive analysis.`);
+      }
+
+      // Cap at MAX_DATA_SOURCES if needed
+      prioritizedSources = prioritizedSources.slice(0, this.MAX_DATA_SOURCES);
+
+      console.log(`Sources prioritized. Working with ${prioritizedSources.length} sources`);
+
+      // Analyze the data with enhanced output
       const analysis = await this.analyzeData(query, prioritizedSources, controller.signal);
       console.log(`Data analysis completed: ${analysis.length} characters`);
 
@@ -2062,7 +2128,7 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
 
       // Calculate elapsed time
       const elapsedTime = Date.now() - this.startTime;
-      
+
       // Prepare result metadata
       const uniqueDomains = new Set(prioritizedSources.map(s => {
         try {
@@ -2071,7 +2137,7 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
           return s.url || '';
         }
       }));
-      
+
       // Format research result with all required fields
       const result: ResearchResult = {
         query,
@@ -2095,7 +2161,8 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
           executionTimeMs: elapsedTime,
           timestamp: new Date().toISOString(),
           crawlAttempted: crawledUrlCount,
-          crawlFailed: failedUrlCount
+          crawlFailed: failedUrlCount,
+          forcedMinimumSources: this.MINIMUM_SOURCES_REQUIRED
         }
       };
 
