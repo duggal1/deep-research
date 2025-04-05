@@ -36,6 +36,8 @@ import { cn } from '@/lib/utils';
 import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
 import { ModernProgress } from '@/components/ui/modern-progress';
 import { LiveLogs } from '@/components/ui/live-logs';
+import { AuroraText } from '@/components/magicui/aurora-text';
+import { TextShimmer } from '@/components/ui/text-shimmer';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -294,8 +296,7 @@ export default function Home() {
 
         return (
            // Cleaner container: subtle border, less shadow
-          <div className="group code-block relative bg-white dark:bg-gray-950 shadow-sm my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden">
-            {/* Cleaner Header Bar */}
+          <div className="group code-block relative bg-white dark:bg-black shadow-sm my-6 border border-gray-200 dark:border-gray-900/80 rounded-lg overflow-hidden">
             <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-gray-200 dark:border-gray-700/80 border-b">
               <div className="flex items-center gap-2 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs">
                 {/* <TerminalIcon className="w-4 h-4" /> // Icon optional, can uncomment if desired */}
@@ -662,7 +663,7 @@ export default function Home() {
         href={source.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-gray-800/50 dark:hover:bg-gray-700/60 shadow-sm hover:shadow-md p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-700/80 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150"
+        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-black dark:hover:bg-gray-900/60 shadow-sm hover:shadow-md p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-700/80 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150"
       >
         {/* Subtle Favicon container */}
         <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 mt-0.5 border border-gray-200 dark:border-gray-600 rounded w-8 h-8">
@@ -704,7 +705,7 @@ export default function Home() {
   };
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-12"> {/* Added padding */}
+    <div className="sm:px-6 lg:px-8 py-12 dapx-4"> 
       {/* Title and Description */}
       <div className="space-y-8 mx-auto mb-12 max-w-3xl">
         <motion.div
@@ -714,9 +715,9 @@ export default function Home() {
            className="space-y-4 text-center"
         >
           <h1 className="flex justify-center items-center font-serif font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
-            <span className="bg-clip-text bg-gradient-to-r from-blue-600 dark:from-blue-400 to-indigo-500 dark:to-indigo-300 text-transparent">
-              Deep Research Engine
-            </span>
+
+             <AuroraText> Deep Research Engine </AuroraText>
+       
           </h1>
            <p className="mx-auto max-w-2xl font-serif text-gray-600 dark:text-gray-400 text-lg">
              Enter a query to initiate AI-powered deep research. Choose &apos;Think&apos; for deeper analysis (Gemini Pro) or &apos;Research&apos; for faster results (Gemini Flash). {/* Updated description */}
@@ -732,7 +733,7 @@ export default function Home() {
         >
           {/* Input Field */}
           <div className="group relative"> {/* Added group for focus-within styling */}
-            <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-400 group-focus-within:text-blue-500 transition-colors pointer-events-none">
+            <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-600 dark:text-gray-50 group-focus-within:text-blue-700 transition-colors pointer-events-none">
               <SearchIcon className="w-5 h-5" />
             </div>
             <input
@@ -741,7 +742,7 @@ export default function Home() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g., Explain quantum entanglement with code examples"
               // Adjust right padding for buttons
-              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleDeepResearch('non-think')} // Default Enter triggers 'non-think'
               disabled={loading}
             />
@@ -830,18 +831,14 @@ export default function Home() {
                <div className="flex items-center gap-3">
                  <div className="relative flex justify-center items-center w-10 h-10">
                     {/* Simple Spinner */}
-                    <Loader2Icon className="w-7 h-7 text-blue-600 dark:text-blue-500 animate-spin" />
+                    <Loader2Icon className="w-7 h-7 text-gray-800 dark:text-gray-50 animate-spin" />
                  </div>
-                 <TextShimmerWave
-      className='[--base-color:#0D74CE] [--base-gradient-color:#5EB1EF]'
-      duration={1}
-      spread={1}
-      zDistance={1}
-      scaleDistance={1.1}
-      rotateYDistance={20}
-    >
-     Researching...
-    </TextShimmerWave>
+<span className='font-serif font-bold text-xl'>
+                 <AuroraText>
+                 Researching...
+                 </AuroraText>
+                 </span>
+   
                </div>
                {/* Elapsed time */}
                 <div className="bg-gradient-to-r from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">

@@ -39,7 +39,7 @@ export function MainNavbar() {
   };
 
   return (
-    <header className="fixed top-0 left-0 z-50 w-full font-serif">
+    <header className="top-0 left-0 z-50 fixed w-full font-serif">
       <nav className="px-2 w-full">
         <div className={cn(
           "mx-auto mt-4 max-w-6xl px-6 transition-all duration-300 lg:px-12",
@@ -51,6 +51,7 @@ export function MainNavbar() {
               <Image src="/blaze.png" alt="Blaze Research" width={40} height={40} priority />
               <span className="font-bold text-xl tracking-tight">
                 Blaze<span className="text-primary">Research</span>
+               <span className="font-serif font-medium text-emerald-500 dark:text-green-500">(Beta)</span>
               </span>
             </Link>
 
@@ -61,12 +62,12 @@ export function MainNavbar() {
                   <li key={idx}>
                     <Link
                       href={item.link}
-                      className="hidden lg:block hover:bg-blue-600 dark:hover:bg-blue-700 rounded-lg text-gray-900 dark:text-gray-100 hover:text-gray-100 dark:hover:text-white px-4 py-2 text-sm"
+                      className="hidden lg:block hover:bg-blue-600 dark:hover:bg-blue-700 px-4 py-2 rounded-lg text-gray-900 hover:text-gray-100 dark:hover:text-white dark:text-gray-100 text-sm"
                       onMouseEnter={() => setActiveItem(idx)}
                       onMouseLeave={() => setActiveItem(null)}
                     >
                       <span>{item.name}</span>
-                      <span className="absolute bottom-0 left-0 bg-gray-900 dark:bg-gray-100 w-0 group-hover:w-full h-0.5 transition-all duration-300"></span>
+                      <span className="bottom-0 left-0 absolute bg-gray-900 dark:bg-gray-100 w-0 group-hover:w-full h-0.5 transition-all duration-300"></span>
                     </Link>
                   </li>
                 ))}
@@ -77,7 +78,7 @@ export function MainNavbar() {
          
             <div className="flex items-center gap-3">
               {isSignedIn ? (
-                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white hover:shadow-md hover:shadow-cyan-500">
+                <Button onClick={() => router.push("/main")} className="bg-black dark:bg-white hover:shadow-cyan-500 hover:shadow-md">
                   <span>Dashboard</span>
                
                 </Button>
@@ -85,13 +86,13 @@ export function MainNavbar() {
                 <>
                   <button
                     onClick={handleAuthNavigation}
-                    className="hidden lg:block hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white px-4 py-2 text-sm"
+                    className="hidden lg:block hover:bg-gray-100 dark:hover:bg-gray-800 px-4 py-2 rounded-lg text-gray-700 hover:text-gray-900 dark:hover:text-white dark:text-gray-300 text-sm"
                   >
                     Login
                   </button>
                   <Button
                     onClick={handleGetStarted}
-                   className="bg-black dark:bg-white hover:shadow-lg hover:shadow-blue-700"
+                   className="bg-black dark:bg-white hover:shadow-blue-700 hover:shadow-lg"
                   >
                     Get Started
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -125,10 +126,10 @@ export function MainNavbar() {
       {/* Mobile Menu */}
       <AnimatePresence>
         {isMobileMenuOpen && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="lg:hidden bg-white dark:bg-black border-t dark:border-gray-800 mt-2 mx-4 rounded-xl shadow-lg">
-            <div className="px-4 py-6 space-y-4">
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3 }} className="lg:hidden bg-white dark:bg-black shadow-lg mx-4 mt-2 dark:border-gray-800 border-t rounded-xl">
+            <div className="space-y-4 px-4 py-6">
               {navItems.map((item, idx) => (
-                <Link key={`mobile-${idx}`} href={item.link} onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300">
+                <Link key={`mobile-${idx}`} href={item.link} onClick={() => setIsMobileMenuOpen(false)} className="block hover:bg-gray-100 dark:hover:bg-gray-800 px-3 py-2 rounded-md text-gray-700 dark:text-gray-300">
                   {item.name}
                 </Link>
               ))}

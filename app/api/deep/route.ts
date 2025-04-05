@@ -99,9 +99,9 @@ export async function POST(req: Request) {
       FIRECRAWL_URL,
       {
         query,
-        maxDepth: params?.maxDepth || 10,
-        maxUrls: params?.maxUrls || 50,
-        timeLimit: params?.timeLimit || 600,
+        maxDepth: params?.maxDepth || 12,
+        maxUrls: params?.maxUrls || 120,
+        timeLimit: params?.timeLimit || 900,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
         subQueries.map((subQuery) =>
           axios.post<ResearchResponse>(
             FIRECRAWL_URL,
-            { query: subQuery, maxDepth: 5, maxUrls: 20, timeLimit: 300 },
+            { query: subQuery, maxDepth: 6, maxUrls: 25, timeLimit: 500 },
             { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
           )
         )
