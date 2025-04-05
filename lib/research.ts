@@ -33,6 +33,9 @@ interface ResearchOptions {
   timeLimit?: number;
   maxUrls?: number;
   useFirecrawl?: boolean;
+  maxDomains?: number;
+  maxSources?: number;
+  highQuality?: boolean;
 }
 
 // Update ResearchSource with optional additional data
@@ -1967,10 +1970,10 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
     const averageScore = validSources > 0 ? totalScore / validSources : 0;
 
     // Map score to confidence level
-    if (averageScore >= 0.75 && sources.length >= 10) return "very high";
-    if (averageScore >= 0.6 && sources.length >= 5) return "high";
-    if (averageScore >= 0.45) return "medium";
-    if (averageScore >= 0.3) return "low";
+    if (averageScore >= 0.52 && sources.length >= 10) return "very high";
+    if (averageScore >= 0.45 && sources.length >= 5) return "high";
+    if (averageScore >= 0.35) return "medium";
+    if (averageScore >= 0.2) return "low";
     return "very low";
   }
   // -------------------------------------------------------------------------

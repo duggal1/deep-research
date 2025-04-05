@@ -106,6 +106,13 @@ export async function POST(req: Request) {
         }).join(', ');
         return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
     });
+    
+    // Additional processing for standalone domain references like (domain.com)
+    const standaloneDomainRegex = /\(([a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z0-9-.]+)\)/g;
+    analysisReport = analysisReport.replace(standaloneDomainRegex, (match, domain) => {
+        const url = domain.startsWith('http') ? domain : `https://${domain}`;
+        return `([${domain}](${url}))`;
+    });
     console.log(`[API Route] Processed inline citations in the analysis report.`);
 
 
