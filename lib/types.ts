@@ -79,3 +79,13 @@ export interface ResearchError {
   message: string;
   details?: string;
 }
+
+export interface ResearchOptions {
+  maxDepth?: number;
+  timeLimit?: number;
+  maxUrls?: number;
+  useFirecrawl?: boolean;
+  maxDomains?: number;
+  maxSources?: number;
+  highQuality?: boolean;
+}

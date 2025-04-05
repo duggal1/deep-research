@@ -1848,23 +1848,28 @@ export class ResearchEngine {
     // Create a source map for easier citation
     const sourceMap = allSources.reduce((map, source, index) => {
       try {
-        const domain = new URL(source.url).hostname;
+        // Ensure URL has protocol for proper parsing
+        let url = source.url || '';
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url;
+        }
+        const domain = new URL(url).hostname.replace(/^www\./, ''); // Remove www.
         if (!map[domain]) {
           map[domain] = {
             count: 1,
-            urls: [source.url],
+            urls: [source.url], // Store original URL
             titles: [source.title],
-            relevanceSum: source.relevance
+            relevanceSum: source.relevance || 0 // Handle potential undefined relevance
           };
         } else {
           map[domain].count += 1;
           map[domain].urls.push(source.url);
           map[domain].titles.push(source.title);
-          map[domain].relevanceSum += source.relevance;
+          map[domain].relevanceSum += source.relevance || 0;
         }
       } catch (e) {
         // Handle invalid URLs
-        console.warn(`Invalid URL in source: ${source.url}`);
+        console.warn(`Invalid URL in source: ${source.url}, Error: ${e instanceof Error ? e.message : String(e)}`);
       }
       return map;
     }, {} as Record<string, {count: number, urls: string[], titles: string[], relevanceSum: number}>);
@@ -1876,7 +1881,7 @@ export class ResearchEngine {
         console.log(`Truncating sources from ${finalSources.length} to ${this.MAX_DATA_SOURCES} before synthesis.`);
         // Assuming sources are already prioritized, take the top N
         finalSources = finalSources.slice(0, this.MAX_DATA_SOURCES);
-        sourceLimitNote = `\n(Note: Displaying top ${this.MAX_DATA_SOURCES} most relevant sources out of ${allSources.length} collected)`;
+        sourceLimitNote = `\n(Note: Analysis based on the top ${this.MAX_DATA_SOURCES} most relevant sources out of ${allSources.length} collected)`;
     }
     // --- End MAX_DATA_SOURCES check ---
 
@@ -1884,14 +1889,13 @@ export class ResearchEngine {
     const sourceSummary = Object.entries(sourceMap)
       .sort((a, b) => (b[1].relevanceSum / b[1].count) - (a[1].relevanceSum / a[1].count))
       .slice(0, 15) // Top 15 most relevant domains
-      .map(([domain, info]) => `${domain} (${info.count} sources, avg relevance: ${(info.relevanceSum / info.count).toFixed(2)})`)
-      .join(', ') + sourceLimitNote; // Add note about truncation if applied
+      .map(([domain, info]) => `\`${domain}\` (${info.count} sources, avg relevance: ${(info.relevanceSum / info.count).toFixed(2)})`)
+      .join(', ');
     
     // Prepare research path with context
     const formattedPath = researchPath.map((q, i) => {
-      if (i === 0) return `Initial query: "${q}"`;
-      if (i <= 5) return `Research area ${i}: "${q}"`;
-      return `Follow-up query ${i-5}: "${q}"`;
+      if (i === 0) return `1. Initial query: "${q}"`;
+      return `${i + 1}. Refined focus: "${q}"`;
     }).join('\n');
     
     // Calculate data size and adjust chunk sizes based on our MAX_TOKEN_OUTPUT
@@ -1905,170 +1909,177 @@ export class ResearchEngine {
       Research Process:
       ${formattedPath}
       
-      Source Diversity: Data was collected from ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains. ${sourceLimitNote}
+      Source Overview: Data was collected from ${finalSources.length} sources across ${Object.keys(sourceMap).length} unique domains.${sourceLimitNote}
       
-      Most Relevant Source Domains: ${sourceSummary}
+      Key Source Domains Identified: ${sourceSummary}
       
-      Initial Research Findings (summary):
+      Initial Research Findings Summary:
       ${initialData.substring(0, initialDataSize)}
+      ${initialData.length > initialDataSize ? '\n[...]' : ''}
       
-      Follow-up Research Findings (summaries):
-      ${followUpData.map((d, i) => `--- Follow-up Area ${i+1} ---\n${d.substring(0, followUpDataSize)}`).join('\n\n')}
+      Follow-up Research Findings Summaries:
+      ${followUpData.map((d, i) => `--- Follow-up Area ${i+1} ---\n${d.substring(0, followUpDataSize)}${d.length > followUpDataSize ? '\n[...]' : ''}`).join('\n\n')}
     `;
 
-    // Create a more comprehensive prompt that utilizes our higher token capacity
+    // Refined Synthesis Prompt
     const prompt = `
-      Task: Synthesize all research data into a comprehensive, evidence-based report on "${query}".
+      Task: Synthesize the provided research context into a highly detailed, accurate, and well-structured report answering the query: "${query}".
+      Audience: Assumed to be knowledgeable and seeking comprehensive, factual information.
       
-      Research Context:
+      Research Context Summary:
       ${researchContext}
-      
-      Instructions:
-      1. Cross-reference information across multiple sources to verify accuracy - look for consensus among at least 3 sources when possible
-      2. Prioritize findings that are supported by multiple credible sources with higher relevance scores
-      3. Clearly identify areas where sources disagree and explain the different perspectives
-      4. Document the confidence level for each major conclusion (HIGH/MEDIUM/LOW)
-      5. Maintain objectivity and avoid speculation - clearly distinguish between facts and interpretations
-      6. Ensure all claims are backed by specific evidence from the research
-      7. Present alternative perspectives where relevant
-      8. Be specific about dates, numbers, versions, and technical details - include exact version numbers when mentioned
-      9. Provide in-depth analysis that goes beyond surface-level information
-      10. For technical topics, include code examples when available
-      11. For comparison topics, use tables to clearly show differences - ensure tables use proper markdown formatting with: 
-          | Header 1 | Header 2 | Header 3 |
-          | --- | --- | --- |
-          | Data 1 | Data 2 | Data 3 |
-      12. Use numbered lists for steps, processes, or sequences of events
-      13. Be skeptical of information that contradicts established knowledge or seems implausible
-      14. Use your own critical thinking to evaluate claims found in sources
-      
-      Format as a professional research report with these comprehensive sections:
-      
-      EXECUTIVE SUMMARY
-      (Concise overview of the most important findings - approximately 300 words)
-      
-      INTRODUCTION
-      (Topic background, significance, scope of the research)
-      
-      METHODOLOGY
-      (Research approach, sources consulted, validation methods)
-      
-      KEY FINDINGS
-      (Major discoveries organized by relevance and topic area)
-      
-      DETAILED ANALYSIS
-      (In-depth examination of findings with supporting evidence)
-      
-      TECHNICAL DETAILS
-      (Specifications, configurations, implementation details when applicable)
-      
-      CODE EXAMPLES
-      (Any relevant code samples from the research)
-      
-      COMPARATIVE ASSESSMENT
-      (Comparisons with alternatives or previous versions when applicable)
-      
-      LIMITATIONS AND CONSIDERATIONS
-      (Constraints, caveats, areas of uncertainty)
-      
-      FUTURE DIRECTIONS
-      (Emerging trends, upcoming developments, research gaps)
-      
-      CONCLUSIONS
-      (Evidence-supported answers to the original query)
-      
-      REFERENCES
-      (Sources organized by domain, with relevance scores)
-      
-      Include specific citations when presenting factual information using the format [Source: domain.com].
-      Focus on delivering actionable insights with maximum detail based on verifiable data from the top ${finalSources.length} sources.
-      This is for an expert audience that wants comprehensive technical information without oversimplification.
-      YOUR RESPONSE SHOULD BE GREATLY DETAILED WITH SIGNIFICANT LENGTH - USE THE FULL AVAILABLE TOKEN CAPACITY.
+      --- End of Context ---
+
+      **CRITICAL Instructions for High-Quality Synthesis:**
+      1.  **Answer the Core Question:** Structure the entire response to directly and thoroughly answer "${query}".
+      2.  **Evidence is Paramount:** Base ALL statements strictly on the provided research context snippets. Use inline citations frequently, formatted as \`(Source: [domain.com](https://domain.com))\`. Group citations where multiple sources support a point, e.g., \`(Sources: [domain1.com](https://domain1.com), [domain2.com](https://domain2.com))\`. DO NOT use URLs directly in citations, only domain names hyperlinked.
+      3.  **Deep Synthesis & Analysis:** Go beyond summarizing. Integrate findings, identify patterns, contradictions, and nuances from the data. Explain *why* things are the way the context describes them.
+      4.  **Highlight Consensus & Disagreement:** Explicitly point out where the source data agrees and where it conflicts. Quantify if possible (e.g., "Most sources state X, but [domain.com](https://domain.com) offers a counterpoint...").
+      5.  **Technical Precision (If Applicable):** If the query is technical, provide exact details, version numbers, configurations, and potential code examples (using markdown \`\`\`language\`\`\` blocks) as found *only* in the context. Avoid oversimplification.
+      6.  **Mandatory Markdown Tables:** For any comparisons (features, pros/cons, versions, pricing, etc.), **YOU MUST use standard, clearly formatted markdown tables**. Ensure correct header/separator lines (\`| Header | Header |\n|---|---|\`). **Double-check table formatting for correctness.**
+      7.  **Structure & Readability:** Use clear headings (##), subheadings (###), bullet points (* or -), and bold text for emphasis. Ensure logical flow.
+      8.  **Acknowledge Context Limitations:** If the provided context is insufficient or ambiguous for parts of the query, state this clearly. Do not invent or extrapolate beyond the supplied data.
+      9.  **Professional Tone:** Maintain an objective, factual, and analytical tone.
+      10. **Output Length:** Utilize the available token space to provide maximum detail and depth.
+
+      **Required Report Structure:**
+
+      ## Comprehensive Analysis: ${query}
+
+      ### Executive Summary
+      (Concise, high-level answer to the query, summarizing the most critical findings from the context. Aim for ~150-250 words.)
+
+      ### Key Findings & Detailed Breakdown
+      (The main body. Organize by theme or sub-topic related to the query. Synthesize information deeply, integrating facts and citations (\`(Source: [domain.com](https://domain.com))\`) as per instruction #2. Use subheadings (###) liberally.)
+
+      ### Comparative Analysis (Use Tables if Applicable)
+      (Present comparisons using **correctly formatted markdown tables**. Discuss nuances, pros/cons, or differing perspectives found in the context.)
+
+      ### Technical Specifications / Implementation Details (If Applicable)
+      (Detailed technical information, configurations, code patterns found in context.)
+
+      ### Limitations & Uncertainties in Data
+      (Explicitly mention any gaps, contradictions, or ambiguities identified in the provided research context.)
+
+      ### Conclusion
+      (Summarize the main conclusions drawn *strictly* from the analyzed data in relation to the original query. Reiterate the confidence level based on source consensus/conflict.)
+
+      ---
+      *Analysis derived from ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains. Key domains include: ${sourceSummary}.*
     `;
+
 
     try {
-      console.log(`Synthesizing comprehensive research with ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains`);
-      // Generate content with maximum model capacity
+      console.log(`Synthesizing comprehensive research with ${finalSources.length} sources across ${Object.keys(sourceMap).length} domains. Prompt length: ${prompt.length}`);
+      addLog(`Synthesizing final report from ${finalSources.length} sources... (Using enhanced prompt)`);
       const result = await this.model.generateContent({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
           maxOutputTokens: this.MAX_TOKEN_OUTPUT,
-          temperature: 0.1 // Lower temperature for more factual and grounded output
+          temperature: 0.15, // Slightly increased for potentially better flow while staying factual
+          // Add safety settings if needed, e.g., block none for max flexibility if appropriate
+          // safetySettings: [
+          //   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          //   // ... other categories
+          // ]
         }
       });
-      
-      // Process the response to fix table formatting
-      let text = result.response.text();
 
-      // Comprehensive table formatting fix
-      // First, detect table sections
-      const tablePattern = /\|[\s\S]+?\|[\s\S]+?\|/g;
-      const tables = text.match(tablePattern);
+      const responseText = result.response?.text(); // Use optional chaining
 
-      if (tables) {
-        tables.forEach((tableSection: string) => {
-          // Get the original table
-          const originalTable = tableSection;
+      if (!responseText) {
+           // Handle cases where the response or text might be missing
+           console.error("Analysis generation returned no text content.");
+           addLog("Error: Analysis generation returned empty response.");
+           // Check for specific reasons like safety blocks
+           const blockReason = result.response?.promptFeedback?.blockReason;
+           if (blockReason) {
+               addLog(`Analysis blocked by safety settings: ${blockReason}`);
+               return `Analysis generation failed: Content was blocked due to safety settings (${blockReason}). Please refine your query.`;
+           }
+           return "Analysis Error: Failed to generate report content from the language model.";
+       }
 
-          // Fix the header separator row
-          let fixedTable = tableSection.replace(/\|\s*[-:]+\s*\|/g, '| --- |');
-          fixedTable = fixedTable.replace(/\|[-:\s|]+\n/g, '| --- | --- | --- |\n');
 
-          // Ensure all rows have the same number of columns
-          const headerRow = fixedTable.split('\n')[0];
-          const columnCount = (headerRow.match(/\|/g) || []).length - 1;
+      let text = responseText;
+      console.log(`[synthesizeResearch] Raw analysis length: ${text.length}`);
+      addLog("Raw analysis generated, applying post-processing...");
 
-          // Create a properly formatted separator row
-          const separatorRow = '|' + ' --- |'.repeat(columnCount);
+      // --- Improved Table Formatting Fix ---
+      // Regex to find potential markdown tables, including those with inconsistent separators
+      const tableRegex = /(\|.*?\n\|[ \t]*[-:|]+[ \t]*\|.*\n(?:\|.*?\n)+)/g;
 
-          // Replace the second row with our properly formatted separator
-          const tableRows = fixedTable.split('\n');
-          if (tableRows.length > 1) {
-            tableRows[1] = separatorRow;
-            fixedTable = tableRows.join('\n');
+      text = text.replace(tableRegex, (tableMatch) => {
+          const lines = tableMatch.trim().split('\n');
+          if (lines.length < 2) return tableMatch; // Not a valid table structure
+
+          // Process header
+          const header = lines[0].trim();
+          const columnCount = (header.match(/\|/g) || []).length - 1;
+          if (columnCount <= 0) return tableMatch; // Invalid header
+
+          // Create the correct separator line
+          const separator = '|' + ' --- |'.repeat(columnCount);
+
+          // Rebuild the table with the correct separator
+          let fixedTable = header + '\n' + separator;
+          for (let i = 2; i < lines.length; i++) {
+              // Ensure each data row has the correct number of pipes
+              let row = lines[i].trim();
+              const pipes = (row.match(/\|/g) || []).length;
+              if (pipes === columnCount + 1) {
+                  fixedTable += '\n' + row;
+              } else {
+                   // Attempt to fix rows with missing/extra pipes (basic fix)
+                   const cells = row.split('|').map(c => c.trim());
+                   // Remove potential empty strings from start/end split
+                   if (cells[0] === '') cells.shift();
+                   if (cells[cells.length - 1] === '') cells.pop();
+                   
+                   // Pad or truncate to match column count
+                   while (cells.length < columnCount) cells.push('');
+                   const correctedRow = '| ' + cells.slice(0, columnCount).join(' | ') + ' |';
+                   fixedTable += '\n' + correctedRow;
+                   console.log(`Corrected table row: ${row} -> ${correctedRow}`); // Log correction
+              }
           }
-
-          // Replace the original table with the fixed one
-          text = text.replace(originalTable, fixedTable);
-        });
-      }
-
-      // Fix comparative assessment section formatting
-      text = text.replace(
-        /(COMPARATIVE ASSESSMENT[\s\S]*?)(\n\n|$)/g,
-        '## Comparative Assessment\n\n$1\n\n'
-      );
-
-      // Make all domain references clickable
-      const domainPattern = /\b(?:www\.)?([\w-]+\.[\w.-]+)\b(?!\]|\))/g;
-      text = text.replace(domainPattern, (match: string, domain: string) => {
-        // Ensure the domain has www. if it started with it
-        const fullDomain = match.startsWith('www.') ? match : domain;
-        return `[${fullDomain}](https://${fullDomain})`;
+          return fixedTable;
       });
+      // --- End Table Fix ---
       
-      // Remove excessive dashes that break markdown formatting
-      text = text.replace(/[-]{10,}/g, '---');
-      
-      // Ensure proper spacing around headings
-      text = text.replace(/(\n#+\s.*?)(\n[^#\n])/g, '$1\n$2');
-      
-      return text;
-    } catch (error) {
+      // Refined post-processing for cleaner markdown
+      text = text.replace(/(\n\n## )/g, '\n## '); // Ensure single newline before H2
+      text = text.replace(/(\n\n### )/g, '\n### '); // Ensure single newline before H3
+      text = text.replace(/(\n\n\* )/g, '\n* '); // Ensure single newline before list items
+      text = text.replace(/(\n\n- )/g, '\n- '); // Ensure single newline before list items
+      text = text.replace(/ {2,}\n/g, '\n'); // Remove trailing spaces on lines
+      text = text.replace(/\n{3,}/g, '\n\n'); // Collapse excess blank lines
+
+      console.log(`[synthesizeResearch] Post-processing complete. Final length: ${text.length}`);
+      addLog("Analysis post-processing finished.");
+      return text.trim(); // Trim final output
+
+    } catch (error: any) { // Catch specific types if possible
       console.error("Error in synthesizeResearch:", error);
-      const errorMessage = error instanceof Error ? error.message : String(error);
+        addLog(`Synthesis Error: ${error.message}`);
+        // Check for specific API errors like quota or safety
+        const errorDetails = error.response?.promptFeedback?.blockReason
+            ? `Content generation blocked by safety settings (${error.response.promptFeedback.blockReason}).`
+            : error.message.includes("quota")
+                ? "API Quota Exceeded."
+                : error.message;
+
       return `
 ## Research Synthesis Error
 
-The system encountered an error while attempting to synthesize the research findings: ${errorMessage}
+The system encountered an error while synthesizing the research findings: ${errorDetails}
 
-### Available Research Data:
-- ${researchPath.length} research paths were explored
-- ${finalSources.length} sources were consulted across ${Object.keys(sourceMap).length} different domains
-- Initial data collection was ${initialData.length} characters in length
-- ${followUpData.length} follow-up research streams were conducted
+**Details:**
+- Research Steps: ${researchPath.length}
+- Sources Consulted: ${finalSources.length} across ${Object.keys(sourceMap).length} domains.
+- Available Data Size (Approx): Initial ${initialData.length} chars, Follow-up ${followUpData.reduce((sum, d) => sum + d.length, 0)} chars.
 
-Please retry your query or contact support if this issue persists.
+Please review the error message or try refining your query. Contact support if the issue persists.
       `;
     }
   }

@@ -35,27 +35,40 @@ import React from 'react';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
+  if (!url || typeof url !== 'string') {
+    return ''; // Return empty string for invalid input
+  }
+  
   try {
     // Ensure URL has a protocol for parsing
-    let urlToParse = url;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      urlToParse = 'https://' + url;
+    let urlToParse = url.trim();
+    if (!urlToParse.startsWith('http://') && !urlToParse.startsWith('https://')) {
+      urlToParse = 'https://' + urlToParse;
     }
     const domain = new URL(urlToParse).hostname;
     return domain.replace(/^www\./, ''); // Remove www.
   } catch (e) {
     // Fallback for invalid URLs: try to extract domain-like pattern
     const domainMatch = url.match(/([a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z0-9][-a-zA-Z0-9.]+)/);
-    return domainMatch ? domainMatch[0] : url; // Return matched pattern or original string
+    return domainMatch ? domainMatch[0] : ''; // Return matched pattern or empty string
   }
 };
 
 // Function to get favicon URL using Google's service
 const getFaviconUrl = (domain: string) => {
-  // Use a reliable proxy or service if direct Google access is blocked/unreliable
-  // For simplicity, we keep Google's service here.
-  // Consider adding error handling for the image itself in the component.
-  return `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+  if (!domain || typeof domain !== 'string') {
+    return ''; // Return empty string for invalid domain
+  }
+  
+  // Clean the domain string
+  const cleanDomain = domain.trim().toLowerCase();
+  if (!cleanDomain) return '';
+  
+  // Add a cache-busting parameter to prevent duplicate requests
+  const cacheBuster = Date.now() % 10000; // Use modulo to keep number small
+  
+  // Use a reliable service with cache-busting parameter
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=128&cb=${cacheBuster}`;
 };
 
 // Define the structure for research metrics more explicitly
@@ -65,6 +78,22 @@ interface ResearchMetrics {
   dataSize: string; // e.g., "123.45KB"
   elapsedTime: number; // in milliseconds
 }
+
+// Helper function to format currency values
+const formatCurrency = (value: string): string => {
+  // Check if the value is already formatted
+  if (value.match(/^[\$€£¥₹₽₩][\d,.]+[KMBTkmbt]?$/)) {
+    return value; // Already formatted correctly
+  }
+  
+  // Check if it's a number that needs currency formatting
+  const numericMatch = value.match(/^[\d,.]+[KMBTkmbt]?$/);
+  if (numericMatch) {
+    return '$' + value; // Add dollar sign to numeric values
+  }
+  
+  return value; // Return as-is if not a currency value
+};
 
 export default function Home() {
   const [query, setQuery] = useState('');
@@ -113,73 +142,85 @@ export default function Home() {
   // Function to poll for progress updates
   const pollResearchProgress = useCallback(async () => {
     try {
-      // console.log('[Poll] Fetching progress...');
-      const res = await fetch('/api/research/progress', { cache: 'no-store' });
+      const res = await fetch('/api/research/progress', { 
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
 
       if (res.ok) {
         const data = await res.json();
-        // console.log('[Poll] Received data:', data);
 
-        // Update metrics only if data.metrics is present
+        // Update metrics if available (ensure we have defaults)
         if (data.metrics) {
-          // console.log('[Poll] Updating progress state:', data.metrics);
           setCurrentProgress(prev => ({
-                sourcesCount: data.metrics.sourcesCount ?? prev?.sourcesCount ?? 0,
-                domainsCount: data.metrics.domainsCount ?? prev?.domainsCount ?? 0,
-                dataSize: data.metrics.dataSize ?? prev?.dataSize ?? '0KB',
-                elapsedTime: data.metrics.elapsedTime ?? prev?.elapsedTime ?? 0,
-           }));
+            sourcesCount: data.metrics.sourcesCount ?? prev?.sourcesCount ?? 0,
+            domainsCount: data.metrics.domainsCount ?? prev?.domainsCount ?? 0,
+            dataSize: data.metrics.dataSize ?? prev?.dataSize ?? '0KB',
+            elapsedTime: data.metrics.elapsedTime ?? prev?.elapsedTime ?? 0,
+          }));
         }
 
-        // Update logs if present
-         if (data.logs && Array.isArray(data.logs)) {
-           const newLogsWithTimestamp = data.logs
-             .map((logContent: string) => `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${logContent}`);
+        // Update logs if present and in the correct format
+        if (data.logs && Array.isArray(data.logs)) {
+          const newLogsWithTimestamp = data.logs
+            .map((logContent: string) => {
+              if (!logContent) return null; // Skip empty logs
+              return `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] ${logContent}`;
+            })
+            .filter(Boolean); // Remove null entries
 
-           setLiveLogs(prevLogs => {
-               const existingLogEntries = new Set(prevLogs);
-               const uniqueNewLogs = newLogsWithTimestamp.filter((log: string) => !existingLogEntries.has(log));
-               if (uniqueNewLogs.length > 0) {
-                   return [...prevLogs, ...uniqueNewLogs].slice(-100);
-               }
-               return prevLogs;
-           });
+          setLiveLogs(prevLogs => {
+            const existingLogEntries = new Set(prevLogs);
+            const uniqueNewLogs = newLogsWithTimestamp.filter(
+              (log: string) => !existingLogEntries.has(log)
+            );
+            
+            if (uniqueNewLogs.length > 0) {
+              return [...prevLogs, ...uniqueNewLogs].slice(-100); // Keep the last 100 logs
+            }
+            return prevLogs;
+          });
 
-           // Update current status based on the *latest* log received
-            if (data.logs.length > 0) {
-               const latestLogContent = data.logs[data.logs.length - 1];
-               const simplifiedStatus = latestLogContent
-                    .replace(/^Phase \d+(\.\d+)*:\s*/, '') // Remove Phase prefix
-                    .replace(/\[\d+\/\d+\]\s*/, '') // Remove batch numbers
-                    // More specific status messages
-                    .replace(/Fetching SERP: (.*)/, 'Searching: $1...')
-                    .replace(/Extracted (\d+) links from (.*)\./, 'Found $1 links on $2')
-                    .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*Added (\d+) sources.*/, 'Crawling L$1 ($2/$3): +$4 sources')
-                    .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*sources$/, 'Crawling L$1 ($2/$3)...') // Fallback if no sources added yet
-                    .replace(/Prioritizing (\d+) sources\.\.\./, 'Prioritizing $1 sources...')
-                    .replace(/Analyzing data from top (\d+) sources.*/, 'Analyzing $1 sources...')
-                    .replace(/Generating final analysis report.*/, 'Generating report...')
-                    .replace(/Research process finished.*/, 'Finalizing report...')
-                    .replace(/Finalizing report and metrics.*/, 'Finalizing...')
-                    .replace(/Crawl Phase Complete\. Final Sources: (\d+)\..*/, '$1 sources analyzed')
-                    .replace(/:\s*".*?"$/, '');
-               setCurrentStatus(prevStatus => {
-                   const newStatus = simplifiedStatus.trim();
-                   return newStatus && newStatus !== prevStatus ? newStatus : prevStatus;
-               });
-           }
+          // Update current status based on the latest log
+          if (data.logs.length > 0) {
+            const latestLogContent = data.logs[data.logs.length - 1];
+            // Skip empty logs for status updates
+            if (latestLogContent && latestLogContent.trim()) {
+              const simplifiedStatus = latestLogContent
+                .replace(/^Phase \d+(\.\d+)*:\s*/, '') // Remove Phase prefix
+                .replace(/\[\d+\/\d+\]\s*/, '') // Remove batch numbers
+                .replace(/Fetching SERP: (.*)/, 'Searching: $1...')
+                .replace(/Extracted (\d+) links from (.*)\./, 'Found $1 links on $2')
+                .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*Added (\d+) sources.*/, 'Crawling L$1 ($2/$3): +$4 sources')
+                .replace(/L(\d) Batch (\d+)\/(\d+) \[\d+ URLs\].*sources$/, 'Crawling L$1 ($2/$3)...') 
+                .replace(/Prioritizing (\d+) sources\.\.\./, 'Prioritizing $1 sources...')
+                .replace(/Analyzing data from top (\d+) sources.*/, 'Analyzing $1 sources...')
+                .replace(/Generating final analysis report.*/, 'Generating report...')
+                .replace(/Research process finished.*/, 'Finalizing report...')
+                .replace(/Finalizing report and metrics.*/, 'Finalizing...')
+                .replace(/Crawl Phase Complete\. Final Sources: (\d+)\..*/, '$1 sources analyzed')
+                .replace(/:\s*".*?"$/, '');
+                
+              // Only update if we have meaningful new status
+              if (simplifiedStatus.trim()) {
+                setCurrentStatus(simplifiedStatus.trim());
+              }
+            }
+          }
         }
-
       } else {
-         console.warn('[Poll] Progress poll failed:', res.status);
+        console.warn('[Poll] Progress poll failed:', res.status);
       }
     } catch (error) {
       console.error('[Poll] Progress poll fetch error:', error);
-       if (progressPollRef.current) {
-           clearInterval(progressPollRef.current);
-           progressPollRef.current = null;
-           console.log('[Poll] Polling stopped due to fetch error.');
-       }
+      if (progressPollRef.current) {
+        clearInterval(progressPollRef.current);
+        progressPollRef.current = null;
+        console.log('[Poll] Polling stopped due to fetch error.');
+      }
     }
   }, []);
 
@@ -189,7 +230,12 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setReport(null);
-    setCurrentProgress(null); // Start progress as null
+    setCurrentProgress({
+      sourcesCount: 0,
+      domainsCount: 0,
+      dataSize: '0KB',
+      elapsedTime: 0
+    }); // Initialize with zeros
     const initialLog = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] Initializing research for: "${query}"...`;
     setLiveLogs([initialLog]); // Set initial log immediately
     setCurrentStatus('Initializing research...');
@@ -202,19 +248,25 @@ export default function Home() {
     }
 
     // Start polling immediately and set interval
-    // Wrap in try/catch in case initial poll fails instantly
     try {
        await pollResearchProgress();
     } catch (pollError) {
        console.error("Initial poll failed:", pollError)
     }
-    progressPollRef.current = setInterval(pollResearchProgress, 2500); // Poll every 2.5 seconds
+    progressPollRef.current = setInterval(pollResearchProgress, 2000); // Poll every 2 seconds for more responsive updates
 
     try {
       const res = await fetch('/api/research', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({ 
+          query,
+          options: {
+            maxDomains: 70, // Increased from default 20-23 to 60-70
+            maxSources: 70, // Also increase sources to match domains
+            timeout: 180 // Slightly increased timeout to allow for more domains (3 minutes)
+          } 
+        }),
       });
 
       // Stop polling AFTER the main fetch is complete (success or error)
@@ -250,7 +302,6 @@ export default function Home() {
       }
 
       // --- Success Case ---
-      // console.log('[Research] Success. Final data:', data);
       setReport(data.report);
       if (data.metrics) {
          setCurrentProgress(data.metrics);
@@ -337,10 +388,10 @@ export default function Home() {
         const style = theme === 'dark' ? oneDark : oneLight; // Use better themes
 
         return (
-           // Added slight shadow, refined border colors
-          <div className="group code-block relative shadow-md dark:shadow-gray-900/50 dark:shadow-lg mb-6 border border-gray-200 dark:border-gray-700 rounded-lg">
+           // Added elevation and refined border
+          <div className="group code-block relative shadow-md dark:shadow-gray-900/50 dark:shadow-lg mb-6 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
             {/* Header Bar Styling Adjustment */}
-            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/60 px-4 py-2 border-gray-200 dark:border-gray-700 border-b rounded-t-lg">
+            <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-800/60 px-4 py-2 border-gray-200 dark:border-gray-700 border-b">
                 <div className="flex items-center gap-2 font-medium text-gray-500 dark:text-gray-400 text-xs">
                     <TerminalIcon className="w-4 h-4" />
                     <span>{language.toUpperCase()}</span>
@@ -363,15 +414,14 @@ export default function Home() {
               language={language}
               PreTag="div"
                // Removed specific bg-white/dark:bg-gray-900 to inherit from style, adjusted padding
-               className="!px-4 !py-4 rounded-b-lg overflow-x-auto !text-sm !leading-relaxed scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50"
+               className="!px-4 !py-4 overflow-x-auto !text-sm !leading-relaxed scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50"
               showLineNumbers={codeString.split('\n').length > 3} // Show line numbers for more than 3 lines
               wrapLongLines={false} // Disable wrapping for code blocks
                // Adjusted line number style for subtlety
               lineNumberStyle={{ color: theme === 'dark' ? '#555e6e' : '#a0aec0', fontSize: '0.8em', paddingRight: '1.2em', userSelect: 'none' }}
               customStyle={{
                 margin: 0,
-                borderRadius: '0 0 0.5rem 0.5rem', // Only bottom corners rounded
-                // padding: '1rem', // Padding handled by className
+                borderRadius: '0', // No border radius needed since parent has it
                 fontSize: '0.875rem', // text-sm
                 lineHeight: '1.6',
                  // Ensure background from theme is applied
@@ -395,7 +445,7 @@ export default function Home() {
                  <code>{children}</code>
              </pre>
          ) : (
-            // Inline code styling - more distinct
+            // Inline code styling - modern with subtle blue tones
             <code className="bg-blue-100/50 dark:bg-blue-900/30 mx-[0.1em] px-[0.5em] py-[0.2em] border border-blue-200/80 dark:border-blue-800/50 rounded-md font-mono text-[0.875em] text-blue-800 dark:text-blue-300 break-words" {...props}>
               {children}
             </code>
@@ -403,41 +453,98 @@ export default function Home() {
       );
     },
 
-    // --- Table Renderer --- V4 - Ultra Modern Data Table Styling ---
-    table: ({ node, ...props }: any) => (
-      // Enhanced container with glass effect and stronger shadow
-      <div className="bg-white/80 dark:bg-gray-900/70 shadow-xl dark:shadow-2xl dark:shadow-blue-900/10 backdrop-blur-sm my-10 border border-gray-200/80 dark:border-gray-700/60 rounded-xl overflow-hidden">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-          {/* Added subtle border styling and spacing */}
-          <table className="w-full text-sm border-separate border-spacing-0" {...props} />
+    // --- Table Renderer V5 - Ultra Modern Data Table Styling ---
+    table: ({ node, ...props }: any) => {
+      // Check if this is likely a financial table by looking at the headers
+      const isFinancialTable = node.children?.[0]?.children?.[0]?.children?.some((cell: any) => {
+        const content = cell.children?.map((c: any) => c.value || '').join('') || '';
+        return content.toLowerCase().includes('valuation') || 
+               content.toLowerCase().includes('funding') ||
+               content.toLowerCase().includes('revenue') ||
+               content.toLowerCase().includes('investment');
+      });
+
+      return (
+        // Enhanced container with elegant glass effect and stronger visual hierarchy
+        <div className={`bg-white/90 dark:bg-gray-900/80 shadow-xl dark:shadow-blue-900/10 backdrop-blur-sm my-8 border ${
+          isFinancialTable 
+            ? 'border-green-200/80 dark:border-green-800/60' 
+            : 'border-gray-200/80 dark:border-gray-700/60'
+        } rounded-xl overflow-hidden`}>
+          <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
+            <table className="w-full text-sm border-separate border-spacing-0" {...props} />
+          </div>
         </div>
-      </div>
-    ),
-    tableHead: ({ node, ...props }: any) => (
-      // Gradient header background with stronger visual hierarchy
-      <thead className="top-0 z-10 sticky bg-gradient-to-br from-blue-50 dark:from-gray-800 to-indigo-50/80 dark:to-gray-900 backdrop-blur-sm border-b-2 border-blue-200 dark:border-blue-800/60" {...props} />
-    ),
-    tableRow: ({ node, isHeader, ...props }: any) => (
-      // Enhanced hover effects and more distinct alternating rows
+      );
+    },
+    tableHead: ({ node, ...props }: any) => {
+      // Check if this is likely a financial table by looking at the headers
+      const isFinancialTable = node.children?.[0]?.children?.some((cell: any) => {
+        const content = cell.children?.map((c: any) => c.value || '').join('') || '';
+        return content.toLowerCase().includes('valuation') || 
+               content.toLowerCase().includes('funding') ||
+               content.toLowerCase().includes('revenue') ||
+               content.toLowerCase().includes('investment');
+      });
+
+      return (
+        // Modern gradient header with strong hierarchy and blur effect
+        <thead className={`top-0 z-10 sticky backdrop-blur-sm ${
+          isFinancialTable 
+            ? 'bg-gradient-to-r from-green-50 via-green-50/90 to-green-50/80 dark:from-gray-800 dark:via-green-900/20 dark:to-gray-800/95 border-b-2 border-green-200 dark:border-green-800/60' 
+            : 'bg-gradient-to-r from-blue-50 via-blue-50/90 to-indigo-50/80 dark:from-gray-800 dark:via-blue-900/20 dark:to-gray-800/95 border-b-2 border-blue-200 dark:border-blue-800/60'
+        } shadow-sm`} {...props} />
+      );
+    },
+    tr: ({ node, isHeader, ...props }: any) => (
       <tr
         className={`
           border-b border-gray-200/70 dark:border-gray-700/50
           ${!isHeader ?
-            "odd:bg-white/70 dark:odd:bg-gray-800/40 even:bg-blue-50/40 dark:even:bg-blue-900/20 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-all duration-200"
+            "odd:bg-white/70 dark:odd:bg-gray-800/40 even:bg-blue-50/40 dark:even:bg-blue-900/20 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-colors duration-200"
             : ""}
         `}
         {...props}
       />
     ),
-    tableCell: ({ node, isHeader, style, ...props }: any) => {
+    td: ({ node, isHeader, style, ...props }: any) => {
       const align = style?.textAlign as 'left' | 'right' | 'center' | undefined;
       let alignClass = 'text-left';
       if (align === 'right') alignClass = 'text-right';
       if (align === 'center') alignClass = 'text-center';
 
-      // Determine if this is a numeric cell for special formatting
+      // Get cell content as string
       const content = node.children?.map((c: any) => c.value || '').join('') || '';
-      const isNumeric = !isHeader && /^[\d.,]+%?$/.test(content.trim());
+      const trimmedContent = content.trim();
+      
+      // Enhanced pattern matching for financial and numeric data
+      const isCurrency = /^\s*[\$€£¥₹₽₩][\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent) || 
+                        /^\s*[\d,.]+[KMBTkmbt]?\s*[\$€£¥₹₽₩]\s*$/.test(trimmedContent);
+      const isPercentage = /^\s*[\d,.]+\s*%\s*$/.test(trimmedContent);
+      const isNumeric = /^\s*[\d,.]+[KMBTkmbt]?\s*$/.test(trimmedContent);
+      const hasRange = trimmedContent.includes('-') && 
+                      /^\s*[\d,.]+\s*-\s*[\d,.]+\s*$/.test(trimmedContent.replace(/[KMBTkmbt%\$€£¥₹₽₩]/g, ''));
+      
+      // Check for valuation table headers and financial metrics
+      const isValuationHeader = isHeader && (
+        content.toLowerCase().includes('valuation') || 
+        content.toLowerCase().includes('funding') || 
+        content.toLowerCase().includes('revenue') ||
+        content.toLowerCase().includes('investment') || 
+        content.toLowerCase().includes('round') ||
+        content.toLowerCase().includes('amount')
+      );
+      
+      // Check if this is a financial metric row
+      const isFinancialMetric = !isHeader && (
+        content.toLowerCase().includes('revenue') || 
+        content.toLowerCase().includes('profit') || 
+        content.toLowerCase().includes('valuation') ||
+        content.toLowerCase().includes('funding') ||
+        content.toLowerCase().includes('investment') ||
+        content.toLowerCase().includes('cash flow') ||
+        content.toLowerCase().includes('round')
+      );
       
       // Check if this is likely a feature/comparison table
       const isFeatureTable = isHeader && (
@@ -463,21 +570,49 @@ export default function Home() {
         content.toLowerCase().includes('slower')
       );
 
+      // Format content for display - apply currency formatting intelligently
+      let displayContent = content;
+      // Only apply currency formatting in specific cases - tables with financial data
+      if (!isHeader && (isCurrency || (isNumeric && isFinancialMetric))) {
+        const tableElement = node.parent?.parent?.parent?.parent;
+        const isFinancialTable = tableElement?.children?.[0]?.children?.[0]?.children?.some((cell: any) => {
+          const cellContent = cell.children?.map((c: any) => c.value || '').join('') || '';
+          return cellContent.toLowerCase().includes('valuation') || 
+                 cellContent.toLowerCase().includes('funding') ||
+                 cellContent.toLowerCase().includes('revenue') ||
+                 cellContent.toLowerCase().includes('investment');
+        });
+        
+        if (isFinancialTable) {
+          // Apply currency formatting
+          displayContent = formatCurrency(trimmedContent);
+          // Mark as currency for proper styling
+          if (!isCurrency) {
+            isCurrency = true;
+          }
+        }
+      }
+      
       const cellProps = {
-        // Enhanced padding and typography with special handling for different cell types
         className: `
           px-6 py-4 ${alignClass}
           ${isHeader
-            ? `font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider ${isFeatureTable ? 'bg-blue-50/50 dark:bg-blue-900/30' : ''}`
-            : isNumeric
-              ? 'text-blue-700 dark:text-blue-300 font-medium tabular-nums'
-              : isPositiveValue
-                ? 'text-green-700 dark:text-green-300 font-medium'
-                : isNegativeValue
-                  ? 'text-red-600 dark:text-red-300 font-medium'
-                  : 'text-gray-700 dark:text-gray-300'
-          }
-        `,
+            ? `font-serif font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider ${isValuationHeader ? 'bg-green-50/50 dark:bg-green-900/30' : isFeatureTable ? 'bg-blue-50/50 dark:bg-blue-900/30' : ''}`
+            : isCurrency
+              ? 'font-mono text-green-700 dark:text-green-300 font-medium tabular-nums'
+              : isPercentage
+                ? 'font-mono text-purple-700 dark:text-purple-300 font-medium tabular-nums'
+                : isNumeric || hasRange
+                  ? 'font-mono text-blue-700 dark:text-blue-300 font-medium tabular-nums'
+                  : isFinancialMetric
+                    ? 'font-serif text-gray-800 dark:text-gray-200 font-medium'
+                    : isPositiveValue
+                      ? 'text-green-700 dark:text-green-300 font-medium'
+                      : isNegativeValue
+                        ? 'text-red-600 dark:text-red-300 font-medium'
+                        : 'text-gray-700 dark:text-gray-300'
+        }
+      `,
         ...props,
       };
 
@@ -486,20 +621,42 @@ export default function Home() {
         : <td {...cellProps} />;
     },
 
-    // --- Heading Renderers ---
-    h1: ({ node, children, ...props }: any) => <h1 className="mt-10 mb-6 pb-4 border-gray-300 dark:border-gray-600/80 border-b font-sans font-bold text-gray-900 dark:text-gray-100 text-3xl md:text-4xl tracking-tight" {...props}>{children}</h1>,
-    // H2 styling refined
+    // --- Heading Renderers with Serif Font and Enhanced Visual Hierarchy ---
+    h1: ({ node, children, ...props }: any) => (
+      <h1 className="mt-10 mb-6 pb-4 border-gray-300 dark:border-gray-600/80 border-b font-serif font-bold text-gray-900 dark:text-gray-100 text-3xl md:text-4xl tracking-tight" {...props}>
+        {children}
+      </h1>
+    ),
     h2: ({ node, children, ...props }: any) => {
       const text = String(children);
       const sectionIconMap: Record<string, React.ElementType> = {
-        'Research Path': ArrowRightIcon, 'Top Sources Sample': GlobeIcon, 'Source Analysis Overview': DatabaseIcon,
-        'Comparative Assessment': RefreshCwIcon, 'Executive Summary': BookOpenIcon, 'Key Findings': CheckIcon,
-        'Detailed Analysis': SearchIcon, 'Technical Details': FileTextIcon, 'Research Methodology': BrainIcon,
-        'Code Examples': TerminalIcon, 'Visual References': ImageIcon, 'Key Insights': AlertCircleIcon,
-        'Confidence Level Assessment': CheckIcon, 'Conclusions': CheckIcon, 'References': BookOpenIcon,
-        'Limitations': AlertCircleIcon, 'Future Directions': ArrowRightIcon, 'Introduction': BookOpenIcon,
+        'Research Path': ArrowRightIcon, 
+        'Top Sources Sample': GlobeIcon, 
+        'Source Analysis Overview': DatabaseIcon,
+        'Comparative Assessment': RefreshCwIcon, 
+        'Executive Summary': BookOpenIcon, 
+        'Key Findings': CheckIcon,
+        'Detailed Analysis': SearchIcon, 
+        'Technical Details': FileTextIcon, 
+        'Research Methodology': BrainIcon,
+        'Code Examples': TerminalIcon, 
+        'Visual References': ImageIcon, 
+        'Key Insights': AlertCircleIcon,
+        'Confidence Level Assessment': CheckIcon, 
+        'Conclusions': CheckIcon, 
+        'References': BookOpenIcon,
+        'Limitations': AlertCircleIcon, 
+        'Future Directions': ArrowRightIcon, 
+        'Introduction': BookOpenIcon,
         // Added from synthesis prompt
-        'Methodology': BrainIcon, 'Technical Detail': FileTextIcon, 'Future Direction': ArrowRightIcon, 'Comprehensive Analysis': SearchIcon, 'Key Findings & Detailed Breakdown': FileTextIcon, 'Comparison & Nuances': RefreshCwIcon, 'Technical Deep Dive & Code Examples': TerminalIcon, 'Conclusion from Research Data': CheckIcon
+        'Methodology': BrainIcon, 
+        'Technical Detail': FileTextIcon, 
+        'Future Direction': ArrowRightIcon, 
+        'Comprehensive Analysis': SearchIcon, 
+        'Key Findings & Detailed Breakdown': FileTextIcon, 
+        'Comparison & Nuances': RefreshCwIcon, 
+        'Technical Deep Dive & Code Examples': TerminalIcon, 
+        'Conclusion from Research Data': CheckIcon
       };
        // Find best matching section using startsWith
       const matchingSection = Object.keys(sectionIconMap).find(section => text.trim().startsWith(section));
@@ -507,10 +664,8 @@ export default function Home() {
       if (matchingSection) {
         const SectionIcon = sectionIconMap[matchingSection];
         return (
-           // Use theme-consistent border, refined icon background
-          <h2 className="flex items-center mt-12 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/60 font-sans font-semibold text-blue-700 dark:text-blue-300 text-2xl md:text-3xl tracking-tight" {...props}>
-             {/* Softer icon background */}
-            <div className="bg-gradient-to-br from-blue-50 dark:from-blue-900/40 to-blue-100 dark:to-blue-800/60 shadow mr-3.5 p-2.5 rounded-lg">
+          <h2 className="flex items-center mt-12 mb-6 pb-3 border-b border-blue-200 dark:border-blue-800/60 font-serif font-semibold text-blue-700 dark:text-blue-300 text-2xl md:text-3xl tracking-tight" {...props}>
+            <div className="bg-gradient-to-br from-blue-50 dark:from-blue-900/40 to-blue-100 dark:to-blue-800/60 shadow-sm mr-3.5 p-2.5 rounded-lg">
               <SectionIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
             {text}
@@ -518,13 +673,34 @@ export default function Home() {
         );
       }
       // Default H2 style improved
-      return <h2 className="mt-10 mb-5 pb-2 border-gray-200 dark:border-gray-700 border-b font-sans font-semibold text-gray-800 dark:text-gray-200 text-2xl md:text-3xl tracking-tight" {...props}>{children}</h2>;
+      return (
+        <h2 className="mt-10 mb-5 pb-2 border-gray-200 dark:border-gray-700 border-b font-serif font-semibold text-gray-800 dark:text-gray-200 text-2xl md:text-3xl tracking-tight" {...props}>
+          {children}
+        </h2>
+      );
     },
-    h3: ({ node, children, ...props }: any) => <h3 className="mt-8 mb-4 font-sans font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl" {...props}>{children}</h3>,
-    h4: ({ node, children, ...props }: any) => <h4 className="mt-6 mb-3 font-sans font-semibold text-gray-700 dark:text-gray-300 text-lg md:text-xl" {...props}>{children}</h4>,
-    // Add h5, h6 if needed
+    h3: ({ node, children, ...props }: any) => (
+      <h3 className="mt-8 mb-4 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl" {...props}>
+        {children}
+      </h3>
+    ),
+    h4: ({ node, children, ...props }: any) => (
+      <h4 className="mt-6 mb-3 font-serif font-semibold text-gray-700 dark:text-gray-300 text-lg md:text-xl" {...props}>
+        {children}
+      </h4>
+    ),
+    h5: ({ node, children, ...props }: any) => (
+      <h5 className="mt-4 mb-2 font-serif font-semibold text-gray-700 dark:text-gray-300 text-base md:text-lg" {...props}>
+        {children}
+      </h5>
+    ),
+    h6: ({ node, children, ...props }: any) => (
+      <h6 className="mt-4 mb-2 font-serif font-semibold text-gray-600 dark:text-gray-400 text-sm md:text-base" {...props}>
+        {children}
+      </h6>
+    ),
 
-    // --- Link Renderer V4 (Enhanced with Strong Visual Feedback) ---
+    // --- Link Renderer V5 (Complete Overhaul) ---
     a: ({ node, href, children, ...props }: any) => {
       const url = href || '';
       const isExternal = url.startsWith('http://') || url.startsWith('https://');
@@ -578,13 +754,17 @@ export default function Home() {
         );
       }
 
-      // --- Enhanced Universal Link Styling (External/Internal) ---
+      // --- Improved Link Styling for Modern UI ---
       let domain = '';
       let faviconUrl = '';
+      
       if (isExternal) {
         try {
           domain = extractDomain(url);
-          faviconUrl = getFaviconUrl(domain);
+          // Only set favicon if we have a valid domain
+          if (domain && domain.length > 0) {
+            faviconUrl = getFaviconUrl(domain);
+          }
         } catch (e) {
           console.warn("Could not parse domain for favicon:", url);
         }
@@ -604,7 +784,7 @@ export default function Home() {
             href={url}
             target={isExternal ? '_blank' : undefined}
             rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow-md active:shadow px-3 py-2 border border-blue-200 dark:border-blue-700/50 hover:border-blue-300 dark:hover:border-blue-600 rounded-md font-mono text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200 cursor-pointer"
+            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow-md active:shadow px-3 py-2 border border-blue-200 dark:border-blue-700/50 hover:border-blue-300 dark:hover:border-blue-600 rounded-md font-serif text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200 cursor-pointer"
             {...props}
           >
             {isExternal && faviconUrl && domain && (
@@ -624,20 +804,20 @@ export default function Home() {
         );
       }
 
-      // Standard link styling (enhanced for better clickability and visual feedback)
+      // Modern link styling with improved hover effects and accessibility
       return (
         <a
           href={url}
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noopener noreferrer' : undefined}
-          className="group inline-flex items-center gap-1.5 hover:bg-blue-50/80 active:bg-blue-100/80 dark:hover:bg-blue-900/40 dark:active:bg-blue-800/50 -mx-1.5 -my-1 px-1.5 py-1 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 rounded-md font-medium text-blue-600 hover:text-blue-700 active:text-blue-800 dark:hover:text-blue-300 dark:active:text-blue-200 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-150 cursor-pointer"
+          className="group relative inline-flex items-center gap-1.5 hover:bg-blue-50/80 active:bg-blue-100/80 dark:hover:bg-blue-900/40 dark:active:bg-blue-800/50 -mx-1.5 -my-1 px-1.5 py-1 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 rounded-md font-medium text-blue-600 hover:text-blue-700 active:text-blue-800 dark:hover:text-blue-300 dark:active:text-blue-200 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-150 cursor-pointer"
           {...props}
         >
-          {isExternal && faviconUrl && domain && (
+          {isExternal && faviconUrl && domain && domain.length > 0 && (
             <img
               src={faviconUrl}
               alt={`${domain} favicon`}
-              className="inline-block shadow-sm mr-0.5 rounded-sm w-4 h-4 align-text-bottom"
+              className="inline-block shadow-sm mr-0.5 rounded-sm w-4 h-4 align-text-bottom flex-shrink-0"
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -652,23 +832,23 @@ export default function Home() {
       );
     },
 
-    // --- List Item Renderer ---
+    // --- List Item Renderer V5 (Enhanced Modern) ---
     li: ({ node, children, ordered, ...props }: any) => {
        // Get text content cleanly, handling nested strong/a tags
        let textContent = '';
        node.children?.forEach((child: any) => {
            if (child.type === 'text') textContent += child.value;
-           else if (child.tagName === 'strong' || child.tagName === 'a') { // Look inside strong/a tags
+           else if (child.tagName === 'strong' || child.tagName === 'a') {
                child.children?.forEach((grandChild: any) => {
                    if (grandChild.type === 'text') textContent += grandChild.value;
                });
-           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') { // Handle simple nested text
+           } else if (child.children && child.children.length > 0 && typeof child.children[0]?.value === 'string') {
                textContent += child.children[0].value;
            }
        });
        textContent = textContent.trim();
 
-       // Try matching source pattern first
+       // Match source pattern
        const sourceMatch = textContent.match(/^(.*?)\s*\(Domain: (.*?), Relevance: (.*?)\)\s*$/);
        const linkNode = node.children?.find((child: any) => child.tagName === 'a');
        const url = linkNode?.properties?.href || '#';
@@ -685,29 +865,32 @@ export default function Home() {
                 href={url}
                 target="_blank"
                 rel="noopener noreferrer"
-                 // Keep this enhanced styling for source links
-                 className="flex items-center gap-3 bg-white hover:bg-blue-50 dark:bg-gray-800/60 dark:hover:bg-blue-900/40 shadow-sm hover:shadow-md p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
+                className="flex items-center gap-3 bg-white hover:bg-blue-50 dark:bg-gray-800/60 dark:hover:bg-blue-900/40 shadow-sm hover:shadow-md p-3.5 border border-gray-200 dark:border-gray-700/80 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg w-full transition-all duration-200"
               >
-                {faviconUrl && (
-                  <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1 border border-gray-200 dark:border-gray-600 rounded-md w-9 h-9 overflow-hidden">
-                    <img
-                      src={faviconUrl}
-                      alt={domain}
-                      className="w-5 h-5 object-contain"
-                      loading="lazy"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                         const parent = target.parentElement;
-                         if (parent) {
-                           parent.innerHTML = `<span class="font-bold text-blue-500 text-md dark:text-blue-400">${domain.charAt(0).toUpperCase()}</span>`;
-                         }
-                        target.style.display = 'none';
-                      }}
-                    />
+                {domain && (
+                  <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 p-1 border border-gray-200 dark:border-gray-600 rounded-md w-9 h-9 overflow-hidden shadow-sm">
+                    {faviconUrl ? (
+                      <img
+                        src={faviconUrl}
+                        alt={domain}
+                        className="w-5 h-5 object-contain"
+                        loading="lazy"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          const parent = target.parentElement;
+                          if (parent) {
+                            parent.innerHTML = `<span class="font-bold text-blue-500 text-md dark:text-blue-400">${domain.charAt(0).toUpperCase()}</span>`;
+                          }
+                          target.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="font-bold text-blue-500 text-md dark:text-blue-400">{domain.charAt(0).toUpperCase()}</span>
+                    )}
                   </div>
                 )}
                 <div className="flex-grow min-w-0">
-                   <div className="font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 text-sm line-clamp-2 leading-snug transition-colors">
+                   <div className="font-serif font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 text-sm line-clamp-2 leading-snug transition-colors">
                      {title}
                    </div>
                    <div className="flex items-center gap-1 mt-1 text-gray-500 dark:text-gray-400 text-xs truncate">
@@ -742,14 +925,14 @@ export default function Home() {
            else if (prefix.includes('area') || prefix.includes('Step')) PathIcon = BrainIcon;
 
         return (
-           <li className="group m-0 mb-1.5 p-0 list-none" {...props}>
-               <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-1.5 pr-2 pl-3 border-gray-300 hover:border-gray-400 dark:border-gray-700 dark:hover:border-gray-500 border-l-2 rounded-r-md transition-colors">
-                   <div className="flex-shrink-0 mr-2 text-gray-500 dark:text-gray-400">
+           <li className="group m-0 mb-2 p-0 list-none" {...props}>
+               <div className="flex items-center bg-gray-50 dark:bg-gray-800/50 py-2 pr-3 pl-3 border-l-3 border-blue-400 hover:border-blue-500 dark:border-blue-700 dark:hover:border-blue-500 rounded-r-md transition-colors">
+                   <div className="flex-shrink-0 mr-2.5 text-blue-500 dark:text-blue-400">
                        <PathIcon className="w-4 h-4" />
                    </div>
                    <div className="text-gray-600 dark:text-gray-300 text-sm">
-                       {prefix && <span className="mr-1.5 font-medium text-gray-500 dark:text-gray-400">{prefix.replace(':', '').trim()}:</span>}
-                       <span className="font-medium text-gray-800 dark:group-hover:text-white dark:text-gray-200 group-hover:text-black transition-colors">
+                       {prefix && <span className="mr-1.5 font-medium font-serif text-gray-500 dark:text-gray-400">{prefix.replace(':', '').trim()}:</span>}
+                       <span className="font-medium font-serif text-gray-800 dark:group-hover:text-white dark:text-gray-200 group-hover:text-black transition-colors">
                            {stepMatch ? `"${queryText}"` : queryText}
                        </span>
                    </div>
@@ -760,7 +943,7 @@ export default function Home() {
 
       // --- Default List Item Renderer ---
       return (
-        <li className="group flex items-start mb-2.5 ml-1" {...props}>
+        <li className="group flex items-start mb-2.5" {...props}>
            <span className={`flex-shrink-0 mt-1 mr-3 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
             {ordered ? `${(props.index ?? 0) + 1}.` : (
             <svg width="8" height="8" viewBox="0 0 8 8" fill="none" xmlns="http://www.w3.org/2000/svg" className="group-hover:scale-110 transition-transform">
@@ -769,69 +952,68 @@ export default function Home() {
             </svg>
             )}
           </span>
-           {/* Render children; the 'a' renderer handles link styling */}
-           <span className="text-gray-700 dark:text-gray-300 leading-relaxed">{children}</span>
+           <span className="text-gray-700 dark:text-gray-300 leading-relaxed font-serif">{children}</span>
         </li>
       );
     },
 
-    // ... other renderers (p, img, ul, ol, hr, blockquote) ...
-    // Ensure 'ul' and 'ol' provide adequate spacing for nested items including links
-     ul: ({ node, children, className, ...props }: any) => {
-         // Check if this list contains our custom source or path list items
-         const containsCustomItems = node.children.some((child: any) => {
-              if (child.tagName !== 'li') return false;
-              const childText = child.children?.map((c:any) => c.value || '').join('');
-              const isSourceItem = childText.includes('(Domain:') && childText.includes(', Relevance:');
-              const isPathItem = pathKeywords.some((keyword: any) => childText.trim().startsWith(keyword));
-              return isSourceItem || isPathItem;
-         });
+    // --- List Wrappers ---
+    ul: ({ node, children, className, ...props }: any) => {
+       // Check if this list contains our custom source or path list items
+       const containsCustomItems = node.children.some((child: any) => {
+            if (child.tagName !== 'li') return false;
+            const childText = child.children?.map((c:any) => c.value || '').join('');
+            const isSourceItem = childText.includes('(Domain:') && childText.includes(', Relevance:');
+            const isPathItem = pathKeywords.some((keyword: any) => childText.trim().startsWith(keyword));
+            return isSourceItem || isPathItem;
+       });
 
-         // Apply specific class if it's a list of sources or paths
-         if (containsCustomItems) {
-             return <ul className="m-0 p-0 list-none" {...props}>{children}</ul>;
-         }
-         // Default list styling
-         return <ul className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-disc" {...props}>{children}</ul>;
-     },
-     ol: ({ node, children, className, ...props }: any) => (
-         <ol className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-decimal" {...props}>{children}</ol>
-     ),
-      // --- Paragraph Renderer ---
-     p: ({ node, children, ...props }: any) => {
-        // Simple check for empty paragraphs
-        if (React.Children.count(children) === 0 || (typeof children[0] === 'string' && children[0].trim() === '')) {
-          return null; // Render nothing for empty paragraphs
-        }
+       // Apply specific class if it's a list of sources or paths
+       if (containsCustomItems) {
+           return <ul className="m-0 p-0 list-none space-y-2" {...props}>{children}</ul>;
+       }
+       // Default list styling
+       return <ul className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-disc" {...props}>{children}</ul>;
+    },
+    ol: ({ node, children, className, ...props }: any) => (
+       <ol className="space-y-2.5 mb-5 pl-6 text-gray-700 dark:text-gray-300 list-decimal" {...props}>{children}</ol>
+    ),
 
-        // Check if paragraph contains only "---" (which should be rendered as hr)
-        if (node.children.length === 1 &&
-            node.children[0].type === 'text' &&
-            node.children[0].value.trim() === '---') {
-          // Render a custom horizontal rule instead
-          return (
-            <div className="flex justify-center items-center my-10">
-              <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
-            </div>
-          );
-        }
+    // --- Paragraph Renderer ---
+    p: ({ node, children, ...props }: any) => {
+       // Simple check for empty paragraphs
+       if (React.Children.count(children) === 0 || (typeof children[0] === 'string' && children[0].trim() === '')) {
+         return null; // Render nothing for empty paragraphs
+       }
 
-        // Check if paragraph only contains an image
-        const containsOnlyImage = node.children.length === 1 && (node.children[0].tagName === 'img' || (node.children[0].tagName === 'a' && node.children[0].children?.[0]?.tagName === 'img'));
-        if (containsOnlyImage) {
-          // Render children directly, the 'a' or 'img' renderer will handle it
-          return <>{children}</>;
-        }
+       // Check if paragraph contains only "---" (which should be rendered as hr)
+       if (node.children.length === 1 &&
+           node.children[0].type === 'text' &&
+           node.children[0].value.trim() === '---') {
+         // Render a custom horizontal rule instead
+         return (
+           <div className="flex justify-center items-center my-8">
+             <div className="bg-gradient-to-r from-transparent via-blue-500/50 dark:via-blue-400/30 to-transparent shadow-sm rounded-full w-full max-w-4xl h-0.5"></div>
+           </div>
+         );
+       }
 
-        // Default paragraph rendering with slightly more space
-        return <p className="mb-5 text-gray-700 dark:text-gray-300 leading-relaxed" {...props}>{children}</p>;
-     },
+       // Check if paragraph only contains an image
+       const containsOnlyImage = node.children.length === 1 && (node.children[0].tagName === 'img' || (node.children[0].tagName === 'a' && node.children[0].children?.[0]?.tagName === 'img'));
+       if (containsOnlyImage) {
+         // Render children directly, the 'a' or 'img' renderer will handle it
+         return <>{children}</>;
+       }
+
+       // Default paragraph rendering with font-serif and improved spacing
+       return <p className="mb-5 text-gray-700 dark:text-gray-300 leading-relaxed font-serif" {...props}>{children}</p>;
+    },
 
   };
 
   // --- Component Return ---
   return (
-    <div className="bg-gray-50 dark:bg-gradient-to-br dark:from-gray-950 dark:to-black min-h-screen font-sans text-gray-800 dark:text-gray-200">
+    <div className="bg-gradient-to-br from-gray-50 to-white dark:from-gray-950 dark:to-black min-h-screen font-serif text-gray-800 dark:text-gray-200">
       <main className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-7xl">
         {/* Title and Description */}
         <div className="space-y-8 mx-auto mb-12 max-w-3xl">
@@ -841,11 +1023,12 @@ export default function Home() {
             transition={{ duration: 0.5 }}
              className="space-y-4 text-center"
           >
-            <h1 className="flex justify-center items-center font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
-               {/* Using simple text instead of Aurora for better performance/simplicity */}
-               Deep Research Engine
+            <h1 className="flex justify-center items-center font-serif font-bold text-gray-900 dark:text-gray-100 text-4xl md:text-5xl lg:text-6xl tracking-tight">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-500 dark:from-blue-400 dark:to-indigo-300">
+                Deep Research Engine
+              </span>
             </h1>
-             <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg">
+             <p className="mx-auto max-w-2xl text-gray-600 dark:text-gray-400 text-lg font-serif">
               Enter a query to initiate AI-powered deep research, synthesizing information from thousands of sources.
             </p>
           </motion.div>
@@ -867,16 +1050,14 @@ export default function Home() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="e.g., Latest advancements in serverless computing for Next.js"
-                // Updated styling for modern look
-                className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+                className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
                 onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
                 disabled={loading}
               />
               <button
                 onClick={handleResearch}
                 disabled={loading || !query.trim()}
-                 // Updated button styling
-                className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
+                className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-serif font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
                 aria-label="Start Research"
               >
                 {loading ? (
@@ -895,13 +1076,13 @@ export default function Home() {
               <div className="flex flex-wrap justify-between items-center gap-x-4 gap-y-2 bg-white dark:bg-gray-900/50 shadow-sm p-3 border border-gray-200 dark:border-gray-700 rounded-lg">
                  <div className="flex items-center gap-2 overflow-x-auto text-gray-600 dark:text-gray-400 text-sm">
                     <HistoryIcon className="flex-shrink-0 w-4 h-4" />
-                    <span className="mr-1 font-medium text-xs uppercase tracking-wider">Recent:</span>
+                    <span className="mr-1 font-serif font-medium text-xs uppercase tracking-wider">Recent:</span>
                     {searchHistory.map((q, i) => (
                     <button
                         key={i}
                         onClick={() => { if (!loading) setQuery(q); }}
                         disabled={loading}
-                        className="bg-gray-100 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-blue-900/50 disabled:opacity-60 shadow-sm hover:shadow px-3 py-1 rounded-full text-gray-700 dark:text-gray-300 text-xs whitespace-nowrap transition-colors"
+                        className="bg-gray-100 hover:bg-blue-100 dark:bg-gray-800 dark:hover:bg-blue-900/50 disabled:opacity-60 shadow-sm hover:shadow px-3 py-1 rounded-full text-gray-700 dark:text-gray-300 text-xs whitespace-nowrap transition-colors font-serif"
                         title={q}
                       >
                       {q.length > 35 ? q.substring(0, 32) + '...' : q}
@@ -911,7 +1092,7 @@ export default function Home() {
                 <button
                   onClick={clearHistory}
                   disabled={loading}
-                  className="disabled:opacity-60 pr-1 font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-500 dark:text-gray-400 text-xs transition-colors"
+                  className="disabled:opacity-60 pr-1 font-serif font-medium text-gray-500 hover:text-red-600 dark:hover:text-red-500 dark:text-gray-400 text-xs transition-colors"
                   aria-label="Clear search history"
                 >
                   Clear
@@ -921,238 +1102,276 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* Loading State V3 - Remove Placeholders */}
-          <AnimatePresence>
-            {loading && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="space-y-5 bg-white dark:bg-gray-900/80 shadow-xl backdrop-blur-lg p-6 border border-gray-200 dark:border-gray-700/80 rounded-xl"
-              >
-              {/* Header */}
+        {/* Loading State V4 - Modern Design with Real-time Metrics */}
+        <AnimatePresence>
+          {loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-5 bg-white dark:bg-gray-900/80 shadow-xl backdrop-blur-lg p-6 border border-gray-200 dark:border-gray-700/80 rounded-xl"
+            >
+              {/* Header with Animated Progress */}
               <div className="flex justify-between items-center pb-4 border-gray-200 dark:border-gray-700/80 border-b">
-                  <div className="flex items-center gap-3">
-                      <Loader2Icon className="w-6 h-6 text-blue-600 dark:text-blue-400 animate-spin" />
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100 text-xl">
-                    Researching...
-                    </h3>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                        {Math.floor((currentProgress?.elapsedTime ?? 0) / 1000)}s
+                      </span>
+                    </div>
+                    <svg className="w-8 h-8 animate-spin text-blue-600/20 dark:text-blue-400/20" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path 
+                        className="opacity-75" 
+                        fill="currentColor" 
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                      </path>
+                    </svg>
                   </div>
-                 {/* Display elapsed time: show 0.0s initially, then update */}
-                <div className="bg-gray-100 dark:bg-gray-800 shadow-inner px-3 py-1 rounded-full font-medium tabular-nums text-gray-500 dark:text-gray-400 text-sm">
-                   {/* Show live value or 0.0s as initial state */}
-                   {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
+                  <h3 className="font-serif font-semibold text-gray-900 dark:text-gray-100 text-xl">
+                    Researching...
+                  </h3>
                 </div>
+                {/* Elapsed time with modern badge design */}
+                <div className="bg-blue-100 dark:bg-blue-900/50 shadow-inner px-3 py-1.5 rounded-full font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm">
+                  {`${((currentProgress?.elapsedTime ?? 0) / 1000).toFixed(1)}s`}
                 </div>
+              </div>
 
-              {/* Current Status */}
+              {/* Current Status Card */}
               <div className="bg-gradient-to-r from-blue-50 dark:from-gray-800 to-indigo-50 dark:to-indigo-900/30 shadow-sm p-4 border border-blue-200 dark:border-blue-800/50 rounded-lg">
-                <div className="flex items-center gap-2.5 font-medium text-gray-800 dark:text-gray-200 text-sm">
+                <div className="flex items-center gap-2.5 font-serif font-medium text-gray-800 dark:text-gray-200 text-sm">
                   <BrainIcon className="flex-shrink-0 w-4 h-4 text-blue-500 dark:text-blue-400" />
-                  {/* Show current status, default to 'Initializing...' */}
                   <span className="truncate">{currentStatus || 'Initializing research...'}</span>
                 </div>
               </div>
 
-              {/* Metrics Grid V3 - Show 0 or live values, no '...' */}
+              {/* Metrics Grid V4 - Animated and Modern */}
               <div className="gap-4 grid grid-cols-1 sm:grid-cols-3">
-                  {/* Sources */}
-                  <div className="flex items-center gap-3 bg-gradient-to-br from-blue-50 dark:from-gray-800/70 to-blue-100 dark:to-blue-900/40 shadow-md p-4 border border-blue-200 dark:border-blue-700/50 rounded-lg">
-                      <div className="flex-shrink-0 bg-blue-100 dark:bg-blue-900/50 p-2 rounded-full">
-                          <GlobeIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div>
-                          <div className="mb-0.5 font-medium text-blue-800 dark:text-blue-300 text-xs uppercase tracking-wider">Sources Found</div>
-                          {/* Show live value or 0 */}
-                          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                              {(currentProgress?.sourcesCount ?? 0).toLocaleString()}
-                          </div>
-                      </div>
+                {/* Sources */}
+                <div className="flex items-center gap-3 bg-gradient-to-br from-blue-50 dark:from-gray-800/70 to-blue-100 dark:to-blue-900/40 shadow-md p-4 border border-blue-200 dark:border-blue-700/50 rounded-lg overflow-hidden relative">
+                  <div className="absolute bottom-0 left-0 h-1 bg-blue-400 dark:bg-blue-600" style={{ 
+                    width: `${Math.min(100, Math.max(5, (currentProgress?.sourcesCount ?? 0) / 10))}%`,
+                    transition: 'width 0.5s ease-in-out'
+                  }}></div>
+                  <div className="flex-shrink-0 bg-blue-100 dark:bg-blue-900/50 p-2 rounded-full">
+                    <GlobeIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   </div>
-                  {/* Domains */}
-                   <div className="flex items-center gap-3 bg-gradient-to-br from-green-50 dark:from-gray-800/70 to-green-100 dark:to-green-900/40 shadow-md p-4 border border-green-200 dark:border-green-700/50 rounded-lg">
-                       <div className="flex-shrink-0 bg-green-100 dark:bg-green-900/50 p-2 rounded-full">
-                           <DatabaseIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
-                       </div>
-                       <div>
-                           <div className="mb-0.5 font-medium text-green-800 dark:text-green-300 text-xs uppercase tracking-wider">Unique Domains</div>
-                           {/* Show live value or 0 */}
-                           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                               {(currentProgress?.domainsCount ?? 0).toLocaleString()}
-                           </div>
-                       </div>
-                   </div>
-                  {/* Data Size */}
-                   <div className="flex items-center gap-3 bg-gradient-to-br from-purple-50 dark:from-gray-800/70 to-purple-100 dark:to-purple-900/40 shadow-md p-4 border border-purple-200 dark:border-purple-700/50 rounded-lg">
-                       <div className="flex-shrink-0 bg-purple-100 dark:bg-purple-900/50 p-2 rounded-full">
-                           <FileTextIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                       </div>
-                       <div>
-                           <div className="mb-0.5 font-medium text-purple-800 dark:text-purple-300 text-xs uppercase tracking-wider">Data Size</div>
-                           {/* Show live value or 0KB */}
-                           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
-                               {currentProgress?.dataSize ?? '0KB'}
-                           </div>
-                       </div>
-                   </div>
+                  <div>
+                    <div className="mb-0.5 font-medium text-blue-800 dark:text-blue-300 text-xs uppercase tracking-wider">Sources Found</div>
+                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                      {(currentProgress?.sourcesCount ?? 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Domains */}
+                <div className="flex items-center gap-3 bg-gradient-to-br from-green-50 dark:from-gray-800/70 to-green-100 dark:to-green-900/40 shadow-md p-4 border border-green-200 dark:border-green-700/50 rounded-lg">
+                  <div className="flex-shrink-0 bg-green-100 dark:bg-green-900/50 p-2 rounded-full">
+                    <DatabaseIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <div className="mb-0.5 font-medium text-green-800 dark:text-green-300 text-xs uppercase tracking-wider">Unique Domains</div>
+                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                      {(currentProgress?.domainsCount ?? 0).toLocaleString()}
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Data Size */}
+                <div className="flex items-center gap-3 bg-gradient-to-br from-purple-50 dark:from-gray-800/70 to-purple-100 dark:to-purple-900/40 shadow-md p-4 border border-purple-200 dark:border-purple-700/50 rounded-lg">
+                  <div className="flex-shrink-0 bg-purple-100 dark:bg-purple-900/50 p-2 rounded-full">
+                    <FileTextIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <div className="mb-0.5 font-medium text-purple-800 dark:text-purple-300 text-xs uppercase tracking-wider">Data Size</div>
+                    <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100 text-xl">
+                      {currentProgress?.dataSize ?? '0KB'}
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* Live Logs V3 - Show initial log immediately */}
-                  <div className="space-y-2">
-                     <div className="flex justify-end items-center">
-                      <button
-                        onClick={() => setShowLiveLogs(!showLiveLogs)}
-                        className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
-                      >
-                         <FileTextIcon className="w-3.5 h-3.5" />
-                         {showLiveLogs ? 'Hide Logs' : 'Show Logs'}
-                      </button>
-                     </div>
-
-                     <AnimatePresence>
-                      {showLiveLogs && (
-                        <motion.div
-                          initial={{ opacity: 0, height: 0 }}
-                          animate={{ opacity: 1, height: 'auto', maxHeight: '300px' }}
-                          exit={{ opacity: 0, height: 0 }}
-                          transition={{ duration: 0.3 }}
-                          className="overflow-hidden"
-                        >
-                           <div className="bg-gradient-to-br from-gray-50 dark:from-black/70 to-gray-100 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/80 rounded-lg max-h-[300px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50">
-                             {/* Render logs directly; if empty, it will just be empty */}
-                             {/* liveLogs is guaranteed to have at least the initial log */}
-                            {liveLogs.map((log, index) => (
-                              <div key={index} className="mb-1.5 last:mb-0 tabular-nums text-gray-600 dark:text-gray-400/90 break-words leading-relaxed whitespace-pre-wrap">
-                                {log}
-                              </div>
-                            ))}
-                           </div>
-                        </motion.div>
-                      )}
-                     </AnimatePresence>
-                  </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-        {/* Error Display */}
-          <AnimatePresence>
-          {error && !loading && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
-                className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
-              >
-              <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
-                 <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
-                </div>
-              <div className="flex-grow">
-                 <p className="mb-1 font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
-                <p className="text-red-700 dark:text-red-300 text-sm">{error.message || 'An unknown error occurred.'}</p>
-                  {/* Optionally show partial report if available in error */}
-                  {report && (
-                     <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs">
-                         <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer">Show partial report/details</summary>
-                         <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300">
-                             {report}
-                         </div>
-                     </details>
-                  )}
+              <div className="space-y-2">
+                <div className="flex justify-end items-center">
                   <button
-                    onClick={() => { setError(null); setReport(null); }} // Clear error and report
-                    className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-4 py-1.5 rounded-md font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
+                    onClick={() => setShowLiveLogs(!showLiveLogs)}
+                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 shadow-sm px-3 py-1 rounded-full font-medium text-gray-600 dark:text-gray-300 text-xs transition-colors"
                   >
-                    Dismiss
+                    <FileTextIcon className="w-3.5 h-3.5" />
+                    {showLiveLogs ? 'Hide Logs' : 'Show Logs'}
                   </button>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+
+                <AnimatePresence>
+                  {showLiveLogs && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto', maxHeight: '300px' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.3 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="bg-gradient-to-br from-gray-50 dark:from-black/70 to-gray-100 dark:to-gray-900/80 shadow-inner p-4 border border-gray-200 dark:border-gray-700/80 rounded-lg max-h-[300px] overflow-y-auto font-mono text-xs scrollbar-thin scrollbar-thumb-gray-400 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800/50">
+                        {liveLogs.map((log, index) => (
+                          <div key={index} className="mb-1.5 last:mb-0 tabular-nums text-gray-600 dark:text-gray-400/90 break-words leading-relaxed whitespace-pre-wrap">
+                            {log}
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Error Display */}
+        <AnimatePresence>
+          {error && !loading && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
+            >
+              <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
+                <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-grow">
+                <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
+                <p className="text-red-700 dark:text-red-300 text-sm font-serif">{error.message || 'An unknown error occurred.'}</p>
+                {/* Optionally show partial report if available in error */}
+                {report && (
+                  <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 text-xs">
+                    <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer font-serif">Show partial report/details</summary>
+                    <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">
+                      {report}
+                    </div>
+                  </details>
+                )}
+                <button
+                  onClick={() => { setError(null); setReport(null); }} // Clear error and report
+                  className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-4 py-1.5 rounded-md font-serif font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Report Display */}
-          <AnimatePresence>
+        <AnimatePresence>
           {report && !loading && !error && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-                className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
-              >
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 p-6 md:p-10 border border-gray-200 dark:border-gray-700/80 rounded-2xl"
+            >
               {/* Report Header */}
-                <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
-                  <h2 className="flex items-center gap-3 font-sans font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
-                    <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
-                      <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
+                <h2 className="flex items-center gap-3 font-serif font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
+                  <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
+                    <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  Research Report
+                </h2>
+                {/* Final Metrics Display - Modern Cards */}
+                {currentProgress && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 dark:bg-blue-900/30 rounded-md" title="Sources Consulted">
+                      <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.sourcesCount.toLocaleString()}</span> 
+                      <span className="text-gray-500 dark:text-gray-500">sources</span>
                     </div>
-                    Research Report
-                  </h2>
-                  {/* Final Metrics Display */}
-                  {currentProgress && (
-                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-gray-50 dark:bg-gray-800/70 shadow-sm p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs">
-                          <div className="flex items-center gap-1" title="Sources Consulted">
-                              <GlobeIcon className="w-3.5 h-3.5 text-blue-500" />
-                              <span className="font-semibold text-gray-700 dark:text-gray-300">{currentProgress.sourcesCount.toLocaleString()}</span> sources
-                          </div>
-                          <span className="text-gray-300 dark:text-gray-600">|</span>
-                          <div className="flex items-center gap-1" title="Unique Domains">
-                              <DatabaseIcon className="w-3.5 h-3.5 text-green-500" />
-                              <span className="font-semibold text-gray-700 dark:text-gray-300">{currentProgress.domainsCount}</span> domains
-                          </div>
-                          <span className="text-gray-300 dark:text-gray-600">|</span>
-                          <div className="flex items-center gap-1" title="Data Analyzed">
-                              <FileTextIcon className="w-3.5 h-3.5 text-purple-500" />
-                              <span className="font-semibold text-gray-700 dark:text-gray-300">{currentProgress.dataSize}</span>
-                          </div>
-                           <span className="text-gray-300 dark:text-gray-600">|</span>
-                          <div className="flex items-center gap-1" title="Execution Time">
-                              <RefreshCwIcon className="w-3.5 h-3.5 text-orange-500" />
-                              <span className="font-semibold text-gray-700 dark:text-gray-300">{(currentProgress.elapsedTime / 1000).toFixed(1)}s</span>
-                          </div>
-                      </div>
-                  )}
-                </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/30 rounded-md" title="Unique Domains">
+                      <DatabaseIcon className="w-3.5 h-3.5 text-green-500" />
+                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.domainsCount}</span>
+                      <span className="text-gray-500 dark:text-gray-500">domains</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-purple-50 dark:bg-purple-900/30 rounded-md" title="Data Analyzed">
+                      <FileTextIcon className="w-3.5 h-3.5 text-purple-500" />
+                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{currentProgress.dataSize}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 dark:bg-amber-900/30 rounded-md" title="Execution Time">
+                      <RefreshCwIcon className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="font-serif font-semibold text-gray-700 dark:text-gray-300">{(currentProgress.elapsedTime / 1000).toFixed(1)}s</span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Markdown Report Content - Enhanced Styling */}
-               <div className="dark:prose-blockquote:bg-blue-900/20 prose-blockquote:bg-blue-50/50 prose-img:shadow-lg dark:prose-invert prose-hr:my-10 prose-blockquote:px-4 prose-blockquote:py-1 dark:prose-blockquote:border-l-blue-700 prose-blockquote:border-l-blue-500 prose-hr:border-none prose-img:rounded-xl prose-blockquote:rounded-r-md max-w-none prose-hr:h-0 prose-headings:font-sans prose-code:font-mono prose-blockquote:font-normal prose-a:font-medium dark:prose-a:text-blue-400 dark:prose-blockquote:text-gray-300 dark:prose-li:marker:text-blue-400 dark:prose-strong:text-blue-300 prose-a:text-blue-600 prose-blockquote:text-gray-700 prose-li:marker:text-blue-600 prose-strong:text-blue-700 prose-code:text-sm prose-a:no-underline prose-blockquote:not-italic prose-code:before:content-none prose-code:after:content-none prose-headings:tracking-tight prose-a:transition-all prose-a:duration-200 prose prose-lg">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={renderers}
-                  >
-                    {report}
-                  </ReactMarkdown>
-                </div>
+              <div className="prose-blockquote:border-l-blue-500 dark:prose-blockquote:border-l-blue-700 
+                          prose-blockquote:bg-blue-50/50 dark:prose-blockquote:bg-blue-900/20 
+                          prose-blockquote:px-4 prose-blockquote:py-1 prose-blockquote:rounded-r-md 
+                          prose-blockquote:not-italic prose-blockquote:text-gray-700 dark:prose-blockquote:text-gray-300 
+                          prose-blockquote:font-normal prose-blockquote:shadow-sm
+
+                          prose-code:bg-blue-100/50 dark:prose-code:bg-blue-900/30 prose-code:border 
+                          prose-code:border-blue-200/80 dark:prose-code:border-blue-800/50 
+                          prose-code:rounded-md prose-code:px-1 prose-code:py-0.5 prose-code:font-mono 
+                          prose-code:text-blue-800 dark:prose-code:text-blue-300 prose-code:text-sm
+                          prose-code:before:content-none prose-code:after:content-none
+
+                          prose-img:shadow-lg prose-img:rounded-xl prose-img:border 
+                          prose-img:border-gray-200 dark:prose-img:border-gray-700
+
+                          prose-hr:border-none prose-hr:my-10 prose-hr:h-0 
+
+                          prose-li:marker:text-blue-600 dark:prose-li:marker:text-blue-400
+
+                          prose-a:text-blue-600 dark:prose-a:text-blue-400 
+                          prose-a:font-medium prose-a:no-underline hover:prose-a:underline
+                          
+                          prose-strong:text-blue-700 dark:prose-strong:text-blue-300 prose-strong:font-semibold
+
+                          prose-headings:font-serif prose-headings:tracking-tight
+                          
+                          max-w-none prose prose-lg dark:prose-invert">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                  components={renderers}
+                >
+                  {report}
+                </ReactMarkdown>
+              </div>
 
               {/* Report Footer */}
               <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
-                  <button
-                    onClick={() => {
-                      if (report) {
-                        navigator.clipboard.writeText(report)
-                          .then(() => alert('Report copied to clipboard!'))
-                          .catch(err => console.error('Failed to copy report:', err));
-                      }
-                    }}
-                    className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
-                  >
-                    <CopyIcon className="w-4 h-4" />
-                    Copy Full Report
-                  </button>
-                  <button
-                    onClick={() => { setQuery(''); setReport(null); setError(null); }}
-                    className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
-                  >
-                    <SearchIcon className="w-4 h-4" />
-                    New Research
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                <button
+                  onClick={() => {
+                    if (report) {
+                      navigator.clipboard.writeText(report)
+                        .then(() => alert('Report copied to clipboard!'))
+                        .catch(err => console.error('Failed to copy report:', err));
+                    }
+                  }}
+                  className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
+                >
+                  <CopyIcon className="w-4 h-4" />
+                  Copy Full Report
+                </button>
+                <button
+                  onClick={() => { setQuery(''); setReport(null); setError(null); }}
+                  className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
+                >
+                  <SearchIcon className="w-4 h-4" />
+                  New Research
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

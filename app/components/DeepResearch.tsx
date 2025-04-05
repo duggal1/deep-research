@@ -111,8 +111,8 @@ export default function DemoResearch() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-6">Deep Research</h1>
+    <div className="max-w-4xl mx-auto p-4 font-serif">
+      <h1 className="text-2xl font-bold mb-6 text-blue-700 dark:text-blue-400">Deep Research</h1>
       
       {/* Research Form */}
       <form onSubmit={startResearch} className="mb-8">
@@ -122,13 +122,13 @@ export default function DemoResearch() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Enter your research query..."
-            className="flex-1 p-2 border rounded"
+            className="flex-1 p-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             disabled={isLoading}
           />
           <button
             type="submit"
             disabled={isLoading || !query.trim()}
-            className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-blue-300"
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded disabled:bg-blue-300 dark:disabled:bg-blue-800/50 shadow-sm"
           >
             {isLoading ? 'Researching...' : 'Research'}
           </button>
@@ -136,21 +136,21 @@ export default function DemoResearch() {
       </form>
 
       {/* Status Check Form */}
-      <div className="mb-8">
-        <h2 className="text-xl font-semibold mb-2">Check Research Status</h2>
+      <div className="mb-8 bg-gray-50 dark:bg-gray-900/40 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+        <h2 className="text-xl font-semibold mb-2 text-blue-700 dark:text-blue-400">Check Research Status</h2>
         <div className="flex gap-2">
           <input
             type="text"
             value={jobId}
             onChange={(e) => setJobId(e.target.value)}
             placeholder="Enter job ID..."
-            className="flex-1 p-2 border rounded"
+            className="flex-1 p-2 border border-gray-300 dark:border-gray-700 rounded bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
             disabled={isLoading}
           />
           <button
             onClick={() => checkStatus(jobId)}
             disabled={isLoading || !jobId.trim()}
-            className="px-4 py-2 bg-green-500 text-white rounded disabled:bg-green-300"
+            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded disabled:bg-green-300 dark:disabled:bg-green-800/50 shadow-sm"
           >
             Check Status
           </button>
@@ -159,18 +159,20 @@ export default function DemoResearch() {
 
       {/* Error Display */}
       {error && (
-        <div className="p-4 mb-4 bg-red-100 border border-red-400 text-red-700 rounded">
+        <div className="p-4 mb-4 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 rounded">
           {error}
         </div>
       )}
 
       {/* Results Display */}
       {results && (
-        <div className="border rounded p-4">
-          <div className="mb-4">
-            <strong>Status:</strong> {results.status}
+        <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-white dark:bg-gray-900/60 shadow-md">
+          <div className="mb-4 flex items-center justify-between">
+            <span className="font-medium">
+              <strong className="text-blue-700 dark:text-blue-400">Status:</strong> {results.status}
+            </span>
             {results.currentDepth && results.maxDepth && (
-              <span className="ml-2">
+              <span className="ml-2 bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-1 rounded-full text-sm">
                 Progress: {results.currentDepth}/{results.maxDepth}
               </span>
             )}
@@ -179,8 +181,8 @@ export default function DemoResearch() {
           {/* Final Analysis */}
           {results.data?.finalAnalysis && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-2">Final Analysis</h3>
-              <div className="bg-gray-50 p-4 rounded whitespace-pre-wrap text-base leading-relaxed">
+              <h3 className="text-lg font-semibold mb-2 text-blue-700 dark:text-blue-400">Final Analysis</h3>
+              <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded whitespace-pre-wrap text-base leading-relaxed border border-gray-200 dark:border-gray-700 shadow-inner">
                 {results.data.finalAnalysis}
               </div>
             </div>
@@ -189,15 +191,20 @@ export default function DemoResearch() {
           {/* Activities */}
           {results.data?.activities && results.data.activities.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-2">Research Activities</h3>
-              <ul className="list-disc pl-5">
+              <h3 className="text-lg font-semibold mb-2 text-blue-700 dark:text-blue-400">Research Activities</h3>
+              <ul className="space-y-1">
                 {results.data.activities.slice(0, 5).map((activity, index) => (
-                  <li key={index}>
-                    [{activity.type}] {activity.message}
+                  <li key={index} className="flex items-start gap-2">
+                    <span className="inline-block bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded text-xs font-medium mt-0.5">
+                      {activity.type}
+                    </span>
+                    <span className="text-gray-700 dark:text-gray-300">
+                      {activity.message}
+                    </span>
                   </li>
                 ))}
                 {results.data.activities.length > 5 && (
-                  <li className="text-gray-500">
+                  <li className="text-gray-500 pt-1 border-t border-gray-200 dark:border-gray-700">
                     + {results.data.activities.length - 5} more activities
                   </li>
                 )}
@@ -208,30 +215,32 @@ export default function DemoResearch() {
           {/* Sources */}
           {results.data?.sources && results.data.sources.length > 0 && (
             <div>
-              <h3 className="text-lg font-semibold mb-2">Sources ({results.data.sources.length})</h3>
+              <h3 className="text-lg font-semibold mb-2 text-blue-700 dark:text-blue-400">
+                Sources ({results.data.sources.length})
+              </h3>
               <div className="space-y-6">
                 {results.data.sources.slice(0, 10).map((source, index) => (
-                  <div key={index} className="border rounded-lg p-4 shadow-sm">
+                  <div key={index} className="border rounded-lg p-4 shadow-sm bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <div className="flex justify-between items-start mb-2">
                       <a 
                         href={source.url} 
                         target="_blank" 
                         rel="noopener noreferrer" 
-                        className="text-blue-600 hover:underline font-medium text-lg"
+                        className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline font-medium text-lg"
                       >
                         {source.title || 'Untitled'}
                       </a>
-                      <span className="text-sm bg-blue-100 text-blue-800 rounded-full px-2 py-1">
+                      <span className="text-sm bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded-full px-2 py-1">
                         Source {index + 1}
                       </span>
                     </div>
                     
-                    <div className="text-sm text-gray-600 mb-3 truncate">{source.url}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400 mb-3 truncate">{source.url}</div>
                     
                     {source.geminiAnalysis && (
-                      <div className="bg-gray-50 p-3 rounded-md">
-                        <div className="text-sm font-semibold text-gray-700 mb-2">Analysis:</div>
-                        <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                      <div className="bg-gray-50 dark:bg-gray-900/50 p-3 rounded-md border border-gray-200 dark:border-gray-700">
+                        <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Analysis:</div>
+                        <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">
                           {source.geminiAnalysis}
                         </div>
                       </div>
@@ -240,9 +249,9 @@ export default function DemoResearch() {
                 ))}
                 
                 {results.data.sources.length > 10 && (
-                  <div className="text-center p-3 border border-dashed rounded-lg">
+                  <div className="text-center p-3 border border-dashed rounded-lg border-gray-300 dark:border-gray-700">
                     <button 
-                      className="text-blue-600 hover:underline"
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
                       onClick={() => alert("Showing all sources feature coming soon!")}
                     >
                       Show {results.data.sources.length - 10} more sources
