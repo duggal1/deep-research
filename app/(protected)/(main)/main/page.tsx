@@ -403,10 +403,10 @@ export default function Home() {
       );
     },
 
-    // --- Table Renderer --- V3 - Ultra Modern Styling ---
+    // --- Table Renderer --- V4 - Ultra Modern Data Table Styling ---
     table: ({ node, ...props }: any) => (
       // Enhanced container with glass effect and stronger shadow
-      <div className="bg-white/50 dark:bg-gray-900/50 shadow-xl dark:shadow-2xl dark:shadow-blue-900/10 backdrop-blur-sm my-10 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl overflow-hidden">
+      <div className="bg-white/80 dark:bg-gray-900/70 shadow-xl dark:shadow-2xl dark:shadow-blue-900/10 backdrop-blur-sm my-10 border border-gray-200/80 dark:border-gray-700/60 rounded-xl overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
           {/* Added subtle border styling and spacing */}
           <table className="w-full text-sm border-separate border-spacing-0" {...props} />
@@ -415,15 +415,15 @@ export default function Home() {
     ),
     tableHead: ({ node, ...props }: any) => (
       // Gradient header background with stronger visual hierarchy
-      <thead className="top-0 z-10 sticky bg-gradient-to-br from-blue-50 dark:from-gray-800 to-gray-50 dark:to-gray-900 backdrop-blur-sm border-b-2 border-blue-200 dark:border-blue-800/60" {...props} />
+      <thead className="top-0 z-10 sticky bg-gradient-to-br from-blue-50 dark:from-gray-800 to-indigo-50/80 dark:to-gray-900 backdrop-blur-sm border-b-2 border-blue-200 dark:border-blue-800/60" {...props} />
     ),
     tableRow: ({ node, isHeader, ...props }: any) => (
       // Enhanced hover effects and more distinct alternating rows
       <tr
         className={`
-          border-b border-gray-200/60 dark:border-gray-700/50
+          border-b border-gray-200/70 dark:border-gray-700/50
           ${!isHeader ?
-            "odd:bg-white dark:odd:bg-gray-800/30 even:bg-blue-50/30 dark:even:bg-blue-900/10 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 transition-all duration-200"
+            "odd:bg-white/70 dark:odd:bg-gray-800/40 even:bg-blue-50/40 dark:even:bg-blue-900/20 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 transition-all duration-200"
             : ""}
         `}
         {...props}
@@ -438,16 +438,44 @@ export default function Home() {
       // Determine if this is a numeric cell for special formatting
       const content = node.children?.map((c: any) => c.value || '').join('') || '';
       const isNumeric = !isHeader && /^[\d.,]+%?$/.test(content.trim());
+      
+      // Check if this is likely a feature/comparison table
+      const isFeatureTable = isHeader && (
+        content.toLowerCase().includes('feature') || 
+        content.toLowerCase().includes('property') || 
+        content.toLowerCase().includes('capability')
+      );
+      
+      // Check if this is a comparison value cell (pros/cons)
+      const isPositiveValue = !isHeader && (
+        content.toLowerCase().includes('yes') || 
+        content.toLowerCase().includes('supported') || 
+        content.toLowerCase().includes('available') ||
+        content.toLowerCase().includes('better') ||
+        content.toLowerCase().includes('faster')
+      );
+      
+      const isNegativeValue = !isHeader && (
+        content.toLowerCase().includes('no') || 
+        content.toLowerCase().includes('not supported') || 
+        content.toLowerCase().includes('unavailable') ||
+        content.toLowerCase().includes('worse') ||
+        content.toLowerCase().includes('slower')
+      );
 
       const cellProps = {
-        // Enhanced padding and typography with special handling for numeric cells
+        // Enhanced padding and typography with special handling for different cell types
         className: `
           px-6 py-4 ${alignClass}
           ${isHeader
-            ? 'font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider'
+            ? `font-semibold text-gray-700 dark:text-gray-100 uppercase text-xs tracking-wider ${isFeatureTable ? 'bg-blue-50/50 dark:bg-blue-900/30' : ''}`
             : isNumeric
               ? 'text-blue-700 dark:text-blue-300 font-medium tabular-nums'
-              : 'text-gray-700 dark:text-gray-300'
+              : isPositiveValue
+                ? 'text-green-700 dark:text-green-300 font-medium'
+                : isNegativeValue
+                  ? 'text-red-600 dark:text-red-300 font-medium'
+                  : 'text-gray-700 dark:text-gray-300'
           }
         `,
         ...props,
@@ -496,7 +524,7 @@ export default function Home() {
     h4: ({ node, children, ...props }: any) => <h4 className="mt-6 mb-3 font-sans font-semibold text-gray-700 dark:text-gray-300 text-lg md:text-xl" {...props}>{children}</h4>,
     // Add h5, h6 if needed
 
-    // --- Link Renderer V3 (Enhanced Universal Application) ---
+    // --- Link Renderer V4 (Enhanced with Strong Visual Feedback) ---
     a: ({ node, href, children, ...props }: any) => {
       const url = href || '';
       const isExternal = url.startsWith('http://') || url.startsWith('https://');
@@ -576,7 +604,7 @@ export default function Home() {
             href={url}
             target={isExternal ? '_blank' : undefined}
             rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow px-3 py-1.5 border border-blue-200 dark:border-blue-700/50 rounded-md font-mono text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200"
+            className="group inline-flex items-center bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/30 dark:hover:bg-blue-800/50 shadow-sm hover:shadow-md active:shadow px-3 py-2 border border-blue-200 dark:border-blue-700/50 hover:border-blue-300 dark:hover:border-blue-600 rounded-md font-mono text-blue-700 hover:text-blue-800 dark:hover:text-blue-200 dark:text-blue-300 text-sm transition-all duration-200 cursor-pointer"
             {...props}
           >
             {isExternal && faviconUrl && domain && (
@@ -596,13 +624,13 @@ export default function Home() {
         );
       }
 
-      // Standard link styling (enhanced)
+      // Standard link styling (enhanced for better clickability and visual feedback)
       return (
         <a
           href={url}
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noopener noreferrer' : undefined}
-          className="group inline-flex items-center gap-1.5 hover:bg-blue-50/50 dark:hover:bg-blue-900/30 -mx-1 -my-0.5 px-1 py-0.5 rounded-md font-medium text-blue-600 hover:text-blue-800 dark:hover:text-blue-300 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-200"
+          className="group inline-flex items-center gap-1.5 hover:bg-blue-50/80 active:bg-blue-100/80 dark:hover:bg-blue-900/40 dark:active:bg-blue-800/50 -mx-1.5 -my-1 px-1.5 py-1 border border-transparent hover:border-blue-200 dark:hover:border-blue-800 rounded-md font-medium text-blue-600 hover:text-blue-700 active:text-blue-800 dark:hover:text-blue-300 dark:active:text-blue-200 dark:text-blue-400 decoration-2 decoration-blue-500/30 hover:decoration-blue-500/70 underline underline-offset-4 break-words transition-all duration-150 cursor-pointer"
           {...props}
         >
           {isExternal && faviconUrl && domain && (

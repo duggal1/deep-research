@@ -10,11 +10,12 @@ export async function GET(request: Request) {
     const query = searchParams.get('query')?.trim();
     const jobId = searchParams.get('jobId')?.trim();
     
-    // Parse optional parameters
-    const maxDepth = searchParams.get('maxDepth') ? parseInt(searchParams.get('maxDepth') || '8', 10) : undefined;
-    const timeLimit = searchParams.get('timeLimit') ? parseInt(searchParams.get('timeLimit') || '120', 10) : undefined;
-    const maxUrls = searchParams.get('maxUrls') ? parseInt(searchParams.get('maxUrls') || '20', 10) : undefined;
-    const fullContent = searchParams.get('fullContent') === 'true';
+    // Parse optional parameters with better defaults
+    const maxDepth = searchParams.get('maxDepth') ? parseInt(searchParams.get('maxDepth') || '8', 10) : 5;
+    const timeLimit = searchParams.get('timeLimit') ? parseInt(searchParams.get('timeLimit') || '120', 10) : 90;
+    const maxUrls = searchParams.get('maxUrls') ? parseInt(searchParams.get('maxUrls') || '20', 10) : 20;
+    // Always set fullContent to true regardless of the URL param
+    const fullContent = true;
     
     // Set cache key considering parameters
     const cacheKey = query ? `${query}_depth${maxDepth || 'default'}_urls${maxUrls || 'default'}` : '';
@@ -43,11 +44,12 @@ export async function GET(request: Request) {
             }
 
             // Prepare research parameters
-            const params: ResearchParams = {};
-            if (maxDepth !== undefined) params.maxDepth = maxDepth;
-            if (timeLimit !== undefined) params.timeLimit = timeLimit;
-            if (maxUrls !== undefined) params.maxUrls = maxUrls;
-            if (fullContent !== undefined) params.fullContent = fullContent;
+            const params: ResearchParams = {
+                maxDepth,
+                timeLimit,
+                maxUrls,
+                fullContent: true // Always true regardless of request parameter
+            };
 
             console.log(`Performing research with params:`, params);
             

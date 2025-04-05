@@ -23,10 +23,11 @@ const API_LIMITS = {
   maxUrls: 20
 };
 
+// Update to higher token limit and better temperature for detailed analysis
 const GEMINI_CONFIG = {
   model: "gemini-2.0-flash",
-  temperature: 0.3,
-  maxTokens: 3000,
+  temperature: 0.4,
+  maxTokens: 8000,  
   topK: 40,
   topP: 0.95
 };
@@ -73,6 +74,8 @@ interface FirecrawlSource {
   url: string;
   title?: string;
   content?: string;
+  markdown?: string;   // Add markdown content property
+  html?: string;       // Add HTML content property
   relevance?: number;
   description?: string;
 }
@@ -118,40 +121,79 @@ async function analyzeAllSourcesWithGemini(sources: any[], query: string): Promi
     }
 
     // Create a combined prompt with all sources
-    let combinedPrompt = `Analyze the following web sources in relation to the query: "${query}"\n\n`;
+    let combinedPrompt = `You are a research assistant providing detailed analysis. 
+Analyze the following web sources in relation to the query: "${query}"
+
+IMPORTANT: Provide comprehensive, detailed analyses with multiple paragraphs for each source. Include as much relevant information as possible.
+\n\n`;
+    
+    // Filter sources that have enough content to analyze
+    const sourcesWithContent = sources.filter(source => {
+      const content = source.processedContent || source.content || source.description || '';
+      return content.length >= 50;
+    });
+    
+    console.log(`Analyzing ${sourcesWithContent.length} sources out of ${sources.length} total sources`);
     
     // Process each source to build the prompt
-    sources.forEach((source, index) => {
-      // Skip sources with no content
-      const contentToAnalyze = source.content || source.description || '';
-      if (contentToAnalyze.length < 50) {
-        return;
-      }
+    sourcesWithContent.forEach((source, index) => {
+      const contentToAnalyze = source.processedContent || source.content || source.description || '';
       
       // Add source info with clear separation
       combinedPrompt += `\n--- SOURCE ${index + 1} ---\n`;
       combinedPrompt += `URL: ${source.url}\n`;
       combinedPrompt += `TITLE: ${source.title || 'Untitled'}\n`;
-      combinedPrompt += `CONTENT: ${contentToAnalyze.substring(0, 1000)}...\n`;
+      
+      // Take more content for analysis - up to 4000 chars for a more detailed analysis
+      combinedPrompt += `CONTENT: ${contentToAnalyze.substring(0, 4000)}\n`;
+    });
+
+    // For sources with no content, try to generate synthetic content from metadata
+    sources.forEach((source, index) => {
+      if (!sourcesWithContent.includes(source)) {
+        combinedPrompt += `\n--- SOURCE ${sources.indexOf(source) + 1} (LIMITED INFO) ---\n`;
+        combinedPrompt += `URL: ${source.url}\n`;
+        combinedPrompt += `TITLE: ${source.title || 'Untitled'}\n`;
+        combinedPrompt += `NOTE: Limited content available for this source. Please infer what you can from the URL and title.\n`;
+      }
     });
     
     combinedPrompt += `\nFor each source, provide:
-1. Key insights relevant to the query
-2. Relevance to query (high/medium/low)
-3. Main takeaways
+1. Key insights relevant to the query (be very detailed)
+2. Relevance to query (high/medium/low) with explanation
+3. Main takeaways (at least 3-5 detailed points)
+4. Any contradictions with other sources
+5. Additional context that helps understand the topic
 
 Format your response as follows:
 SOURCE 1:
-[Your analysis here]
+[Your detailed, multi-paragraph analysis here]
 
 SOURCE 2:
-[Your analysis here]
+[Your detailed, multi-paragraph analysis here]
 
-Continue for all sources...`;
+Continue for all sources...
+
+REMEMBER: Your analyses should be comprehensive, thorough and detailed - at least 300-500 words per source.`;
 
     // Initialize the model
     const model = genAI.getGenerativeModel({ model: GEMINI_CONFIG.model });
     
+    // Configure generation parameters - provide more context for better analysis
+    const genParams = {
+      temperature: GEMINI_CONFIG.temperature,
+      maxOutputTokens: GEMINI_CONFIG.maxTokens,
+      topK: GEMINI_CONFIG.topK,
+      topP: GEMINI_CONFIG.topP,
+    };
+
+    // Create a system prompt for better context
+    const systemPrompt = `You are an advanced research assistant analyzing sources about: "${query}".
+Your analysis must be extremely detailed and comprehensive.
+For each source, extract all relevant information and insights, organized into clear sections.
+Use multiple paragraphs with specific details from the source.
+Your goal is to provide the most thorough, information-rich analysis possible.`;
+
     // Implement retry logic with exponential backoff
     let retries = 0;
     const maxRetries = 3;
@@ -161,10 +203,21 @@ Continue for all sources...`;
     let analysisText;
     while (true) {
       try {
-        const result = await model.generateContent([combinedPrompt]);
+        // Make the API call with proper system prompt and user prompt
+        const result = await model.generateContent({
+          contents: [
+            { role: 'system', parts: [{ text: systemPrompt }] },
+            { role: 'user', parts: [{ text: combinedPrompt }] }
+          ],
+          generationConfig: genParams,
+        });
+        
         analysisText = result.response.text();
+        console.log(`Received Gemini analysis of ${analysisText.length} characters`);
         break;
       } catch (err: any) {
+        console.error("Gemini API error:", err);
+        
         if (err?.status === 429 && retries < maxRetries) {
           // Rate limit hit, implement exponential backoff
           retries++;
@@ -223,23 +276,36 @@ async function processSources(sources: any[], query: string): Promise<any[]> {
     
     console.log(`Processing ${sources.length} sources with a single Gemini call`);
     
-    // Get analysis for all sources in one call
-    const sourceAnalyses = await analyzeAllSourcesWithGemini(sources, query);
-    
-    // Enhance each source with its analysis
-    const enhancedSources = sources.map((source: any) => {
-      // Try to ensure we have some content for analysis
-      let sourceContent = source.content || source.description || '';
+    // Pre-process sources to ensure we have content
+    const validSources = sources.map(source => {
+      // Primary source content (prefer content, fall back to description)
+      const sourceContent = source.content || source.description || '';
       
-      // If we still don't have content, add a placeholder
-      if (!sourceContent) {
-        console.log(`No content available for source: ${source.url}`);
+      // Log an issue if we have neither
+      if (!sourceContent && source.url) {
+        console.log(`No usable content for source: ${source.url}`);
       }
       
       return {
+        ...source,
+        // Store the best available content for Gemini analysis
+        processedContent: sourceContent,
+      };
+    });
+    
+    // Count how many sources have usable content
+    const sourcesWithContent = validSources.filter(s => s.processedContent && s.processedContent.length > 50).length;
+    console.log(`Sources with substantial content: ${sourcesWithContent}/${sources.length}`);
+    
+    // Get analysis for all sources in one call
+    const sourceAnalyses = await analyzeAllSourcesWithGemini(validSources, query);
+    
+    // Enhance each source with its analysis
+    const enhancedSources = validSources.map((source: any) => {
+      return {
         url: source.url || '',
         title: source.title || 'Untitled',
-        content: sourceContent,
+        content: source.processedContent || '',  // Use our pre-processed content
         relevance: source.relevance || 0,
         description: source.description || '',
         geminiAnalysis: sourceAnalyses[source.url] || "No analysis available for this source."
@@ -292,7 +358,7 @@ export function extractResearchLinks(researchResult: FirecrawlResponse | Researc
   }));
 }
 
-// Main deep research function
+// Main deep research function with enhanced source content handling
 export async function performDeepResearch(
   query: string,
   params: ResearchParams = {}
@@ -301,7 +367,8 @@ export async function performDeepResearch(
     // Merge default params with provided params
     let researchParams = {
       ...DEFAULT_PARAMS,
-      ...params
+      ...params,
+      fullContent: true, // Always ensure fullContent is true
     };
 
     // Ensure parameters are within API limits
@@ -322,12 +389,64 @@ export async function performDeepResearch(
     // Start the research
     console.log("Starting deep research with query:", query);
     const rawResults = await firecrawl.deepResearch(
-      query,
-      researchParams,
+      query, 
+      researchParams, // Use standard parameters only
       onActivity
     ) as FirecrawlSuccessResponse;
     
-    console.log("Raw API response:", JSON.stringify(rawResults, null, 2).substring(0, 500));
+    // Log the complete raw response for debugging
+    console.log("Raw API response received");
+    try {
+      // Log full response structure (for debugging)
+      console.log("Response structure:", JSON.stringify(Object.keys(rawResults), null, 2));
+      console.log("Data structure:", rawResults.data ? JSON.stringify(Object.keys(rawResults.data), null, 2) : 'No data object');
+      
+      // Log sources count
+      const sourcesCount = Array.isArray(rawResults.data?.sources) 
+        ? rawResults.data.sources.length 
+        : Array.isArray(rawResults.sources) 
+          ? rawResults.sources.length 
+          : 0;
+      console.log(`Found ${sourcesCount} sources in response`);
+      
+      // Log first source sample (if exists)
+      if (sourcesCount > 0) {
+        const firstSource = Array.isArray(rawResults.data?.sources) 
+          ? rawResults.data.sources[0]
+          : Array.isArray(rawResults.sources)
+            ? rawResults.sources[0]
+            : null;
+        if (firstSource) {
+          // Create a more detailed source sample log
+          console.log("First source sample details:");
+          console.log("- URL:", firstSource.url);
+          console.log("- Title:", firstSource.title);
+          console.log("- Has content:", !!firstSource.content);
+          console.log("- Content length:", firstSource.content ? firstSource.content.length : 0);
+          console.log("- Has markdown:", !!firstSource.markdown);
+          console.log("- Markdown length:", firstSource.markdown ? firstSource.markdown.length : 0);
+          console.log("- Has HTML:", !!firstSource.html);
+          console.log("- HTML length:", firstSource.html ? firstSource.html.length : 0);
+          console.log("- Has description:", !!firstSource.description);
+          console.log("- Description length:", firstSource.description ? firstSource.description.length : 0);
+          
+          // Log a sample of the content if available
+          if (firstSource.content && firstSource.content.length > 0) {
+            console.log("- Content preview:", firstSource.content.substring(0, 150) + "...");
+          } else if (firstSource.markdown && firstSource.markdown.length > 0) {
+            console.log("- Markdown preview:", firstSource.markdown.substring(0, 150) + "...");
+          } else if (firstSource.description && firstSource.description.length > 0) {
+            console.log("- Description preview:", firstSource.description.substring(0, 150) + "...");
+          }
+        }
+      }
+      
+      // Log final analysis length
+      const finalAnalysis = rawResults.data?.finalAnalysis || rawResults.finalAnalysis || '';
+      console.log(`Final analysis length: ${finalAnalysis.length} characters`);
+    } catch (logError) {
+      console.error("Error logging API response:", logError);
+    }
 
     if (isFirecrawlError(rawResults)) {
       throw new Error(rawResults.error);
@@ -340,11 +459,38 @@ export async function performDeepResearch(
     const status = rawResults.status || 'completed';
     
     // Extract sources and activities from the response, handling different formats
-    const sources = Array.isArray(rawResults.data?.sources) 
+    let sources = Array.isArray(rawResults.data?.sources) 
       ? rawResults.data.sources 
       : Array.isArray(rawResults.sources) 
         ? rawResults.sources 
         : [];
+    
+    // Log source details to help debug
+    console.log(`Raw source count: ${sources.length}`);
+    if (sources.length > 0) {
+      // Check if sources have content
+      const sourcesWithContent = sources.filter(s => 
+        (s.content && s.content.length > 100) || 
+        (s.markdown && s.markdown.length > 100) || 
+        (s.html && s.html.length > 100)
+      ).length;
+      
+      console.log(`Sources with significant content: ${sourcesWithContent}/${sources.length}`);
+      
+      // Enrich source objects with better content
+      sources = sources.map(source => {
+        // If we have markdown or html but no content, use those
+        const bestContent = source.content || source.markdown || source.html || '';
+        const description = source.description || '';
+        
+        return {
+          ...source,
+          content: bestContent,
+          // If content is still empty but we have description, use that as content
+          ...(bestContent.length < 50 && description.length > 50 ? { content: description } : {})
+        };
+      });
+    }
         
     const activities = Array.isArray(rawResults.data?.activities) 
       ? rawResults.data.activities 

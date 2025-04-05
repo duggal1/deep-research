@@ -93,9 +93,21 @@ export default function DemoResearch() {
   }, []);
 
   // Extract a preview of the final analysis
-  const getAnalysisPreview = (text: string, maxLength: number = 300) => {
+  const getAnalysisPreview = (text: string, maxLength: number = 500) => {
     if (!text) return '';
-    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text;
+    
+    // If text is shorter than max length, return it completely
+    if (text.length <= maxLength) return text;
+    
+    // Otherwise, find a good breaking point (end of sentence) near maxLength
+    const breakPoint = text.substring(0, maxLength).lastIndexOf('. ');
+    if (breakPoint !== -1) {
+      // Return up to the last complete sentence plus the period
+      return text.substring(0, breakPoint + 1) + ' [...]';
+    }
+    
+    // Fallback to simple truncation if no sentence break found
+    return `${text.substring(0, maxLength)}...`;
   };
 
   return (
@@ -168,7 +180,7 @@ export default function DemoResearch() {
           {results.data?.finalAnalysis && (
             <div className="mb-6">
               <h3 className="text-lg font-semibold mb-2">Final Analysis</h3>
-              <div className="bg-gray-50 p-3 rounded whitespace-pre-wrap">
+              <div className="bg-gray-50 p-4 rounded whitespace-pre-wrap text-base leading-relaxed">
                 {results.data.finalAnalysis}
               </div>
             </div>
@@ -197,26 +209,47 @@ export default function DemoResearch() {
           {results.data?.sources && results.data.sources.length > 0 && (
             <div>
               <h3 className="text-lg font-semibold mb-2">Sources ({results.data.sources.length})</h3>
-              <ul className="space-y-3">
+              <div className="space-y-6">
                 {results.data.sources.slice(0, 10).map((source, index) => (
-                  <li key={index} className="border-b pb-2">
-                    <a href={source.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
-                      {source.title || 'Untitled'}
-                    </a>
-                    <div className="text-sm text-gray-600">{source.url}</div>
+                  <div key={index} className="border rounded-lg p-4 shadow-sm">
+                    <div className="flex justify-between items-start mb-2">
+                      <a 
+                        href={source.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="text-blue-600 hover:underline font-medium text-lg"
+                      >
+                        {source.title || 'Untitled'}
+                      </a>
+                      <span className="text-sm bg-blue-100 text-blue-800 rounded-full px-2 py-1">
+                        Source {index + 1}
+                      </span>
+                    </div>
+                    
+                    <div className="text-sm text-gray-600 mb-3 truncate">{source.url}</div>
+                    
                     {source.geminiAnalysis && (
-                      <div className="mt-1 text-sm">
-                        <strong>Analysis:</strong> {source.geminiAnalysis}
+                      <div className="bg-gray-50 p-3 rounded-md">
+                        <div className="text-sm font-semibold text-gray-700 mb-2">Analysis:</div>
+                        <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">
+                          {source.geminiAnalysis}
+                        </div>
                       </div>
                     )}
-                  </li>
+                  </div>
                 ))}
+                
                 {results.data.sources.length > 10 && (
-                  <li className="text-gray-500">
-                    + {results.data.sources.length - 10} more sources
-                  </li>
+                  <div className="text-center p-3 border border-dashed rounded-lg">
+                    <button 
+                      className="text-blue-600 hover:underline"
+                      onClick={() => alert("Showing all sources feature coming soon!")}
+                    >
+                      Show {results.data.sources.length - 10} more sources
+                    </button>
+                  </div>
                 )}
-              </ul>
+              </div>
             </div>
           )}
         </div>
