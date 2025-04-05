@@ -23,7 +23,6 @@ export async function POST(req: Request) {
       history: [],
     });
 
-    // Properly type the stream result
     const streamResult = await chatSession.sendMessageStream(prompt);
     const encoder = new TextEncoder();
     let finalText = "";
@@ -32,7 +31,6 @@ export async function POST(req: Request) {
 
     const readableStream = new ReadableStream({
       async start(controller) {
-        // Send initial thinking messages
         for (const message of thinkingMessages) {
           controller.enqueue(
             encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: message })}\n\n`)
@@ -40,7 +38,6 @@ export async function POST(req: Request) {
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
 
-        // Iterate over the stream using for await...of
         for await (const chunk of streamResult.stream) {
           const text = chunk.text();
           finalText += text;
@@ -49,7 +46,6 @@ export async function POST(req: Request) {
           );
         }
 
-        // Send final result
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify({ type: "final", content: finalText })}\n\n`)
         );
