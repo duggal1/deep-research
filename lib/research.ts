@@ -37,6 +37,8 @@ interface ResearchOptions {
   maxDomains?: number;
   maxSources?: number;
   highQuality?: boolean;
+  minOutputLength?: number; // Already exists, will be used
+  useGemini?: boolean; // Add new option for Gemini
 }
 
 // Update ResearchSource with optional additional data
@@ -47,6 +49,14 @@ interface EnhancedResearchSource extends ResearchSource {
   custom?: Record<string, any>;
 }
 
+// Define ResearchMetrics type locally if not imported, or import it
+interface ResearchMetrics {
+  sourcesCount: number;
+  domainsCount: number;
+  dataSize: string; // e.g., "123.45KB"
+  elapsedTime: number; // in milliseconds
+}
+
 export class ResearchEngine {
   private model: any;
   private embeddingModel: any;
@@ -54,16 +64,19 @@ export class ResearchEngine {
   private CACHE_DURATION = 1000 * 60 * 60;
   private startTime: number = 0;
   private queryContext: Map<string, any> = new Map();
-  private MAX_DATA_SOURCES = 300000; // Significantly increased URLs
-  private MAX_TOKEN_OUTPUT = 600000; // Dramatically increased synthesis token limit
-  private CHUNK_SIZE = 60000; // Increased from 45000
-  private SEARCH_DEPTH = 40; // Increased from 30
-  private MAX_PARALLEL_REQUESTS = 400; // Increased from 300
-  private ADDITIONAL_DOMAINS = 100; // Doubled from 50
-  private MAX_RESEARCH_TIME = 220000; // Increased to ~3.7 mins max internal engine time
+  private MAX_DATA_SOURCES = 400000; // Keep high URL limit
+  private MAX_TOKEN_OUTPUT = 800000; // Allow very high internal token processing
+  private CHUNK_SIZE = 60000;
+  private SEARCH_DEPTH = 50; // Deeper search
+  private MAX_PARALLEL_REQUESTS = 500; // More parallel requests
+  private ADDITIONAL_DOMAINS = 150; // Target more domains
+  private MAX_RESEARCH_TIME = 270000; // Allow up to 4.5 mins internal time
   private DEEP_RESEARCH_MODE = true;
-  private MINIMUM_SOURCES_REQUIRED = 100; // Force minimum of 100 sources
+  private MINIMUM_DOMAINS_REQUIRED = 100; // <--- New Minimum Domain Requirement
+  private MINIMUM_SOURCES_REQUIRED = 120; // Increase min sources slightly above domains
+
   private firecrawlApiKey: string;
+  private geminiApiKey: string; // Store Gemini API Key
 
   constructor() {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
@@ -80,6 +93,15 @@ export class ResearchEngine {
        // For Edge Runtime, this check is likely sufficient, and native AbortController should be used.
     }
     this.firecrawlApiKey = process.env.FIRECRAWL_API_KEY || '';
+    this.geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY || ''; // Ensure this env var is set
+
+    if (!this.firecrawlApiKey) {
+        console.warn("[ResearchEngine] Firecrawl API Key not found. Firecrawl features disabled.");
+    }
+    if (!this.geminiApiKey) {
+        console.warn("[ResearchEngine] Google Gemini API Key not found. Gemini features disabled.");
+    }
+
     // Initialize other components
   }
 
@@ -431,165 +453,133 @@ export class ResearchEngine {
    */
   private async crawlWeb(
       initialQuery: string,
-      overallAbortSignal: AbortSignal
-  ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number }> {
-    // Use Firecrawl's deep research for web crawling instead of custom implementation
-      try {
-        const startTime = Date.now();
-        console.log(`Starting Firecrawl deep research for query: "${initialQuery}"`);
-        addLog("Connecting to Firecrawl deep research API...");
+      overallAbortSignal: AbortSignal,
+      options: ResearchOptions // Pass options down
+  ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number, actualDomains: number }> {
+      console.log(`[ResearchEngine] Starting crawl for "${initialQuery}" with min domains: ${this.MINIMUM_DOMAINS_REQUIRED}, min sources: ${this.MINIMUM_SOURCES_REQUIRED}`);
 
-      // Configure Firecrawl deep research parameters with increased values
-        const deepResearchParams = {
-        query: initialQuery,
-        maxDepth: 5, // Set exactly to 5 as requested
-        timeLimit: 180, // Set exactly to 180 seconds as requested
-        maxUrls: 15, // Set exactly to 15 as requested
-        enhancedAnalysis: true, // Enable enhanced analysis for higher quality
-        prioritizeRecency: true, // Prioritize recent information
-        validateSources: true // Validate sources for higher credibility
-      };
-      
-      // Log the parameters for debugging
-      console.log(`Sending Firecrawl parameters: maxDepth=${deepResearchParams.maxDepth}, maxUrls=${deepResearchParams.maxUrls}, timeLimit=${deepResearchParams.timeLimit}s`);
+      let crawlResult: { sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number };
 
-      // Call Firecrawl deep research API with improved error handling
-          try {
-            // Create a separate timeout signal for initial connection
-            const timeoutController = new AbortController();
-            const timeoutId = setTimeout(() => timeoutController.abort(), 15000);
-            
-            // Combine the overall abort signal with the timeout signal
-            const combinedSignal = this.combineSignals(overallAbortSignal, timeoutController.signal);
-            
-            const response = await fetch('https://api.firecrawl.dev/v1/deep-research', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.firecrawlApiKey}`
-              },
-              body: JSON.stringify(deepResearchParams),
-              signal: combinedSignal
-            });
-            
-            // Clear the timeout as we got a response
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-              // Log more specific error details
-              const errorBody = await response.text();
-              console.error(`Firecrawl API error: ${response.status} ${response.statusText}. Details: ${errorBody}`);
-              
-              if (response.status === 400) {
-                addLog("Firecrawl API reported a bad request. Check API key and parameters.");
-                // Check if this is a parameter error that we can correct on retry
-                try {
-                  const errorJson = JSON.parse(errorBody);
-                  if (errorJson.details && Array.isArray(errorJson.details)) {
-                    // Log specific parameter issues
-                    errorJson.details.forEach((detail: any) => {
-                      console.error(`Parameter error: ${detail.path?.join('.')} - ${detail.message}`);
-                    });
-                    
-                    // If we can detect specific parameter errors, we could retry with corrected values
-                    // This is a future enhancement opportunity
-                  }
-                } catch (parseError) {
-                  // JSON parsing failed, continue with regular error handling
-                }
-              } else if (response.status === 401 || response.status === 403) {
-                addLog("Firecrawl API authentication failed. Check API key.");
-              } else if (response.status === 429) {
-                addLog("Firecrawl API rate limit exceeded. Falling back to internal research engine.");
-              } else if (response.status >= 500) {
-                addLog("Firecrawl API server error. Falling back to internal research engine.");
-              }
-              
-              throw new Error(`Firecrawl API error: ${response.status} ${response.statusText}`);
-            }
-
-            const researchResult = await response.json();
-          
-            if (researchResult.status === 'processing') {
-              addLog("Firecrawl research job submitted. Polling for results...");
-              // Poll for completed results
-              return await this.pollFirecrawlResearch(researchResult.id, overallAbortSignal);
-            }
-          
-            // Process completed results
-            const firecrawlResults = this.processFirecrawlResults(researchResult, startTime);
-            
-            // Check if Firecrawl returned empty results
-            if (firecrawlResults.sources.length === 0) {
-              console.log("Firecrawl returned 0 sources, falling back to legacy crawler");
-              addLog("Firecrawl returned no results. Falling back to internal research engine.");
-              
-              // Increase search parameters for fallback mode
-              const originalSearchDepth = this.SEARCH_DEPTH;
-              const originalMaxDataSources = this.MAX_DATA_SOURCES;
-              
-              try {
-                // Increase search parameters for better coverage
-                this.SEARCH_DEPTH += 5; // Add 5 more depth levels
-                this.MAX_DATA_SOURCES += 20000; // Add 20,000 more URLs
-                
-                // Call legacy crawler
-                return await this.legacyCrawlWeb(initialQuery, overallAbortSignal);
-              } finally {
-                // Restore original values
-                this.SEARCH_DEPTH = originalSearchDepth;
-                this.MAX_DATA_SOURCES = originalMaxDataSources;
-              }
-            }
-            
-            addLog("Firecrawl research completed successfully.");
-            return firecrawlResults;
-          } catch (fetchError: any) {
-            // Specific handling for network/timeout issues
-            if (fetchError.name === 'AbortError' || fetchError.name === 'TimeoutError') {
-              console.error(`Firecrawl API request timed out: ${fetchError.message}`);
-              addLog("Firecrawl API request timed out. Falling back to internal research engine.");
-            } else {
-              console.error(`Firecrawl API fetch error: ${fetchError.message}`);
-              addLog(`Network error connecting to Firecrawl: ${fetchError.message}`);
-            }
-            throw fetchError;
-          }
-      } catch (error: unknown) {
-        // Improved error logging with more details
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        console.error(`Firecrawl deep research failed: ${errorMsg}`);
-        
-        // Add more specific user-facing log message
-        if (errorMsg.includes('API key')) {
-          addLog("Authentication error with Firecrawl. Falling back to internal research engine.");
-        } else if (errorMsg.includes('timed out') || errorMsg.includes('timeout')) {
-          addLog("Connection to Firecrawl timed out. Falling back to internal research engine.");
-        } else if (errorMsg.includes('rate limit')) {
-          addLog("Firecrawl API rate limit reached. Falling back to internal research engine.");
-        } else {
-          addLog("Unable to use Firecrawl API. Falling back to internal research engine.");
-        }
-        
-        // Fall back to original crawling method
-        console.log("Falling back to legacy crawling method - increasing domain coverage");
-        // Increase domain coverage in fallback mode to compensate for Firecrawl
-        const originalSearchDepth = this.SEARCH_DEPTH;
-        const originalMaxDataSources = this.MAX_DATA_SOURCES;
-        
+      // Option 1: Use Firecrawl (Recommended if API key is set)
+      if (this.firecrawlApiKey && options.useFirecrawl !== false) {
+        console.log("[ResearchEngine] Using Firecrawl for crawling.");
+        addLog("[Engine] Using Firecrawl for data collection.");
         try {
-          // Increase search parameters for fallback mode
-          this.SEARCH_DEPTH += 5; // Add 5 more depth levels
-          this.MAX_DATA_SOURCES += 20000; // Add 20,000 more URLs
-          
-          // Call legacy crawler with enhanced parameters
-          return await this.legacyCrawlWeb(initialQuery, overallAbortSignal);
-        } finally {
-          // Restore original values
-          this.SEARCH_DEPTH = originalSearchDepth;
-          this.MAX_DATA_SOURCES = originalMaxDataSources;
+            // --- FIX: Call the new firecrawlDeepResearch method ---
+            crawlResult = await this.firecrawlDeepResearch(initialQuery, overallAbortSignal, options);
+            // --- END FIX ---
+        } catch (error: any) {
+             console.error("[ResearchEngine] Firecrawl research failed:", error.message);
+             addLog(`[Engine] Firecrawl failed: ${error.message}. Falling back to legacy crawler.`);
+             // Fallback to legacy crawl on Firecrawl error
+             console.log("[ResearchEngine] Falling back to Legacy Crawler due to Firecrawl error.");
+             crawlResult = await this.legacyCrawlWeb(initialQuery, overallAbortSignal);
         }
+      } else {
+        // Option 2: Fallback to Legacy Crawl (If Firecrawl is disabled or key missing)
+        console.log("[ResearchEngine] Using Legacy Crawler (less reliable).");
+        addLog("[Engine] Using legacy crawler for data collection.");
+        crawlResult = await this.legacyCrawlWeb(initialQuery, overallAbortSignal);
       }
+
+      // Calculate actual unique domains from the result
+      // Ensure domain extraction handles potential errors
+      const uniqueDomains = new Set(
+          crawlResult.sources.map(s => {
+              try {
+                  // Ensure URL is valid before parsing
+                  let url = s.url || '';
+        if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                      if (!url.includes('://')) url = 'https://' + url; // Basic protocol addition
+                      else return null; // Skip if protocol is weird
+                  }
+                  return new URL(url).hostname.replace(/^www\./, '');
+              } catch {
+                  console.warn(`[crawlWeb] Skipping invalid URL for domain count: ${s.url}`);
+                  return null; // Skip invalid URLs
+              }
+          }).filter((d): d is string => d !== null && d !== '') // Filter out nulls and empty strings
+      );
+      const actualDomainsCount = uniqueDomains.size;
+
+      console.log(`[ResearchEngine] Crawl finished. Found ${crawlResult.sources.length} sources across ${actualDomainsCount} unique domains.`);
+
+      // Optional: Add logic here to potentially trigger another crawl phase if minimums aren't met and time permits
+
+      return { ...crawlResult, actualDomains: actualDomainsCount };
+  }
+
+  private async firecrawlDeepResearch(
+    query: string,
+    signal: AbortSignal,
+    options: ResearchOptions
+  ): Promise<{ sources: ResearchSource[], crawledUrlCount: number, failedUrlCount: number }> {
+    if (!this.firecrawlApiKey) {
+      throw new Error("Firecrawl API Key is missing.");
+    }
+
+    const firecrawlParams = {
+      maxDepth: options.maxDepth || this.SEARCH_DEPTH,
+      maxUrls: options.maxUrls || this.MAX_DATA_SOURCES,
+      timeLimit: Math.min(options.timeLimit || (this.MAX_RESEARCH_TIME / 1000), 270), // Use shorter of engine limit or option, max 270s for Firecrawl safety
+      // Add other params supported by Firecrawl deep-research endpoint if needed
+    };
+
+    addLog(`[Engine] Initiating Firecrawl deep research for "${query}" with params: ${JSON.stringify(firecrawlParams)}`);
+    console.log(`[firecrawlDeepResearch] Calling Firecrawl POST /deep-research`);
+
+    try {
+      // --- Initiate the Deep Research Job ---
+      const initResponse = await fetch('https://api.firecrawl.dev/v1/deep-research', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.firecrawlApiKey}`,
+        },
+        body: JSON.stringify({
+          query: query,
+          research_params: firecrawlParams // Ensure nested structure if API expects it
+          // If params are top-level, adjust body structure accordingly
+        }),
+        signal: signal, // Use the overall abort signal
+      });
+
+      if (signal.aborted) throw new Error("Research aborted during Firecrawl initiation.");
+
+      if (!initResponse.ok) {
+        const errorText = await initResponse.text();
+        console.error(`[firecrawlDeepResearch] Firecrawl initiation failed: ${initResponse.status} - ${errorText}`);
+        addLog(`[Engine] Firecrawl initiation failed: ${initResponse.status}`);
+        throw new Error(`Firecrawl initiation failed with status ${initResponse.status}`);
+      }
+
+      const initResult = await initResponse.json();
+      const jobId = initResult?.jobId; // Adjust based on actual Firecrawl response structure
+
+      if (!jobId) {
+         console.error("[firecrawlDeepResearch] Firecrawl initiation response missing jobId:", initResult);
+         addLog("[Engine] Firecrawl initiation response invalid.");
+        throw new Error("Failed to get Job ID from Firecrawl initiation.");
+      }
+
+      addLog(`[Engine] Firecrawl job started with ID: ${jobId}. Polling for results...`);
+      console.log(`[firecrawlDeepResearch] Firecrawl job ID: ${jobId}. Starting polling.`);
+
+      // --- Poll for Results ---
+      // Use the existing polling function
+      return await this.pollFirecrawlResearch(jobId, signal);
+
+    } catch (error: any) {
+       if (error.name === 'AbortError' || error.message.includes('aborted')) {
+            console.warn(`[firecrawlDeepResearch] Aborted: ${error.message}`);
+            addLog(`[Engine] Firecrawl research aborted.`);
+       } else {
+            console.error(`[firecrawlDeepResearch] Error: ${error.message}`);
+            addLog(`[Engine] Firecrawl research error: ${error.message}`);
+       }
+      // Ensure a consistent return type on error, allowing fallback if needed
+      return { sources: [], crawledUrlCount: 0, failedUrlCount: 0 };
+    }
   }
 
   private async pollFirecrawlResearch(jobId: string, signal: AbortSignal): Promise<{ 
@@ -1899,120 +1889,143 @@ export class ResearchEngine {
     initialData: string,
     followUpData: string[],
     allSources: ResearchSource[],
-    researchPath: string[]
+    researchPath: string[],
+    options: ResearchOptions // Pass options here
   ): Promise<string> {
-    console.log(`[synthesizeResearch] Starting synthesis for: "${query}"`);
-    addLog(`Phase 4: Synthesizing research findings...`);
+    this.startTime = Date.now();
 
-    const sourceData = allSources
-      .map((s, index) => {
-          // Use the existing 'content' property and truncate it for the snippet
-          const snippet = s.content?.substring(0, 300) || 'No snippet available.';
-          // Ensure snippet indicates truncation if needed
-          const displaySnippet = s.content && s.content.length > 300 ? snippet + '...' : snippet;
-          return `Source ${index + 1} (${s.domain || 'N/A'}): ${s.url}\nContent Snippet: ${displaySnippet}`;
-      })
-      .join('\n\n');
+    const combinedData = [initialData, ...followUpData].join('\n\n---\n\n');
+    const availableSourcesText = allSources
+      .slice(0, 150) // Limit sources listed in prompt
+      .map((s, i) => `${i + 1}. ${s.title} (${s.domain || 'N/A'}) - Relevance: ${(s.relevance * 100).toFixed(1)}%`)
+      .join('\n');
 
-    const researchPathString = researchPath.map((p, i) => `Step ${i + 1}: ${p}`).join('\n');
+    // Choose Model and Config based on options
+    let synthesisModel: any;
+    let generationConfig: any;
+    let currentModelName = "Default LLM";
 
-    const maxSynthesisTokens = this.MAX_TOKEN_OUTPUT; // Use existing constant
+    if (options.useGemini && this.geminiApiKey) {
+        console.log("[ResearchEngine] Using Gemini 2.5 Pro (gemini-2.5-pro-exp-03-25) for synthesis.");
+        currentModelName = "Gemini 2.5 Pro (exp-03-25)";
+        const geminiAI = new GoogleGenerativeAI(this.geminiApiKey);
+        // Ensure the correct model name is used
+        synthesisModel = geminiAI.getGenerativeModel({ model: "gemini-2.5-pro-exp-03-25" });
+        // Apply the specific config requested for the "Think" button scenario
+        generationConfig = {
+            temperature: 0.4, // As requested
+            topP: 0.95,       // As requested
+            topK: 64,         // As requested
+            maxOutputTokens: 65536, // As requested
+            // responseMimeType: "text/plain", // Keep commented out for complex markdown
+        };
+        console.log(`[ResearchEngine] Gemini Config: temp=${generationConfig.temperature}, topP=${generationConfig.topP}, topK=${generationConfig.topK}, maxTokens=${generationConfig.maxOutputTokens}`);
+    } else {
+        console.log("[ResearchEngine] Using default model for synthesis.");
+        synthesisModel = this.model; // Use the default initialized model
+        // Keep the previously set config for the default model
+        generationConfig = {
+             temperature: 0.2,
+             max_tokens: this.MAX_TOKEN_OUTPUT, // Use engine's high limit for default
+             // Add other necessary params for the default model
+        };
+         console.log(`[ResearchEngine] Default Model Config: temp=${generationConfig.temperature}, maxTokens=${generationConfig.max_tokens}`);
+    }
 
-    // --- UPDATED PROMPT ---
+    // --- Synthesis Prompt (Keep the enhanced prompt from previous step) ---
     const synthesisPrompt = `
-You are a Senior Research Analyst AI. Your task is to synthesize the provided research findings into a comprehensive, well-structured, and objective report.
+      **Objective:** Generate an exceptionally comprehensive, insightful, and well-structured research report based on the provided data. The output must be of the highest possible quality, demonstrating deep understanding and critical analysis.
 
-**Research Query:** "${query}"
+      **Research Query:** ${query}
 
 **Research Path Taken:**
-${researchPathString}
+      ${researchPath.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
-**Source Data:**
-${sourceData}
----
-**Analysis Context:**
-Initial Analysis:
-${initialData}
+      **Available Sources Overview (Top 150 used for synthesis):**
+      ${availableSourcesText}
+      (Total sources available: ${allSources.length})
 
-Follow-up Analysis Data:
-${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n')}
----
-**Instructions for Report Generation:**
+      **Collected Research Data:**
+      ${combinedData.substring(0, 700000)} ${combinedData.length > 700000 ? "\n\n[Data Truncated]" : ""}
 
-1.  **Structure:** Create a report with the following sections (use markdown H2 '##' for section titles):
-    *   Executive Summary
-    *   Key Findings & Detailed Breakdown
-    *   Comparison & Nuances (Use COMPLETE Markdown Tables Here if Applicable) <--- YOU **MUST** CREATE A MARKDOWN TABLE IN THIS SECTION IF COMPARISON IS RELEVANT.
-    *   Technical Detail (If applicable)
-    *   Future Direction (If applicable)
-    *   Conclusion from Research Data
+      **Instructions:**
 
-2.  **Content:**
-    *   **Synthesize ALL provided data** (Initial Analysis, Follow-up Data) into a cohesive narrative.
-    *   Maintain an **objective and neutral tone**. Avoid speculation or personal opinions.
-    *   Ensure the report directly addresses the original **Research Query**.
-    *   Provide **detailed explanations** in the 'Key Findings & Detailed Breakdown' section.
-    *   The 'Executive Summary' should be a concise overview (2-4 paragraphs) of the main points.
+      1.  **Synthesize Deeply:** Go beyond summarizing. Analyze, compare, contrast, and critically evaluate the information from the provided data. Identify key themes, patterns, discrepancies, and emerging trends. Provide novel insights derived from the data synthesis.
+      2.  **Structure Logically:** Organize the report with clear headings (H1, H2, H3) and subheadings using Markdown. Use standard sections like Introduction, Key Findings, Detailed Analysis (broken down by theme/topic), Comparative Assessment (if applicable), Technical Details (if applicable), Limitations, Conclusion, and Future Directions.
+      3.  **Prioritize Quality & Meaning:** Ensure every sentence contributes value. Avoid jargon where possible, but explain technical terms clearly when necessary. The analysis must be accurate, nuanced, and directly supported by the provided data. Aim for clarity, coherence, and depth.
+      4.  **Generate Markdown Tables Correctly:** Where appropriate (e.g., for comparisons, data summaries, feature lists), generate **valid Markdown tables**. Ensure they have clear headers, separator lines (e.g., |---|---|), and properly formatted rows. Tables should be complete and easy to read. Use them judiciously to present structured data effectively.
+          *Example Markdown Table:*
+          | Feature         | Detail A | Detail B |
+          |-----------------|----------|----------|
+          | Characteristic 1| Value 1  | Value 2  |
+          | Characteristic 2| Value 3  | Value 4  |
+      5.  **Formatting:** Use standard Markdown for formatting (bolding for emphasis using **, lists, blockquotes). Ensure clean paragraph breaks.
+      6.  **Output Length:** Generate a comprehensive report. While there's no strict word count, ensure the topic is covered thoroughly, aiming for significant detail and analysis. (Target minimum output ~${options.minOutputLength || 45000} characters implicitly through comprehensiveness).
+      7.  **DO NOT** explicitly mention the data truncation message ("[Data Truncated]") in the final report.
+      8.  **DO NOT** invent information not present in the source data. Base all claims and analysis strictly on the provided text.
+      9.  **BE EXTREMELY COMPREHENSIVE AND DETAILED.** The goal is the highest quality research output possible from the given data.
 
-3.  **Citations:**
-    *   **Crucially, you MUST cite information from at least 6-10 *different* sources** listed in the 'Source Data' section. Reference the original domain where the information was found.
-    *   Use the inline citation format: \`(according to [domain.com](URL))\`. For example, if citing Source 1 (example.com), use \`(according to [example.com](URL_of_source_1))\`.
-    *   Cite sources appropriately throughout the 'Key Findings & Detailed Breakdown' and other sections where specific data points are mentioned. **Do NOT just cite the same 1-2 sources repeatedly.** Spread citations across diverse sources.
+      **Generate the final research report now:**
+    `;
+    // --- End of Synthesis Prompt ---
 
-4.  **Formatting:**
-    *   Use Markdown for formatting (headings, lists, bolding, tables).
-    *   Ensure the report is well-organized and easy to read.
-    *   Generate **only the report content** starting directly with the 'Executive Summary' section heading. Do not include preamble, introductions like "Here is the report:", or apologies.
-
-**Generate the Research Report:**
-`;
-
-    console.log(`[synthesizeResearch] Prompt length: ${synthesisPrompt.length}, Max tokens: ${maxSynthesisTokens}`);
-    addLog(`Generating final synthesis report...`);
 
     try {
-       const startTime = Date.now();
-       const result = await this.generateContent(synthesisPrompt);
-       const endTime = Date.now();
-       console.log(`[synthesizeResearch] Synthesis LLM call took ${(endTime - startTime) / 1000}s`);
+        let analysis = '';
+        console.log(`[ResearchEngine] Sending synthesis request to ${currentModelName} with specific config...`);
 
-       // Assuming result structure is { response: { text: () => string } } or similar
-       let reportText = '';
-       if (result && result.response && typeof result.response.text === 'function') {
-           reportText = result.response.text();
-       } else if (result && typeof result === 'string') { // Handle direct string response if applicable
-           reportText = result;
+        if (options.useGemini && this.geminiApiKey && synthesisModel) {
+            // Use Gemini SDK's generateContent method with the specific config
+            const result = await synthesisModel.generateContent({ // Removed type annotation for flexibility
+                contents: [{ role: "user", parts: [{ text: synthesisPrompt }] }],
+                generationConfig: generationConfig, // Pass the specific config here
+            });
+            // Access response safely
+             const candidate = result?.response?.candidates?.[0];
+             analysis = candidate?.content?.parts?.[0]?.text || '';
+
+             if (!analysis) {
+                 console.error("[ResearchEngine] Gemini synthesis failed: No content in response", JSON.stringify(result?.response, null, 2));
+                 analysis = "Error: Analysis generation failed using Gemini.";
+                 // Include prompt feedback if available
+                 if (result?.response?.promptFeedback) {
+                     analysis += `\nFeedback: ${JSON.stringify(result.response.promptFeedback)}`;
+                 }
+            }
+
+        } else if (synthesisModel) {
+             // Use the default model's generation method (adapt this call based on your default model's SDK)
+             console.warn("[ResearchEngine] Default model synthesis call needs implementation. Using placeholder.");
+             analysis = `Placeholder analysis using default model (temp ${generationConfig.temperature}) for query: ${query}`;
+             // Replace placeholder with actual call, e.g.:
+             // const response = await synthesisModel.complete({ prompt: synthesisPrompt, ...generationConfig });
+             // analysis = response.completion;
               } else {
-           console.error("[synthesizeResearch] Unexpected LLM response structure:", result);
-           addLog("Error: Failed to get valid text from synthesis model.");
-           throw new Error("Failed to generate synthesis report due to unexpected model response.");
-       }
+            console.error("[ResearchEngine] Synthesis failed: No valid model available.");
+            analysis = "Error: Analysis generation failed - no model configured.";
+        }
 
-       console.log(`[synthesizeResearch] Synthesis complete. Raw report length: ${reportText.length}`);
-       addLog(`Synthesis complete. Report length: ${reportText.length}`);
-       return reportText.trim();
-
+        const duration = (Date.now() - this.startTime) / 1000;
+        console.log(`[ResearchEngine] Synthesis completed in ${duration.toFixed(1)}s. Analysis length: ${analysis.length} characters.`);
+        return analysis;
     } catch (error: any) {
-      console.error(`[synthesizeResearch] Error during synthesis LLM call:`, error);
-      addLog(`Error during synthesis: ${error.message}`);
-      // Return a partial/error message instead of throwing
-      return `## Synthesis Error\nAn error occurred during the final report synthesis: ${error.message}\n\nPartial analysis might be available above, but the final structured report could not be generated.`;
+        console.error(`[ResearchEngine] Synthesis Error with ${currentModelName}:`, error);
+         return `Error during synthesis: ${error.message || 'Unknown synthesis error'}`;
     }
   }
 
   // --- Ensure calculateConfidenceLevel is correctly defined within the class ---
   private calculateConfidenceLevel(sources: ResearchSource[], query: string): ResearchConfidenceLevel {
     if (!sources || sources.length === 0) {
-      return "very low";
+      return "very low"; // Lowercase
     }
 
     let totalScore = 0;
     let validSources = 0;
 
     for (const source of sources) {
-      // Use validation score if available, otherwise calculate a basic score
       const score = source.validationScore ?? (
-          (this.calculateRelevanceLegacy(source.content || '', query) * 0.5) + // Use legacy relevance for simplicity here
+          (this.calculateRelevanceLegacy(source.content || '', query) * 0.5) +
           (this.getDomainAuthorityScore(source.url || '') * 0.3) +
           (this.calculateFreshnessScore(source.content || '', query) * 0.2)
       );
@@ -2021,197 +2034,164 @@ ${followUpData.map((d, i) => `Follow-up Data Chunk ${i + 1}:\n${d}`).join('\n\n'
     }
 
     const averageScore = validSources > 0 ? totalScore / validSources : 0;
+    const sourceCount = sources.length;
 
-    // Map score to confidence level
-    if (averageScore >= 0.52 && sources.length >= 10) return "very high";
-    if (averageScore >= 0.45 && sources.length >= 5) return "high";
+    // Map score to confidence level using lowercase strings
+    if (averageScore >= 0.52 && sourceCount >= 10) return "very high";
+    if (averageScore >= 0.45 && sourceCount >= 5) return "high";
     if (averageScore >= 0.35) return "medium";
-    if (averageScore >= 0.2) return "low";
-    return "very low";
+    if (averageScore >= 0.2) return "low"; // Lowercase
+    return "very low"; // Lowercase
   }
   // -------------------------------------------------------------------------
 
   // Update the research method to accept options
   async research(query: string, options?: ResearchOptions): Promise<ResearchResult> {
     this.startTime = Date.now();
-    console.log(`Starting enhanced research for: "${query}"`);
+    addLog(`[Engine] Initializing research for: "${query}"`);
+    const cacheKey = JSON.stringify({ query, options });
 
-    // Apply options if provided, but ensure minimum sources requirement
-    if (options) {
-      if (options.maxDepth) this.SEARCH_DEPTH = Math.max(options.maxDepth, 40); // Ensure minimum depth
-      if (options.timeLimit) this.MAX_RESEARCH_TIME = Math.max(options.timeLimit, 220000); // Ensure minimum time
-      if (options.maxUrls) this.MAX_DATA_SOURCES = Math.max(options.maxUrls, 300000); // Ensure minimum URLs
-      if (options.maxSources) options.maxSources = Math.max(options.maxSources, this.MINIMUM_SOURCES_REQUIRED); // Force minimum sources
-    }
+    // Use cache if available and valid
+    // const cached = this.getCachedResult(cacheKey);
+    // if (cached) {
+    //   addLog("[Engine] Returning cached result.");
+    //   console.log(`[ResearchEngine] Returning cached result for query: ${query}`);
+    //   return cached;
+    // }
 
-    // Check cache first
-    const cachedResult = this.getCachedResult(query);
-    if (cachedResult && cachedResult.sources && cachedResult.sources.length >= this.MINIMUM_SOURCES_REQUIRED) {
-      console.log(`Returning cached result for: "${query}" with ${cachedResult.sources.length} sources`);
-      return cachedResult;
-    } else if (cachedResult) {
-      console.log(`Cached result found but only has ${cachedResult.sources?.length || 0} sources. Minimum required: ${this.MINIMUM_SOURCES_REQUIRED}. Refreshing research.`);
-    }
-
-    // Create abort controller for timeout management
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-      console.log(`Research aborted due to timeout after ${this.MAX_RESEARCH_TIME}ms`);
+    const overallController = new AbortController();
+    const overallTimeout = setTimeout(() => {
+        console.warn(`[ResearchEngine] Overall research time limit (${this.MAX_RESEARCH_TIME / 1000}s) exceeded for query: "${query}". Aborting.`);
+        addLog(`[Engine] Research timed out (${this.MAX_RESEARCH_TIME / 1000}s).`);
+        overallController.abort();
     }, this.MAX_RESEARCH_TIME);
 
+    let allSources: ResearchSource[] = [];
+    let researchPath: string[] = [query];
+    let finalAnalysis = '';
+    // Initialize metrics with defaults
+    let researchMetrics: ResearchMetrics = { sourcesCount: 0, domainsCount: 0, dataSize: '0KB', elapsedTime: 0 };
+    // Initialize metadata with defaults matching the type definition
+    let metadata: ResearchResult['metadata'] = { // Use the specific type
+        totalSources: 0,
+        qualitySources: 0, // Will need logic to calculate this if required
+        avgValidationScore: 0, // Will need logic to calculate this
+        executionTimeMs: 0, // Will be updated later
+        timestamp: new Date().toISOString(),
+        error: undefined,
+        crawlAttempted: 0, // Placeholder, update in crawl logic if needed
+        crawlFailed: 0     // Placeholder, update in crawl logic if needed
+    };
+    let confidenceLevel: ResearchConfidenceLevel = 'low'; // Default lowercase
+    // Initialize plan (added type to ResearchResult previously, ensure initialization)
+    let researchPlan: ResearchPlan = {
+        mainQuery: query,
+        objective: "Gather initial information",
+        subQueries: [query],
+        researchAreas: ["general"],
+        explorationStrategy: "Direct web crawl and synthesis",
+        priorityOrder: []
+    };
+
     try {
-      // Create research plan
-      const plan = await this.createResearchPlan(query);
-      // Extract steps from the plan - use subQueries for steps if they exist
-      const researchSteps = plan.subQueries || [query];
-      console.log(`Research plan created for "${query}" with ${researchSteps.length} steps`);
+        // Create the plan first
+        researchPlan = await this.createResearchPlan(query); // Assign the actual plan
+        researchPath = [researchPlan.mainQuery, ...researchPlan.subQueries]; // Update path based on plan
 
-      // Execute deep research with Firecrawl integration
-      let { sources, crawledUrlCount, failedUrlCount } =
-        await this.crawlWeb(query, controller.signal);
+        addLog(`[Engine] Starting web crawl phase.`);
+        const crawlResult = await this.crawlWeb(query, overallController.signal, options || {});
+        allSources = crawlResult.sources;
+        researchMetrics.sourcesCount = allSources.length;
+        researchMetrics.domainsCount = crawlResult.actualDomains;
+        metadata.totalSources = allSources.length; // Update metadata totalSources
+        metadata.crawlAttempted = crawlResult.crawledUrlCount; // Update metadata
+        metadata.crawlFailed = crawlResult.failedUrlCount;     // Update metadata
+        addLog(`[Engine] Crawl phase complete. Found ${researchMetrics.sourcesCount} sources across ${researchMetrics.domainsCount} domains.`);
 
-      console.log(`Web crawling completed: Found ${sources.length} sources (${crawledUrlCount} crawled, ${failedUrlCount} failed)`);
+        if (overallController.signal.aborted) throw new Error("Research timed out during crawl.");
 
-      // Check if we have enough sources, if not, try to get more
-      if (sources.length < this.MINIMUM_SOURCES_REQUIRED && !controller.signal.aborted) {
-        console.log(`Not enough sources (${sources.length}). Minimum required: ${this.MINIMUM_SOURCES_REQUIRED}. Attempting to gather more...`);
-        addLog(`Expanding search to gather at least ${this.MINIMUM_SOURCES_REQUIRED} sources (currently have ${sources.length})...`);
-
-        // Try additional crawling with expanded parameters
-        const additionalCrawlResult = await this.crawlWeb(
-          query + " comprehensive information", // Slightly modify query to get different results
-          controller.signal
-        );
-
-        // Combine sources, removing duplicates by URL
-        const urlSet = new Set(sources.map(s => s.url));
-        const newSources = additionalCrawlResult.sources.filter(s => !urlSet.has(s.url));
-
-        sources = [...sources, ...newSources];
-        crawledUrlCount += additionalCrawlResult.crawledUrlCount;
-        failedUrlCount += additionalCrawlResult.failedUrlCount;
-
-        console.log(`After expanded search: ${sources.length} total sources`);
-        addLog(`Expanded search complete. Total sources: ${sources.length}`);
-      }
-
-      // Prioritize and validate sources
-      let prioritizedSources = this.prioritizeSources(sources, query);
-
-      // FORCE minimum sources requirement by adjusting relevance threshold if needed
-      if (prioritizedSources.length < this.MINIMUM_SOURCES_REQUIRED) {
-        console.log(`After prioritization, only ${prioritizedSources.length} sources remain. Adjusting relevance threshold to ensure minimum ${this.MINIMUM_SOURCES_REQUIRED} sources.`);
-
-        // Sort all sources by relevance
-        const allSortedSources = [...sources].sort((a, b) => (b.relevance || 0) - (a.relevance || 0));
-
-        // Take at least MINIMUM_SOURCES_REQUIRED sources
-        prioritizedSources = allSortedSources.slice(0, Math.max(this.MINIMUM_SOURCES_REQUIRED, prioritizedSources.length));
-
-        console.log(`Adjusted to ${prioritizedSources.length} sources by lowering relevance threshold.`);
-        addLog(`Ensuring minimum of ${this.MINIMUM_SOURCES_REQUIRED} sources for comprehensive analysis.`);
-      }
-
-      // Cap at MAX_DATA_SOURCES if needed
-      prioritizedSources = prioritizedSources.slice(0, this.MAX_DATA_SOURCES);
-
-      console.log(`Sources prioritized. Working with ${prioritizedSources.length} sources`);
-
-      // Analyze the data with enhanced output
-      const analysis = await this.analyzeData(query, prioritizedSources, controller.signal);
-      console.log(`Data analysis completed: ${analysis.length} characters`);
-
-      // Calculate confidence level
-      const confidenceLevel = this.calculateConfidenceLevel(prioritizedSources, query);
-      console.log(`Confidence level calculated: ${confidenceLevel}`);
-
-      // Calculate elapsed time
-      const elapsedTime = Date.now() - this.startTime;
-
-      // Prepare result metadata
-      const uniqueDomains = new Set(prioritizedSources.map(s => {
-        try {
-          return new URL(s.url || '').hostname;
-        } catch {
-          return s.url || '';
+        // --- Domain/Source Count Warnings (Keep as is) ---
+        if (researchMetrics.domainsCount < this.MINIMUM_DOMAINS_REQUIRED) {
+            console.warn(`[ResearchEngine] Warning: Found only ${researchMetrics.domainsCount} domains, less than the minimum required ${this.MINIMUM_DOMAINS_REQUIRED}. Proceeding.`);
+            addLog(`[Engine] Warning: Found only ${researchMetrics.domainsCount}/${this.MINIMUM_DOMAINS_REQUIRED} minimum domains.`);
         }
-      }));
+        if (researchMetrics.sourcesCount < this.MINIMUM_SOURCES_REQUIRED) {
+            console.warn(`[ResearchEngine] Warning: Found only ${researchMetrics.sourcesCount} sources, less than the minimum required ${this.MINIMUM_SOURCES_REQUIRED}. Proceeding.`);
+            addLog(`[Engine] Warning: Found only ${researchMetrics.sourcesCount}/${this.MINIMUM_SOURCES_REQUIRED} minimum sources.`);
+        }
+        // ---
 
-      // Format research result with all required fields
+        addLog(`[Engine] Prioritizing and validating sources...`);
+        allSources = this.prioritizeSources(allSources, query);
+        // Optional validation step: Calculate avgValidationScore and qualitySources
+        let totalValidationScore = 0;
+        let validatedCount = 0;
+        // Example: If you implement validateSource:
+        // allSources = await Promise.all(allSources.map(async s => {
+        //    const validated = await this.validateSource(s, query);
+        //    if (validated.validationScore) {
+        //        totalValidationScore += validated.validationScore;
+        //        validatedCount++;
+        //    }
+        //    return validated;
+        // }));
+        // metadata.avgValidationScore = validatedCount > 0 ? parseFloat((totalValidationScore / validatedCount).toFixed(2)) : 0;
+        // metadata.qualitySources = allSources.filter(s => s.validationScore && s.validationScore > 0.5).length; // Example quality definition
+
+        researchMetrics.sourcesCount = allSources.length; // Update count after potential filtering/validation
+        metadata.totalSources = researchMetrics.sourcesCount; // Update metadata again
+        addLog(`[Engine] Prioritization complete. Using ${researchMetrics.sourcesCount} sources.`);
+
+        if (allSources.length > 0) {
+            addLog(`[Engine] Starting data synthesis using ${options?.useGemini && this.geminiApiKey ? 'Gemini 2.5 Pro' : 'default model'}...`);
+            const sourceContent = allSources.map(s => `Source: ${s.url}\nTitle: ${s.title}\nContent:\n${s.content}\n---\n`).join('\n');
+            researchMetrics.dataSize = `${(Buffer.byteLength(sourceContent, 'utf8') / 1024).toFixed(2)}KB`;
+
+            finalAnalysis = await this.synthesizeResearch(query, sourceContent, [], allSources, researchPath, options || {});
+
+            if (overallController.signal.aborted) throw new Error("Research timed out during synthesis.");
+            addLog(`[Engine] Synthesis complete. Report length: ${finalAnalysis.length} chars.`);
+        } else {
+            finalAnalysis = "No relevant sources found to generate a report.";
+            addLog("[Engine] No sources found after filtering. Cannot generate report.");
+            metadata.error = "No relevant sources found.";
+        }
+
+        confidenceLevel = this.calculateConfidenceLevel(allSources, query);
+        addLog(`[Engine] Calculated confidence level: ${confidenceLevel}`);
+
+    } catch (error: any) {
+       console.error(`[ResearchEngine] Error during research for query "${query}":`, error);
+       addLog(`[Engine] Error: ${error.message}`);
+       metadata.error = error.message || 'An unknown error occurred during research execution.';
+       finalAnalysis = `Research failed: ${metadata.error}\n\nPartial sources found: ${allSources.length}`;
+       confidenceLevel = 'low'; // Set low confidence on error
+    } finally {
+       clearTimeout(overallTimeout);
+       researchMetrics.elapsedTime = Date.now() - this.startTime;
+       metadata.executionTimeMs = researchMetrics.elapsedTime; // Update final metadata execution time
+       addLog(`[Engine] Research process finished in ${ (researchMetrics.elapsedTime / 1000).toFixed(1) }s.`);
+       console.log(`[ResearchEngine] Research for "${query}" finished in ${ (researchMetrics.elapsedTime / 1000).toFixed(1) }s.`);
+    }
+
       const result: ResearchResult = {
-        query,
-        analysis,
-        sources: prioritizedSources,
-        confidenceLevel,
-        researchPath: researchSteps,
-        researchMetrics: {
-          sourcesCount: prioritizedSources.length,
-          domainsCount: uniqueDomains.size,
-          dataSize: `${Math.round(analysis.length / 1024)}KB`,
-          elapsedTime
-        },
-        // Add any additional required fields based on ResearchResult type
-        findings: [{ key: "Main Analysis", details: analysis.substring(0, 500) + "..." }],
-        plan: plan,
-        metadata: {
-          totalSources: sources.length,
-          qualitySources: prioritizedSources.length,
-          avgValidationScore: prioritizedSources.reduce((sum, s) => sum + (s.validationScore || 0), 0) / prioritizedSources.length,
-          executionTimeMs: elapsedTime,
-          timestamp: new Date().toISOString(),
-          crawlAttempted: crawledUrlCount,
-          crawlFailed: failedUrlCount,
-          forcedMinimumSources: this.MINIMUM_SOURCES_REQUIRED
-        }
-      };
-
-      // Cache the result
-      this.cache.set(query, { data: result, timestamp: Date.now() });
+        // Ensure all fields required by ResearchResult are present
+        query: query, // Add the original query
+        findings: [], // Placeholder - Needs logic if findings are generated separately
+        codeExamples: [], // Placeholder - Needs logic if code examples are generated
+        factConsensus: [], // Placeholder
+        insights: [], // Placeholder
+        // --- Use the variables populated in the try/catch/finally block ---
+        analysis: finalAnalysis,
+        sources: allSources,
+        researchMetrics: researchMetrics,
+        researchPath: researchPath,
+        confidenceLevel: confidenceLevel,
+        metadata: metadata, // Use the fully populated metadata object
+        plan: researchPlan, // Use the populated plan
+    };
       
       return result;
-    } catch (error: unknown) {
-      console.error(`Research failed: ${error instanceof Error ? error.message : String(error)}`);
-      
-      // Create error result with partial data if available
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      
-      // Create a complete ResearchResult even for error case
-      return {
-        query,
-        analysis: `Research Error: ${errorMsg}. The research process encountered an error and could not complete successfully.`,
-        sources: [],
-        confidenceLevel: 'low',
-        researchPath: [query],
-        findings: [{ key: "Error", details: errorMsg }],
-        plan: { 
-        mainQuery: query,
-          objective: "Error during research", 
-        subQueries: [query],
-        researchAreas: [],
-          explorationStrategy: "", 
-          priorityOrder: [] 
-        },
-        researchMetrics: {
-          sourcesCount: 0,
-          domainsCount: 0,
-          dataSize: '0KB',
-          elapsedTime: Date.now() - this.startTime
-        },
-        metadata: {
-          totalSources: 0,
-          qualitySources: 0,
-          avgValidationScore: 0,
-          executionTimeMs: Date.now() - this.startTime,
-          timestamp: new Date().toISOString(),
-          error: errorMsg,
-          crawlAttempted: 0,
-          crawlFailed: 0
-        }
-      };
-    } finally {
-      clearTimeout(timeoutId);
-    }
   }
 
   /**

@@ -31,6 +31,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuroraText } from '@/components/magicui/aurora-text';
 import { ResearchError } from '@/lib/types';
 import React from 'react';
+import { cn } from '@/lib/utils';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -104,6 +105,7 @@ export default function Home() {
   const [liveLogs, setLiveLogs] = useState<string[]>([]);
   const [currentProgress, setCurrentProgress] = useState<ResearchMetrics | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>('');
+  const [isGeminiLoading, setIsGeminiLoading] = useState(false);
   const progressPollRef = useRef<NodeJS.Timeout | null>(null);
   const { theme } = useTheme();
 
@@ -341,6 +343,107 @@ export default function Home() {
         progressPollRef.current = null;
         console.log('[Poll] Polling stopped in finally block.');
       }
+    }
+  };
+
+  const handleGeminiResearch = async () => {
+    if (!query.trim() || loading) return;
+
+    setIsGeminiLoading(true); // Set Gemini loading flag
+    setLoading(true);
+    setError(null);
+    setReport(null);
+    setCurrentProgress({
+      sourcesCount: 0,
+      domainsCount: 0,
+      dataSize: '0KB',
+      elapsedTime: 0
+    });
+    const initialLog = `[${new Date().toLocaleTimeString('en-US', { hour12: false })}] Initializing GEMINI research for: "${query}"...`;
+    setLiveLogs([initialLog]);
+    setCurrentStatus('Initializing research (Gemini)...');
+    setShowLiveLogs(false);
+
+    if (progressPollRef.current) {
+        clearInterval(progressPollRef.current);
+        progressPollRef.current = null;
+    }
+
+    try {
+       await pollResearchProgress();
+    } catch (pollError) {
+       console.error("Initial poll failed:", pollError)
+    }
+    progressPollRef.current = setInterval(pollResearchProgress, 2000);
+
+    try {
+      const res = await fetch('/api/research', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query,
+          useGemini: true, // <-- Tell backend to use Gemini 2.5 Pro
+          options: {
+            // You might want different options for Gemini, or keep them same as handleResearch
+            // Example: Using default engine options defined in backend for Gemini scenario
+          }
+        }),
+      });
+
+      if (progressPollRef.current) {
+          clearInterval(progressPollRef.current);
+          progressPollRef.current = null;
+          console.log('[Poll] Polling stopped after research fetch completed.');
+      }
+
+      if (!res.ok) {
+          let errorData: ResearchError = { code: 'FETCH_FAILED', message: `Request failed with status ${res.status}` };
+          let errorJson = null;
+          try { errorJson = await res.json(); if (errorJson.error) errorData = errorJson.error; } catch {}
+          if (errorJson?.report) setReport(errorJson.report);
+          if (errorJson?.metrics) setCurrentProgress(errorJson.metrics);
+          throw errorData;
+      }
+
+      const data = await res.json();
+
+      // Check for error *within* the successful response
+      if (data.error) {
+          if (data.report) setReport(data.report);
+          if (data.metrics) setCurrentProgress(data.metrics);
+          throw data.error as ResearchError; // Throw the error object from the response body
+      }
+
+      // --- Success Case ---
+      setReport(data.report);
+      if (data.metrics) {
+         setCurrentProgress(data.metrics);
+         setCurrentStatus(`Research complete in ${(data.metrics.elapsedTime / 1000).toFixed(1)}s`);
+      } else {
+          // --- FIX START ---
+          // Provide explicit defaults to ensure the object matches ResearchMetrics
+          setCurrentProgress(prev => ({
+               sourcesCount: prev?.sourcesCount ?? 0, // Default to 0 if prev or property is missing
+               domainsCount: prev?.domainsCount ?? 0, // Default to 0
+               dataSize: prev?.dataSize ?? 'N/A',   // Default to 'N/A'
+               elapsedTime: prev?.elapsedTime ?? 0   // Default to 0
+           }));
+          // --- FIX END ---
+         setCurrentStatus('Research complete');
+      }
+      await addHistoryEntry(query);
+
+    } catch (err) {
+      console.error("Gemini Research handling error:", err);
+      if (progressPollRef.current) { clearInterval(progressPollRef.current); progressPollRef.current = null; }
+      if (typeof err === 'object' && err !== null && 'message' in err && 'code' in err) setError(err as ResearchError);
+      else if (typeof err === 'object' && err !== null && 'message' in err) setError({ code: 'UNKNOWN_API_ERROR', message: (err as Error).message });
+      else setError({ code: 'UNKNOWN_CLIENT_ERROR', message: 'An unexpected client-side error occurred.' });
+      setCurrentStatus('Research failed');
+    } finally {
+      setLoading(false);
+      setIsGeminiLoading(false); // Unset Gemini loading flag
+      if (progressPollRef.current) { clearInterval(progressPollRef.current); progressPollRef.current = null; }
     }
   };
 
@@ -955,25 +1058,102 @@ export default function Home() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g., Latest advancements in serverless computing for Next.js"
-              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-36 pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
-              onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()}
+              // Adjust right padding to accommodate both buttons: pr-36 changed to pr-[calc(8rem+3rem)] or similar
+              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 w-full text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500 font-serif"
+              onKeyDown={(e) => e.key === 'Enter' && !loading && handleResearch()} // Default Enter triggers normal research
               disabled={loading}
             />
-            <button
-              onClick={handleResearch}
-              disabled={loading || !query.trim()}
-              className="top-1/2 right-3 absolute flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-[75%] font-serif font-semibold text-white text-base transition-all -translate-y-1/2 duration-200 disabled:cursor-not-allowed"
-              aria-label="Start Research"
-            >
-              {loading ? (
-                <Loader2Icon className="w-5 h-5 animate-spin" />
-              ) : (
-                 <>
-                   <span className="hidden sm:inline">Research</span>
-                   <SearchIcon className="sm:hidden w-5 h-5" /> {/* Icon for small screens */}
-                 </>
-              )}
-            </button>
+
+            {/* --- Button Container --- */}
+            <div className="top-1/2 right-3 absolute flex items-center gap-2 -translate-y-1/2 h-[75%]">
+              {/* --- Think Button (New) --- */}
+              <button
+  onClick={handleGeminiResearch}
+  disabled={loading || !query.trim()}
+  title="Use Gemini 2.5 Pro for Deeper Reasoning"
+  className={cn(
+    "rounded-full transition-all flex items-center gap-2 px-1.5 py-1 border h-8",
+    loading || !query.trim()
+      ? "bg-black/5 dark:bg-white/5 border-transparent text-black/40 dark:text-white/40 opacity-50 cursor-not-allowed"
+      : "bg-sky-500/15 border-blue-600 text-blue-700 hover:text-blue-600 dark:hover:text-blue-400"
+  )}
+  aria-label="Think with Gemini"
+>
+  <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
+    <motion.div
+      animate={{
+        rotate: loading || !query.trim() ? 0 : 180,
+        scale: loading || !query.trim() ? 1 : 1.1,
+      }}
+      whileHover={{
+        rotate: loading || !query.trim() ? 0 : 15,
+        scale: 1.1,
+        transition: {
+          type: "spring",
+          stiffness: 300,
+          damping: 10,
+        },
+      }}
+      transition={{
+        type: "spring",
+        stiffness: 260,
+        damping: 25,
+      }}
+    >
+      {loading && isGeminiLoading ? (
+        <Loader2Icon
+          className={cn(
+            "w-5 h-5 animate-spin",
+            loading || !query.trim() ? "text-inherit" : "text-blue-500"
+          )}
+        />
+      ) : (
+        <BrainIcon
+          className={cn(
+            "w-5 h-5",
+            loading || !query.trim() ? "text-inherit" : "text-blue-500"
+          )}
+        />
+      )}
+    </motion.div>
+  </div>
+  <AnimatePresence>
+    {!(loading || !query.trim()) && (
+      <motion.span
+        initial={{ width: 0, opacity: 0 }}
+        animate={{
+          width: "auto",
+          opacity: 1,
+        }}
+        exit={{ width: 0, opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="text-sm overflow-hidden whitespace-nowrap text-blue-700 flex-shrink-0"
+      >
+        Think
+      </motion.span>
+    )}
+  </AnimatePresence>
+</button>
+
+              {/* --- Research Button (Existing) --- */}
+              <button
+                onClick={handleResearch}
+                disabled={loading || !query.trim()}
+                className="flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-full font-serif font-semibold text-white text-base transition-all duration-200 disabled:cursor-not-allowed"
+                aria-label="Start Research"
+              >
+                {loading && !isGeminiLoading ? ( // Show loader only if this button caused loading
+                  <Loader2Icon className="w-5 h-5 animate-spin" />
+                ) : (
+                  <>
+                    <span className="hidden sm:inline">Research</span>
+                    <SearchIcon className="sm:hidden w-5 h-5" />
+                  </>
+                )}
+              </button>
+            </div>
+            {/* --- End Button Container --- */}
+
           </div>
         </motion.div>
       </div>
@@ -988,6 +1168,25 @@ export default function Home() {
             transition={{ duration: 0.4, ease: "circOut" }}
             className="bg-gradient-to-br from-white via-gray-50 to-gray-100 dark:from-gray-900 dark:via-gray-950/90 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl space-y-6 overflow-hidden"
           >
+            {/* --- Gemini Loading Notification (New) --- */}
+            {isGeminiLoading && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                className="border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-900/30 px-4 py-3 text-orange-700 dark:text-orange-300 rounded-r-lg shadow-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <BrainIcon className="w-5 h-5 flex-shrink-0 text-orange-600 dark:text-orange-400" />
+                  <p className="text-sm font-medium font-serif">
+                    Gemini engine is thinking and reasoning... this may take 2-3 minutes.
+                  </p>
+                </div>
+              </motion.div>
+            )}
+            {/* --- End Gemini Notification --- */}
+
             {/* Header & Overall Progress Bar */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">

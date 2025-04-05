@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 // GET /api/search-history - Fetch user's search history
 export async function GET(request: Request) {
-  const { userId } = auth();
+  const { userId } =  await auth();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 
 // POST /api/search-history - Add a new search query
 export async function POST(request: Request) {
-  const { userId } = auth();
+  const { userId } =  await auth();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
 
 // DELETE /api/search-history - Clear user's search history
 export async function DELETE(request: Request) {
-  const { userId } = auth();
+  const { userId } =await auth();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

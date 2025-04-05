@@ -88,4 +88,6 @@ export interface ResearchOptions {
   maxDomains?: number;
   maxSources?: number;
   highQuality?: boolean;
+  minOutputLength?: number;
+  useGemini?: boolean;
 }
