@@ -18,15 +18,16 @@ export async function POST(req: Request) {
     query = body.query;
     const options = body.options || {};
 
-    // Configuration - Allow more sources/domains from client, but cap reasonably
-    const maxDepth = Math.min(options.maxDepth || 30, 35);
-    const timeLimit = Math.min(options.timeLimit || 210, 280); // Slightly reduced default, cap near 5min Edge limit
-    const maxUrls = Math.min(options.maxUrls || 150000, 250000); // Increased max
-    const maxDomains = Math.min(options.maxDomains || 80, 120); // Increased max domains
-    const maxSources = Math.min(options.maxSources || 80, 120); // Increased max sources
+    // Configuration - Increase target sources/domains, disable Firecrawl
+    const maxDepth = Math.min(options.maxDepth || 30, 35); // Keep depth reasonable
+    const timeLimit = Math.min(options.timeLimit || 240, 280); // Increase time slightly for more sources
+    const maxUrls = Math.min(options.maxUrls || 200000, 250000); // Allow more URLs if needed
+    const maxDomains = Math.min(options.maxDomains || 70, 120); // Target more domains (~50-70)
+    const maxSources = Math.min(options.maxSources || 70, 120); // Target more sources (~50-70)
+    const useFirecrawlEngine = false; // <-- Disable Firecrawl
 
     // Define display limits (can be different from processing limits)
-    const MAX_DISPLAY_SOURCES = 40; // Increased number of sources to display
+    const MAX_DISPLAY_SOURCES = 50; // Display up to 50 sources if available
 
     if (!query?.trim()) {
         console.log("API Error: Invalid query received.");
@@ -38,17 +39,17 @@ export async function POST(req: Request) {
     clearLogs();
     clearMetrics();
     addLog(`Received research request: "${query}"`);
-    console.log(`[API Route] Starting research: query="${query}", maxDepth=${maxDepth}, timeLimit=${timeLimit}s, maxUrls=${maxUrls}, maxDomains=${maxDomains}, maxSources=${maxSources}, displaySources=${MAX_DISPLAY_SOURCES}`);
+    console.log(`[API Route] Starting research: query="${query}", maxDepth=${maxDepth}, timeLimit=${timeLimit}s, maxUrls=${maxUrls}, maxDomains=${maxDomains}, maxSources=${maxSources}, displaySources=${MAX_DISPLAY_SOURCES}, useFirecrawl=${useFirecrawlEngine}`);
 
-    // Call the research engine
+    // Call the research engine with updated options
     const result: ResearchResult = await researchEngine.research(query, {
       maxDepth,
       timeLimit: timeLimit * 1000, // Convert to ms
       maxUrls,
-      useFirecrawl: true, // Assuming Firecrawl usage is desired
+      useFirecrawl: useFirecrawlEngine, // Pass the flag
       maxDomains,
       maxSources,
-      highQuality: true
+      highQuality: true // Keep high quality for better synthesis
     });
 
     const endTime = Date.now();
@@ -79,37 +80,30 @@ export async function POST(req: Request) {
 
     // Post-process analysisReport to make inline domain citations clickable
     const citationRegex = /\((?:Source(?:s)?:\s*|according to\s+)(.*?)\)/gi;
-
     analysisReport = analysisReport.replace(citationRegex, (match, content) => {
         // Check if content already contains a markdown link like [text](url)
         if (content.includes('](')) {
             return match; // Already formatted, return as is
         }
-
         // Handle "according to domain.com" case
         if (match.toLowerCase().startsWith('(according to')) {
             const domain = content.trim();
-            // Basic check if it looks like a domain
             if (domain.includes('.') && !domain.includes(' ')) {
                 const url = domain.startsWith('http') ? domain : `https://${domain}`;
-                // Format as markdown link
                 return `(according to [${domain}](${url}))`;
             }
-            // If not domain-like, return original match
             return match;
         }
-
-        // Handle cases where it might just be domain names (fallback)
+        // Handle "(Source(s): ...)" case
         const domains = content.split(/,\s*|\s+and\s+/);
         const linkedDomains = domains.map((domain: string) => {
             const cleanDomain = domain.replace(/[\[\]()]/g, '').trim();
-            if (cleanDomain.includes('.')) { // Basic check for domain-like string
+            if (cleanDomain.includes('.')) {
                 const url = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
                 return `[${cleanDomain}](${url})`;
             }
-            return domain; // Return original if not domain-like
+            return domain;
         }).join(', ');
-
         return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
     });
     console.log(`[API Route] Processed inline citations in the analysis report.`);
@@ -118,7 +112,7 @@ export async function POST(req: Request) {
     // Format Sources (apply display limits)
     const faviconCache: Record<string, string> = {};
     const formattedSources = sources
-      .slice(0, MAX_DISPLAY_SOURCES) // Use display limit
+      .slice(0, MAX_DISPLAY_SOURCES) // Use updated display limit
       .map((s: ResearchSource) => {
         let domain = "Unknown Domain";
         let displayUrl = s.url || "#";
@@ -178,12 +172,12 @@ export async function POST(req: Request) {
 ${researchPath.map((path: string, index: number) => `- Step ${index + 1}: "${path}"`).join('\n')}
     `;
 
-    // Data collection note
+    // Data collection note - Updated to reflect potential fallback
     const uniqueDomainsCount = result.researchMetrics.domainsCount;
     const totalSourcesFound = result.researchMetrics.sourcesCount;
-    const firecrawlInfo = result.metadata?.error ?
-      `\n**Data Collection:** Utilized internal engine (${uniqueDomainsCount} domains).` :
-      `\n**Data Collection:** Utilized Firecrawl API (${uniqueDomainsCount} domains).`;
+    const dataCollectionEngine = useFirecrawlEngine && !result.metadata?.error ? 'Firecrawl API' : 'Fallback Crawler';
+    const firecrawlInfo = `\n**Data Collection:** Utilized ${dataCollectionEngine} (${uniqueDomainsCount} domains).`;
+
 
     // Format Top Sources Sample (No changes needed here from previous step)
     const formattedTopSources = `
@@ -227,8 +221,8 @@ ${formattedResearchPath}
 ${formattedTopSources}
 
 ${result.metadata?.error ? `
-## Note on Data Collection
-This research used our fallback engine due to an issue with the primary data source. Results are based on ${totalSourcesFound} sources from ${uniqueDomainsCount} domains.
+## Note on Data Collection Error
+An error occurred during data collection: ${result.metadata.error}. Results are based on ${totalSourcesFound} sources from ${uniqueDomainsCount} domains.
 ` : ''}
 
 ## Confidence Level Assessment
@@ -256,7 +250,7 @@ This research used our fallback engine due to an issue with the primary data sou
         domainStats: {
           total: uniqueDomainsCount,
         },
-        usesFallback: !!result.metadata?.error,
+        usesFallback: !useFirecrawlEngine || !!result.metadata?.error, // Indicate if fallback was used
         // Placeholder for future HTML content if needed
         // htmlContent: generatedHtmlContent || null
       }
