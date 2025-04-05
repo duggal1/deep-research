@@ -41,3 +41,6 @@ bun.lockb
 
 # bolt directory
 .bolt/
+
+# clerk configuration (can include secrets)
+/.clerk/

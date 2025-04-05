@@ -78,24 +78,39 @@ export async function POST(req: Request) {
     const sources = Array.isArray(result.sources) ? result.sources : [];
 
     // Post-process analysisReport to make inline domain citations clickable
-    const citationRegex = /\(Source(?:s)?:\s*([\w\s.,-[\]()]+)\)/gi; // Match "Source: [domain.com](url)" or "Sources: [d1](u1), [d2](u2)"
-    analysisReport = analysisReport.replace(citationRegex, (match, content) => {
-      // Check if it already contains markdown links
-      if (content.includes('](')) {
-          return match; // Already formatted, return as is
-      }
-      // Handle cases where it might just be domain names (fallback)
-      const domains = content.split(/,\s*|\s+and\s+/);
-      const linkedDomains = domains.map((domain: string) => {
-         const cleanDomain = domain.replace(/[\[\]()]/g, '').trim();
-          if (cleanDomain.includes('.')) { // Basic check for domain-like string
-             const url = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
-             return `[${cleanDomain}](${url})`;
-          }
-          return domain; // Return original if not domain-like
-      }).join(', ');
+    const citationRegex = /\((?:Source(?:s)?:\s*|according to\s+)(.*?)\)/gi;
 
-      return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
+    analysisReport = analysisReport.replace(citationRegex, (match, content) => {
+        // Check if content already contains a markdown link like [text](url)
+        if (content.includes('](')) {
+            return match; // Already formatted, return as is
+        }
+
+        // Handle "according to domain.com" case
+        if (match.toLowerCase().startsWith('(according to')) {
+            const domain = content.trim();
+            // Basic check if it looks like a domain
+            if (domain.includes('.') && !domain.includes(' ')) {
+                const url = domain.startsWith('http') ? domain : `https://${domain}`;
+                // Format as markdown link
+                return `(according to [${domain}](${url}))`;
+            }
+            // If not domain-like, return original match
+            return match;
+        }
+
+        // Handle cases where it might just be domain names (fallback)
+        const domains = content.split(/,\s*|\s+and\s+/);
+        const linkedDomains = domains.map((domain: string) => {
+            const cleanDomain = domain.replace(/[\[\]()]/g, '').trim();
+            if (cleanDomain.includes('.')) { // Basic check for domain-like string
+                const url = cleanDomain.startsWith('http') ? cleanDomain : `https://${cleanDomain}`;
+                return `[${cleanDomain}](${url})`;
+            }
+            return domain; // Return original if not domain-like
+        }).join(', ');
+
+        return `(Source${domains.length > 1 ? 's' : ''}: ${linkedDomains})`;
     });
     console.log(`[API Route] Processed inline citations in the analysis report.`);
 
