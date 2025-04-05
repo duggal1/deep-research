@@ -173,7 +173,7 @@ export async function POST(req: Request) {
       },
     });
 
-// ... existing code ...
+//use gemini 2.5 prev 
 
     const synthesisPrompt = `
       Synthesize the following information into a comprehensive, detailed research report formatted in Markdown.
