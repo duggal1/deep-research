@@ -5,6 +5,9 @@ import Hero from './components/hero';
 
 export default function Home() {
 
+
+
+
   return (
     <div >
       <main className="flex flex-col min-h-screen font-serif transition-colors duration-300">
