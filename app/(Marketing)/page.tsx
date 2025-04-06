@@ -4,7 +4,8 @@ import EffectCards from '@/components/card/effect-cards';
 import Hero from './components/hero';
 import Companies from '@/components/companies/companies';
 import Timelines from '@/components/changelog/changelog';
-import FeaturesCloud from '@/components/Feature-section/features-cloud';
+import FeaturesGrid from './components/Feature-grid/Features-grids';
+
 
 // import Neuronthree from './components/THREE/component';
 
@@ -22,68 +23,69 @@ export default function Home() {
 
 <EffectCards/>
 <Timelines/>
-<FeaturesCloud/>
-        <section id="features" className="bg-gray-50 dark:bg-black px-4 sm:px-6 lg:px-8 py-24">
-          <div className="mx-auto max-w-7xl">
-            <h2 className="mb-16 font-bold text-gray-900 dark:text-white text-4xl text-center">Powerful Features</h2>
-            <div className="gap-8 grid md:grid-cols-2 lg:grid-cols-3">
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Neural Comprehension</h3>
-                <p className="text-gray-600 dark:text-gray-300">Advanced neural networks that understand context, intent, and semantic meaning for more accurate research outcomes.</p>
-              </div>
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Precision Filtering</h3>
-                <p className="text-gray-600 dark:text-gray-300">Custom filters and parameters that let you narrow down to exactly what you need, eliminating noise and irrelevant data.</p>
-              </div>
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Source Authentication</h3>
-                <p className="text-gray-600 dark:text-gray-300">Automatic verification of source credibility and fact-checking to ensure your research is built on trustworthy information.</p>
-              </div>
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Dynamic Visualization</h3>
-                <p className="text-gray-600 dark:text-gray-300">Transform complex data into intuitive visualizations that reveal patterns and insights impossible to see in raw format.</p>
-              </div>
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Real-time Processing</h3>
-                <p className="text-gray-600 dark:text-gray-300">Lightning-fast analysis of vast datasets with results delivered as you type, keeping you in the flow of discovery.</p>
-              </div>
-              <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
-                <div className="mb-4 text-blue-600 dark:text-blue-400">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                  </svg>
-                </div>
-                <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Enhanced Security</h3>
-                <p className="text-gray-600 dark:text-gray-300">End-to-end encryption and privacy controls that keep your research data and findings completely confidential.</p>
-              </div>
-            </div>
-          </div>
-        </section>
+<FeaturesGrid/>
+
+<section id="features" className="bg-gray-50 dark:bg-black px-4 sm:px-6 lg:px-8 py-24">
+  <div className="mx-auto max-w-7xl">
+    <h2 className="mb-16 font-bold text-gray-900 dark:text-white text-4xl text-center">Powerful Features</h2>
+    <div className="gap-8 grid md:grid-cols-2 lg:grid-cols-3">
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Neural Comprehension</h3>
+        <p className="text-gray-600 dark:text-gray-300">Advanced neural networks that understand context, intent, and semantic meaning for more accurate research outcomes.</p>
+      </div>
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Precision Filtering</h3>
+        <p className="text-gray-600 dark:text-gray-300">Custom filters and parameters that let you narrow down to exactly what you need, eliminating noise and irrelevant data.</p>
+      </div>
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Source Authentication</h3>
+        <p className="text-gray-600 dark:text-gray-300">Automatic verification of source credibility and fact-checking to ensure your research is built on trustworthy information.</p>
+      </div>
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Dynamic Visualization</h3>
+        <p className="text-gray-600 dark:text-gray-300">Transform complex data into intuitive visualizations that reveal patterns and insights impossible to see in raw format.</p>
+      </div>
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Real-time Processing</h3>
+        <p className="text-gray-600 dark:text-gray-300">Lightning-fast analysis of vast datasets with results delivered as you type, keeping you in the flow of discovery.</p>
+      </div>
+      <div className="bg-white dark:bg-gray-900 shadow-sm hover:shadow-lg p-8 rounded-xl transition-shadow">
+        <div className="mb-4 text-blue-600 dark:text-blue-400">
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <h3 className="mb-3 font-bold text-gray-900 dark:text-white text-xl">Enhanced Security</h3>
+        <p className="text-gray-600 dark:text-gray-300">End-to-end encryption and privacy controls that keep your research data and findings completely confidential.</p>
+      </div>
+    </div>
+  </div>
+</section>
 
         {/* Second 3D Model Section */}
         <section className="bg-gradient-to-br from-blue-50 dark:from-gray-900 to-white dark:to-gray-800 px-4 sm:px-6 lg:px-8 py-24">

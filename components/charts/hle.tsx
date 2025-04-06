@@ -56,16 +56,16 @@ const Hle = () => {
       const isLatest = data.model === 'Blaze Deep Research';
       
       return (
-        <div className="backdrop-blur-lg bg-white/80 dark:bg-black/80 p-4 rounded-xl border border-gray-100 dark:border-gray-800 shadow-2xl">
+        <div className="bg-white/80 dark:bg-black/80 shadow-2xl backdrop-blur-lg p-4 border border-gray-100 dark:border-gray-800 rounded-xl">
           <div className={`flex items-center gap-2 ${isLatest ? "text-violet-600 dark:text-violet-400" : "text-gray-800 dark:text-gray-200"}`}>
-            <div className="h-2 w-2 rounded-full bg-violet-500"></div>
-            <p className="font-medium font-serif">{data.model}</p>
+            <div className="bg-violet-500 rounded-full w-2 h-2"></div>
+            <p className="font-serif font-medium">{data.model}</p>
             {isLatest && (
-              <span className="bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-400 text-xs px-2 py-0.5 rounded-full font-serif">Latest</span>
+              <span className="bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-full font-serif text-violet-600 dark:text-violet-400 text-xs">Latest</span>
             )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 font-serif">{formatDate(data.date)}</p>
-          <p className="text-3xl font-bold mt-2 bg-gradient-to-r from-violet-600 to-indigo-600 dark:from-violet-400 dark:to-indigo-400 bg-clip-text text-transparent font-serif">
+          <p className="mt-1 font-serif text-gray-500 dark:text-gray-400 text-xs">{formatDate(data.date)}</p>
+          <p className="bg-clip-text bg-gradient-to-r from-violet-600 dark:from-violet-400 to-indigo-600 dark:to-indigo-400 mt-2 font-serif font-bold text-transparent text-3xl">
             {isLatest ? currentScore.toFixed(1) : data.score}%
           </p>
         </div>
@@ -119,19 +119,21 @@ const Hle = () => {
   };
 
   return (
-    <div className="w-full bg-white dark:bg-black p-8 rounded-2xl shadow-xl border border-gray-100 dark:border-gray-800">
+    <div className="shadow-xl p-8 rounded-xl w-full">
       <div className="flex justify-between items-start mb-8">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white tracking-tight font-serif">AI Model Performance</h2>
+          <h2 className="font-serif font-bold text-gray-900 dark:text-white text-2xl tracking-tight">AI Model Performance</h2>
           <div className="flex items-center gap-2 mt-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-violet-500"></span>
-            <span className="text-sm text-gray-500 dark:text-gray-400 font-serif">Intelligence Score (%)</span>
+            <span className="inline-block bg-violet-500 rounded-full w-2 h-2"></span>
+            <span className="font-serif text-gray-500 dark:text-gray-400 text-sm">Intelligence Score (%)</span>
           </div>
         </div>
         <div className="relative flex items-center animate-pulse">
-          <div className="absolute inset-0 bg-violet-500/20 blur-xl rounded-full"></div>
-          <div className="text-5xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 dark:from-violet-400 dark:to-indigo-400 bg-clip-text text-transparent font-serif z-10">
-            {currentScore.toFixed(1)}
+
+          <div className='relative flex justify-center items-center bg-black dark:bg-gray-800 rounded-md'>
+          <div className="font-bold text-gray-50 text-serif dark:text-gray-900 dark:font">
+          {currentScore.toFixed(1)}
+          </div>
           </div>
         </div>
       </div>
@@ -215,14 +217,14 @@ const Hle = () => {
         </ResponsiveContainer>
       </div>
       
-      <div className="mt-8 grid grid-cols-3 gap-4">
-        {[...data].reverse().slice(1, 4).map((item, index) => (
-          <div key={index} className="rounded-xl p-4 bg-gray-50 dark:bg-gray-900 backdrop-blur-md bg-opacity-80 dark:bg-opacity-80">
-            <div className="text-xs text-gray-500 dark:text-gray-400 font-serif">{item.model}</div>
-            <div className="text-2xl font-bold text-gray-900 dark:text-white font-serif">
+      <div className="gap-4 grid grid-cols-3 mt-8">
+        {[...data].reverse().slice(0, 3).map((item, index) => (
+          <div key={index} className="bg-gray-200 dark:bg-gray-900 opacity-80 dark:bg-rabg-opacity-80 backdrop-blur-md p-4 rounded-xl">
+            <div className="font-serif text-gray-500 dark:text-gray-400 text-xs">{item.model}</div>
+            <div className="font-serif font-bold text-gray-900 dark:text-white text-2xl">
               {item.score}%
             </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 font-serif">{formatDate(item.date)}</div>
+            <div className="font-serif text-gray-500 dark:text-gray-400 text-xs">{formatDate(item.date)}</div>
           </div>
         ))}
       </div>
