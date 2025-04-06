@@ -3,6 +3,8 @@
 import EffectCards from '@/components/card/effect-cards';
 import Hero from './components/hero';
 import Companies from '@/components/companies/companies';
+import Timelines from '@/components/changelog/changelog';
+import FeaturesCloud from '@/components/Feature-section/features';
 
 // import Neuronthree from './components/THREE/component';
 
@@ -19,6 +21,8 @@ export default function Home() {
 <Companies/>
 
 <EffectCards/>
+<Timelines/>
+<FeaturesCloud/>
         <section id="features" className="bg-gray-50 dark:bg-black px-4 sm:px-6 lg:px-8 py-24">
           <div className="mx-auto max-w-7xl">
             <h2 className="mb-16 font-bold text-gray-900 dark:text-white text-4xl text-center">Powerful Features</h2>

@@ -29,7 +29,7 @@ const BaseCard: React.FC<CardProps> = ({
   return (
     <div
       ref={cardRef}
-      className={`relative flex flex-col items-start bg-white dark:bg-black mx-auto p-6 border border-neutral-200 dark:border-neutral-800 max-w-sm h-[30rem] overflow-hidden rounded-lg shadow-subtle dark:shadow-subtle-dark transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${className}`}
+      className={`relative flex flex-col items-start bg-white dark:bg-black mx-auto p-6 border border-neutral-200 dark:border-neutral-800 max-w-sm h-[30rem] overflow-visible rounded-lg shadow-subtle dark:shadow-subtle-dark transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${className}`}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onMouseMove={onMouseMove}
@@ -77,8 +77,8 @@ const FlowParticle: React.FC<FlowParticleProps> = ({ id, isHovered, laptopWidth 
   const delay = Math.random() * 0.8; // 0s to 0.8s delay (quicker start)
   const verticalOffset = Math.random() * 40 - 20; // Vertical range (-20px to +20px)
 
-  // Vary particle sizes for more visual interest
-  const size = Math.random() * 1.5 + 0.8; // 0.8px to 2.3px
+  // LARGER particle sizes for better visibility
+  const size = Math.random() * 2.5 + 2.0; // 2.0px to 4.5px (much bigger)
 
   // Dynamically set CSS variables for the keyframe animation
   const style: React.CSSProperties = {
@@ -86,7 +86,8 @@ const FlowParticle: React.FC<FlowParticleProps> = ({ id, isHovered, laptopWidth 
     '--laptop-width': `${laptopWidth}px`,
     width: `${size}px`,
     height: `${size}px`,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)', // Base color
+    // Use dark particles in light mode, light particles in dark mode for contrast
+    backgroundColor: 'var(--particle-color, rgba(0, 0, 0, 0.7))',
     animation: isHovered
       ? `particleFlowInOut ${duration}s cubic-bezier(0.2, 0.8, 0.2, 1) ${delay}s infinite`
       : 'none',
@@ -128,8 +129,8 @@ const Card1: React.FC = () => {
     >
       {/* Content Area */}
       <div className="flex flex-col justify-between pt-10 w-full h-full"> {/* Increased top padding */}
-        {/* Top Section: Laptop Graphic */}
-        <div className="relative flex justify-center items-center mb-6 w-full h-48">
+        {/* Top Section: Laptop Graphic - With overflow visible for particles */}
+        <div className="relative flex justify-center items-center mb-6 w-full h-48 overflow-visible">
           {/* Laptop Base with enhanced hover effect */}
           <div
             className={`absolute bottom-1 w-60 h-1.5 bg-gradient-to-r from-neutral-300 via-neutral-200 to-neutral-300 dark:from-neutral-700 dark:via-neutral-800 dark:to-neutral-700 rounded-b-sm transition-all duration-300 ease-out ${isHovered ? 'translate-y-1 scale-x-[1.02]' : ''}`}
@@ -166,10 +167,10 @@ const Card1: React.FC = () => {
                 }}
               />
 
-              {/* Particle Container */}
-              <div className="absolute inset-0 overflow-hidden">
+              {/* Particle Container - Positioned to allow particles to flow outside laptop */}
+              <div className="z-10 absolute -inset-40 overflow-visible">
                 {/* Generate MORE particles when hovered */}
-                {isHovered && Array.from({ length: 30 }).map((_, i) => (
+                {isHovered && Array.from({ length: 50 }).map((_, i) => (
                   <FlowParticle key={i} id={i} isHovered={isHovered} laptopWidth={laptopWidth} />
                 ))}
               </div>
@@ -608,7 +609,7 @@ const Card3: React.FC = () => {
 const EffectCards: React.FC = () => {
   return (
     // Elegant background with subtle pattern
-    <div className="bg-gradient-to-br from-gray-50 dark:from-gray-950 via-white dark:via-black to-gray-100 dark:to-gray-900 py-16 min-h-screen">
+    <div className="bg-white dark:bg-black py-16 min-h-screen dar">
       {/* Subtle grid pattern overlay */}
       <div className="absolute inset-0 bg-grid-pattern opacity-5 dark:opacity-10 pointer-events-none" />
 
@@ -623,4 +624,3 @@ const EffectCards: React.FC = () => {
 
 export default EffectCards;
 
-// Add necessary CSS keyframes and utilities in a global stylesheet
