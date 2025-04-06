@@ -115,54 +115,112 @@
 @keyframes particleFlowInOut {
   0% {
     /* Start far right, initially transparent white */
-    transform: translateX(80px) translateY(var(--particle-y-offset)) scale(0.8);
+    transform: translateX(100px) translateY(var(--particle-y-offset)) scale(0.8);
     background-color: rgba(255, 255, 255, 0.5); /* Semi-transparent white */
     opacity: 0;
+    filter: blur(0px);
   }
-  10% {
-     /* Appear near right edge */
-    transform: translateX(50px) translateY(var(--particle-y-offset)) scale(1);
+  5% {
+    /* Appear near right edge - FAST */
+    transform: translateX(60px) translateY(var(--particle-y-offset)) scale(1);
     opacity: 0.7; /* Fade in */
     background-color: rgba(255, 255, 255, 0.8);
+    filter: blur(0px);
   }
-  30% {
-    /* Entering the laptop area (approx first third of laptop width) */
-    /* Adjust -30px based on desired entry point relative to laptop center */
-    transform: translateX(calc(var(--laptop-width) / -2 - 30px)) translateY(var(--particle-y-offset)) scale(1.1);
+  20% {
+    /* Approaching laptop - FAST */
+    transform: translateX(calc(var(--laptop-width) / 2 + 5px)) translateY(var(--particle-y-offset)) scale(1);
+    opacity: 0.9;
+    background-color: rgba(255, 255, 255, 0.9);
+    filter: blur(0px);
+  }
+  25% {
+    /* ENTERING laptop - dramatic effect */
+    transform: translateX(calc(var(--laptop-width) / 2 - 5px)) translateY(var(--particle-y-offset)) scale(1.5);
     opacity: 1;
-    background-color: #22d3ee; /* Cyan-400 - Start changing color */
+    background-color: #22d3ee; /* Cyan-400 */
+    filter: blur(1px);
+    box-shadow: 0 0 5px 2px rgba(34, 211, 238, 0.7);
   }
-  60% {
-    /* Exiting the laptop area (approx last third of laptop width) */
-     /* Adjust -90px based on desired exit point relative to laptop center */
-    transform: translateX(calc(var(--laptop-width) / -2 - 90px)) translateY(var(--particle-y-offset)) scale(1);
+  45% {
+    /* Inside laptop - glowing */
+    transform: translateX(0) translateY(var(--particle-y-offset)) scale(1.2);
     opacity: 1;
-    background-color: #06b6d4; /* Cyan-500 - Fully cyan */
+    background-color: #06b6d4; /* Cyan-500 */
+    filter: blur(0.5px);
+    box-shadow: 0 0 8px 3px rgba(6, 182, 212, 0.8);
   }
-  90% {
-     /* Moving further left, start fading */
-    transform: translateX(calc(var(--laptop-width) / -2 - 140px)) translateY(var(--particle-y-offset)) scale(0.9);
+  65% {
+    /* EXITING laptop - dramatic effect */
+    transform: translateX(calc(var(--laptop-width) / -2 + 5px)) translateY(var(--particle-y-offset)) scale(1.5);
+    opacity: 1;
+    background-color: #0891b2; /* Cyan-600 */
+    filter: blur(1px);
+    box-shadow: 0 0 5px 2px rgba(8, 145, 178, 0.7);
+  }
+  70% {
+    /* Just exited - FAST */
+    transform: translateX(calc(var(--laptop-width) / -2 - 5px)) translateY(var(--particle-y-offset)) scale(1);
+    opacity: 0.9;
+    background-color: #0e7490; /* Cyan-700 */
+    filter: blur(0px);
+  }
+  85% {
+    /* Moving away - FAST */
+    transform: translateX(calc(var(--laptop-width) / -2 - 60px)) translateY(var(--particle-y-offset)) scale(0.9);
     opacity: 0.5;
-     background-color: #0891b2; /* Cyan-600 */
+    background-color: #0e7490; /* Cyan-700 */
+    filter: blur(0px);
   }
   100% {
-    /* Fully faded far left */
-    transform: translateX(calc(var(--laptop-width) / -2 - 180px)) translateY(var(--particle-y-offset)) scale(0.8);
+    /* Fully faded far left - FAST */
+    transform: translateX(calc(var(--laptop-width) / -2 - 100px)) translateY(var(--particle-y-offset)) scale(0.8);
     opacity: 0;
-    background-color: #0891b2;
+    background-color: #0e7490;
+    filter: blur(0px);
   }
 }
 
 
-/* Keyframes for Card 2: Sleeker Ripple Effect */
+/* Keyframes for Card 2: Ultra Sleek Ripple Effect */
 @keyframes rippleSleek {
-  from {
+  0% {
     transform: translate(-50%, -50%) scale(0);
-    opacity: 1;
+    opacity: 0.8;
+    border-width: 1px;
+    box-shadow: 0 0 0px rgba(6, 182, 212, 0);
   }
-  to {
-    transform: translate(-50%, -50%) scale(1); /* Scale to 1 (size controlled by element width/height) */
+  30% {
+    opacity: 0.6;
+    border-width: 1.5px;
+    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+  }
+  70% {
+    opacity: 0.3;
+    border-width: 0.5px;
+    box-shadow: 0 0 5px rgba(6, 182, 212, 0.1);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
     opacity: 0;
+    border-width: 0px;
+    box-shadow: 0 0 0px rgba(6, 182, 212, 0);
+  }
+}
+
+/* Pulse animation for Card2 */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0.6;
   }
 }
 
@@ -170,6 +228,20 @@
 @layer utilities {
    .bg-gradient-radial {
       background-image: radial-gradient(circle, var(--tw-gradient-stops));
+   }
+
+   /* Subtle grid pattern for background */
+   .bg-grid-pattern {
+      background-image:
+        linear-gradient(to right, rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+      background-size: 20px 20px;
+   }
+
+   .dark .bg-grid-pattern {
+      background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
    }
 
    /* Subtle Shadows */
