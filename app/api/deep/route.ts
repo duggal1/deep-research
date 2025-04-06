@@ -1,3 +1,4 @@
+// pages/api/research.ts
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -6,7 +7,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-your-key';
 const GOOGLE_API_KEY = process.env.GEMINI_API_KEY || 'your-google-key';
 const FIRECRAWL_URL = 'https://api.firecrawl.dev/v1/deep-research';
-const FIRECRAWL_CRAWL_URL = 'https://api.firecrawl.dev/v1/crawl';
+const JINA_READER_URL = 'https://r.jina.ai/'; // Added for Jina Reader
 
 // Types
 interface ResearchParams {
@@ -19,7 +20,7 @@ interface ResearchSource {
   url: string;
   title: string;
   description: string;
-  crawlData?: any; // Added to store deep crawl results
+  crawlData?: any; // Will store Jina Reader markdown content
 }
 
 interface ResearchResponse {
@@ -31,13 +32,6 @@ interface ResearchResponse {
   status: string;
   id?: string;
   currentDepth?: number;
-}
-
-interface CrawlResponse {
-  success: boolean;
-  id?: string;
-  status?: string;
-  data?: any[];
 }
 
 interface RequestBody {
@@ -55,7 +49,7 @@ function getFormattedDate(): string {
 }
 
 // Poll status with logging, updated to handle different endpoints
-async function pollJobStatus(jobId: string, endpoint: 'deep-research' | 'crawl', timeoutMs: number = 900000): Promise<any> {
+async function pollJobStatus(jobId: string, endpoint: 'deep-research', timeoutMs: number = 900000): Promise<any> {
   console.log(`[POLLING START] Job ID: ${jobId}, Endpoint: ${endpoint}, Timeout: ${timeoutMs}ms`);
   const startTime = Date.now();
   const url = `https://api.firecrawl.dev/v1/${endpoint}/${jobId}`;
@@ -83,7 +77,7 @@ async function pollJobStatus(jobId: string, endpoint: 'deep-research' | 'crawl',
   throw new Error(`${endpoint} job timed out`);
 }
 
-// POST Handler with enhanced deep crawling
+// POST Handler with Jina Reader integration
 export async function POST(req: Request) {
   console.log('[REQUEST START] Incoming POST request');
 
@@ -118,7 +112,7 @@ export async function POST(req: Request) {
       {
         query,
         maxDepth: params?.maxDepth || 10,
-        maxUrls: params?.maxUrls || 60,
+        maxUrls: params?.maxUrls || 60, // Firecrawl can fetch up to 60, we'll filter later
         timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
@@ -167,42 +161,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'No sources found for deep research' }, { status: 404 });
     }
 
-    // Step 2.5: Perform Extremely Deep Crawl on Each Source URL
-    console.log('[DEEP CRAWL START] Initiating deep crawl on source URLs');
-    const sourceUrls = research.data.sources.map(source => source.url);
-    const crawlPromises = sourceUrls.map(async (url) => {
+    // Step 2.5: Fetch URLs from Deep Research and Use Jina Reader (Limit to 30 URLs)
+    console.log('[JINA READER START] Fetching content with Jina Reader');
+    // CHANGE MADE HERE: Limit to 30 URLs (adjust this number here to increase/decrease later)
+    const sourceUrls = research.data.sources.slice(0, 30).map(source => source.url); // Take first 30 URLs
+    const jinaPromises = sourceUrls.map(async (url) => {
       try {
-        const crawlRes = await axios.post<CrawlResponse>(
-          FIRECRAWL_CRAWL_URL,
-          {
-            url,
-            limit: 100, // Adjust as needed for depth
-            scrapeOptions: { formats: ['markdown'] },
-            allowBackwardLinks: true, // For extensive crawling
-          },
-          { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
-        );
-        const crawlJob = crawlRes.data;
-        if (crawlJob.id) {
-          const crawlResult = await pollJobStatus(crawlJob.id, 'crawl');
-          return { url, data: crawlResult.data || [] };
-        }
-        return { url, data: crawlJob.data || [] };
+        const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
+          headers: { 'Accept': 'text/markdown' },
+        });
+        console.log(`[JINA SUCCESS] Fetched ${url}`);
+        return { url, data: [{ content: jinaRes.data }] }; // Mimic Firecrawl structure
       } catch (error) {
-        console.error(`[DEEP CRAWL ERROR] Failed for ${url}: ${(error as Error).message}`);
+        console.error(`[JINA ERROR] Failed for ${url}: ${(error as Error).message}`);
         return { url, data: [] };
       }
     });
 
-    const crawlResults = await Promise.all(crawlPromises);
-    console.log(`[DEEP CRAWL COMPLETE] Processed ${crawlResults.length} URLs`);
+    const jinaResults = await Promise.all(jinaPromises);
+    console.log(`[JINA READER COMPLETE] Processed ${jinaResults.length} URLs`);
 
-    // Enhance sources with crawl data
+    // Enhance sources with Jina Reader data
     const enhancedSources = research.data.sources.map(source => {
-      const crawlResult = crawlResults.find(result => result.url === source.url);
+      const jinaResult = jinaResults.find(result => result.url === source.url);
       return {
         ...source,
-        crawlData: crawlResult?.data || [],
+        crawlData: jinaResult?.data || [],
       };
     });
 
@@ -314,7 +298,7 @@ IMPORTANT:
 - Use tables early and strategically
 - Base ALL content strictly on provided sources
 - Make decisive conclusions and recommendations
-- Each source includes 'crawlData', which contains detailed markdown content from a deep crawl of that URL and its subpages. Use this data to enhance the report with in-depth information.
+- Each source includes 'crawlData', which contains detailed markdown content from Jina Reader for that URL. Use this data to enhance the report with in-depth information.
 `;
     console.log(`[GEMINI PROMPT] ${synthesisPrompt.substring(0, 500)}...`);
 
