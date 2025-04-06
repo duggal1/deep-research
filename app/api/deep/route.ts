@@ -99,8 +99,8 @@ export async function POST(req: Request) {
       FIRECRAWL_URL,
       {
         query,
-        maxDepth: params?.maxDepth || 5,
-        maxUrls: params?.maxUrls || 80,
+        maxDepth: params?.maxDepth || 10,
+        maxUrls: params?.maxUrls || 60,
         timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
