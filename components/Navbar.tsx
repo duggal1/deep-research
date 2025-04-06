@@ -43,7 +43,7 @@ export function MainNavbar() {
       <nav className="px-2 w-full">
         <div className={cn(
           "mx-auto mt-4 max-w-6xl px-6 transition-all duration-300 lg:px-12",
-          isScrolled && "bg-white/90 max-w-5xl rounded-full border border-gray-100 shadow-sm backdrop-blur-lg dark:bg-black/90 dark:border-gray-800 lg:px-8"
+          isScrolled && "bg-white/90 max-w-5xl rounded-full border border-gray-100 shadow-sm backdrop-blur-lg dark:bg-black dark:border-gray-800 lg:px-8"
         )}>
           <div className="relative flex justify-between items-center py-3 lg:py-3">
             {/* Logo */}

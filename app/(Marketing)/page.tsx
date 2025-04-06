@@ -1,67 +1,17 @@
 
 import Spline from '@splinetool/react-spline/next';
+import Hero from './components/hero';
 
 
 export default function Home() {
 
   return (
     <div >
-      <main className="flex flex-col bg-white dark:bg-black min-h-screen font-serif transition-colors duration-300">
-        {/* Navigation */}
-        <nav className="z-50 fixed bg-white/80 dark:bg-gray-900/80 backdrop-blur-md border-gray-100 dark:border-gray-800 border-b w-full">
-          <div className="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
-            <div className="flex justify-between h-16">
-              <div className="flex items-center">
-                <span className="font-bold text-blue-600 dark:text-blue-400 text-2xl">Blaze</span>
-              </div>
-              <div className="flex items-center space-x-6">
-                <a href="#features" className="text-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-gray-200 transition-colors">Features</a>
-                <a href="#about" className="text-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-gray-200 transition-colors">About</a>
-                <a href="#pricing" className="text-gray-800 hover:text-blue-600 dark:hover:text-blue-400 dark:text-gray-200 transition-colors">Pricing</a>
-                {/* <button 
-                  onClick={toggleDarkMode}
-                  className="bg-gray-100 dark:bg-gray-800 p-2 rounded-full text-gray-800 dark:text-gray-200"
-                >
-                  {isDarkMode ? (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-                    </svg>
-                  ) : (
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                    </svg>
-                  )}
-                </button> */}
-              </div>
-            </div>
-          </div>
-        </nav>
-
-        {/* Hero Section */}
-        <section className="flex lg:flex-row flex-col justify-between items-center mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-24 max-w-7xl">
-          <div className="mb-16 lg:mb-0 lg:w-1/2">
-            <h1 className="mb-6 font-bold text-gray-900 dark:text-white text-5xl lg:text-6xl leading-tight">
-              Illuminate Your <span className="text-blue-600 dark:text-blue-400">Research</span> with Blaze
-            </h1>
-            <p className="mb-8 text-gray-600 dark:text-gray-300 text-xl leading-relaxed">
-              The next-generation deep research engine that transforms complex queries into actionable insights with unprecedented accuracy and depth.
-            </p>
-            <div className="flex sm:flex-row flex-col gap-4">
-              <button className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 shadow-blue-600/20 shadow-lg dark:shadow-blue-500/20 px-8 py-4 rounded-lg font-medium text-white text-lg transition-colors">
-                Get Started
-              </button>
-              <button className="bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-8 py-4 rounded-lg font-medium text-gray-900 dark:text-white text-lg transition-colors">
-                Watch Demo
-              </button>
-            </div>
-          </div>
-          <div className="relative w-full lg:w-1/2 h-96">
-            <Spline scene="https://prod.spline.design/r2HG5q1DFCvND-2T/scene.splinecode" />
-          </div>
-        </section>
+      <main className="flex flex-col min-h-screen font-serif transition-colors duration-300">
+       <Hero/>
 
         {/* Features Section */}
-        <section id="features" className="bg-gray-50 dark:bg-gray-800 px-4 sm:px-6 lg:px-8 py-24">
+        <section id="features" className="bg-gray-50 dark:bg-black px-4 sm:px-6 lg:px-8 py-24">
           <div className="mx-auto max-w-7xl">
             <h2 className="mb-16 font-bold text-gray-900 dark:text-white text-4xl text-center">Powerful Features</h2>
             <div className="gap-8 grid md:grid-cols-2 lg:grid-cols-3">
