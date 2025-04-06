@@ -4,7 +4,7 @@ import EffectCards from '@/components/card/effect-cards';
 import Hero from './components/hero';
 import Companies from '@/components/companies/companies';
 import Timelines from '@/components/changelog/changelog';
-import FeaturesCloud from '@/components/Feature-section/features';
+import FeaturesCloud from '@/components/Feature-section/features-cloud';
 
 // import Neuronthree from './components/THREE/component';
 
