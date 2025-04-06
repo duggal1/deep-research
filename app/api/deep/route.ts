@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       {
         query,
         maxDepth: params?.maxDepth || 10,
-        maxUrls: params?.maxUrls || 60, // Firecrawl can fetch up to 60, we'll filter later
+        maxUrls: params?.maxUrls || 300, // Firecrawl can fetch up to 60, we'll filter later
         timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
@@ -162,7 +162,7 @@ export async function POST(req: Request) {
     }
 
     // Step 2.5: Fetch URLs from Deep Research and Use Jina Reader (Limit to 30 URLs)
-    console.log('[JINA READER START] Fetching content with Jina Reader');
+    console.log('[JINA READER START]🔥 Fetching content with Jina Reader');
     // CHANGE MADE HERE: Limit to 30 URLs (adjust this number here to increase/decrease later)
     const sourceUrls = research.data.sources.slice(0, 30).map(source => source.url); // Take first 30 URLs
     const jinaPromises = sourceUrls.map(async (url) => {
@@ -170,16 +170,16 @@ export async function POST(req: Request) {
         const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
           headers: { 'Accept': 'text/markdown' },
         });
-        console.log(`[JINA SUCCESS] Fetched ${url}`);
+        console.log(`[JINA SUCCESS]✅ Fetched ${url}`);
         return { url, data: [{ content: jinaRes.data }] }; // Mimic Firecrawl structure
       } catch (error) {
-        console.error(`[JINA ERROR] Failed for ${url}: ${(error as Error).message}`);
+        console.error(`[JINA ERROR]❌ Failed for ${url}: ${(error as Error).message}`);
         return { url, data: [] };
       }
     });
 
     const jinaResults = await Promise.all(jinaPromises);
-    console.log(`[JINA READER COMPLETE] Processed ${jinaResults.length} URLs`);
+    console.log(`[JINA READER COMPLETE] 🎉 Processed ${jinaResults.length} URLs`);
 
     // Enhance sources with Jina Reader data
     const enhancedSources = research.data.sources.map(source => {
@@ -209,6 +209,8 @@ export async function POST(req: Request) {
 
     const synthesisPrompt = `
 Synthesize the following information into a comprehensive, detailed research report (minimum 2000 words) formatted in Markdown.
+**Most importnat Instructions:**
+- ❌ Never  Ever begin the output with triple backticks '''markdown'' as it will break the markdown parser but generate the report in markdown format.
 
 **Core Instructions:**
 1. **Length Requirement:** Generate a detailed report of AT LEAST 2000-3000 words. Include extensive analysis, examples, and thorough explanations.
