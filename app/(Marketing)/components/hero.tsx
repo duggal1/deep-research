@@ -1,5 +1,3 @@
-
-
 "use client";
 import { ArrowRightIcon } from "lucide-react";
 import Image from "next/image";
@@ -11,35 +9,68 @@ import Container from "@/components/Contanier";
 import { TextEffect } from "@/components/ui/text-effect";
 
 const Hero = () => {
-    const [showIntenseGlow, setShowIntenseGlow] = useState(false);
+    const [glowIntensity, setGlowIntensity] = useState(0);
     
     useEffect(() => {
-        // Set timeout to show the intense glow after 1.1 seconds
-        const timer = setTimeout(() => {
-            setShowIntenseGlow(true);
-        }, 1100); // 1.1 seconds
+        // Start transition after a small delay
+        const startDelay = setTimeout(() => {
+            // Use requestAnimationFrame for smoother animation
+            let startTime: number;
+            const duration = 500; // 2 seconds for extremely smooth transition
+            
+            const animate = (timestamp: number) => {
+                if (!startTime) startTime = timestamp;
+                const elapsed = timestamp - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Use easeInOutCubic for extra smoothness
+                const easeInOutCubic = progress < 0.5
+                    ? 4 * progress * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+                
+                setGlowIntensity(easeInOutCubic);
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            };
+            
+            requestAnimationFrame(animate);
+        }, 800);
         
-        return () => clearTimeout(timer);
+        return () => clearTimeout(startDelay);
     }, []);
 
     return (
         <div className="relative flex flex-col justify-center items-center py-20 w-full">
-            {/* Initial blue glow that shows immediately */}
-            <div className="lg:hidden top-0 left-1/2 -z-10 absolute bg-blue-500 blur-[10rem] rounded-full size-40 -translate-x-1/2">
-            </div>
+            {/* Initial blue glow that shows immediately with opacity based on transition */}
+            <div 
+                className="lg:hidden top-0 left-1/2 -z-10 absolute bg-blue-500 rounded-full size-40 transition-all -translate-x-1/2 duration-1000 ease-in-out"
+                style={{ 
+                    opacity: 0.7 - (glowIntensity * 0.3),
+                    filter: `blur(${10 + (glowIntensity * 5)}rem)` 
+                }}
+            />
             
-            {/* Intense glow that appears after delay */}
-            {showIntenseGlow && (
-                <>
-                    {/* Primary intense glow */}
-                    <div className="lg:hidden top-0 left-1/2 -z-10 absolute bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 shadow-[0_0_100px_50px_rgba(59,130,246,0.8)] blur-[5rem] rounded-full size-64 transition-opacity -translate-x-1/2 animate-pulse duration-700 ease-in-out">
-                    </div>
-                    
-                    {/* Secondary intense glow */}
-                    <div className="lg:hidden top-10 right-1/3 -z-10 absolute bg-blue-400 opacity-90 shadow-[0_0_50px_25px_rgba(96,165,250,0.7)] blur-[4rem] rounded-full size-32 transition-opacity duration-700 ease-in-out">
-                    </div>
-                </>
-            )}
+            {/* Primary intense glow with dynamic opacity */}
+            <div 
+                className="lg:hidden top-0 left-1/2 -z-10 absolute bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 rounded-full size-64 transition-all -translate-x-1/2 duration-1000 ease-in-out"
+                style={{ 
+                    opacity: glowIntensity * 0.85,
+                    filter: `blur(${5 + (glowIntensity * 2)}rem)`,
+                    boxShadow: `0 0 ${50 + (glowIntensity * 30)}px ${25 + (glowIntensity * 15)}px rgba(59,130,246,${0.4 + (glowIntensity * 0.25)})` 
+                }}
+            />
+            
+            {/* Secondary intense glow with dynamic opacity */}
+            <div 
+                className="lg:hidden top-10 right-1/3 -z-10 absolute bg-blue-400 rounded-full size-32 transition-all duration-1000 ease-in-out"
+                style={{ 
+                    opacity: glowIntensity * 0.7,
+                    filter: `blur(${3 + (glowIntensity * 1.5)}rem)`,
+                    boxShadow: `0 0 ${30 + (glowIntensity * 15)}px ${15 + (glowIntensity * 7)}px rgba(96,165,250,${0.3 + (glowIntensity * 0.25)})` 
+                }}
+            />
 
             <div className="relative flex flex-col justify-center items-center gap-y-8">
                 <div className="flex flex-col justify-center items-center gap-y-4 text-center">
@@ -58,23 +89,23 @@ const Hero = () => {
                         </button>
                     </Container>
                     <Container delay={0.15}>
-  <TextEffect
-                                    preset="fade-in-blur"
-                                    speedSegment={0.3}
-                                    as="h1"
-                                    className="mt-8 lg:mt-16 xl:text-[5.25rem] text-6xl md:text-7xl text-balance">
-                                    Modern Solutions for Customer Engagement
-                                </TextEffect>
-                                <TextEffect
-                                    per="line"
-                                    preset="fade-in-blur"
-                                    speedSegment={0.3}
-                                    delay={0.5}
-                                    as="p"
-                                    className="mx-auto mt-8 max-w-2xl text-lg text-balance">
-                                    Highly customizable components for building modern websites and applications that look and feel the way you mean it.
-                                </TextEffect>
-</Container>
+                        <TextEffect
+                            preset="fade-in-blur"
+                            speedSegment={0.3}
+                            as="h1"
+                            className="mt-8 lg:mt-16 xl:text-[5.25rem] text-6xl md:text-7xl text-balance">
+                            Modern Solutions for Customer Engagement
+                        </TextEffect>
+                        <TextEffect
+                            per="line"
+                            preset="fade-in-blur"
+                            speedSegment={0.3}
+                            delay={0.5}
+                            as="p"
+                            className="mx-auto mt-8 max-w-2xl text-lg text-balance">
+                            Highly customizable components for building modern websites and applications that look and feel the way you mean it.
+                        </TextEffect>
+                    </Container>
 
                     <Container delay={0.25} className="z-20">
                         <div className="flex justify-center items-center gap-x-4 mt-6">
@@ -88,20 +119,34 @@ const Hero = () => {
                     </Container>
                     <Container delay={0.3} className="relative">
                         <div className="relative backdrop-blur-lg mx-auto mt-10 p-2 border border-border rounded-xl lg:rounded-[32px] max-w-6xl">
-                            {/* Initial dashboard glow */}
-                            <div className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-blue-500 blur-[10rem] w-1/2 h-1/4 -translate-x-1/2 -translate-y-1/2">
-                            </div>
+                            {/* Dashboard glow with dynamic transition */}
+                            <div 
+                                className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-blue-500 w-1/2 h-1/4 transition-all -translate-x-1/2 -translate-y-1/2 duration-1000 ease-in-out"
+                                style={{ 
+                                    opacity: 0.8 - (glowIntensity * 0.3),
+                                    filter: `blur(${8 + (glowIntensity * 3)}rem)` 
+                                }}
+                            />
                             
-                            {/* Intense dashboard glow that appears after delay */}
-                            {showIntenseGlow && (
-                                <>
-                                    <div className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-gradient-to-r from-blue-600 to-sky-400 shadow-[0_0_150px_75px_rgba(37,99,235,0.7)] blur-[6rem] w-3/4 h-1/2 transition-opacity -translate-x-1/2 -translate-y-1/2 duration-700 ease-in-out">
-                                    </div>
-                                    
-                                    <div className="hidden lg:block right-1/4 bottom-1/4 -z-20 absolute bg-blue-500 shadow-[0_0_100px_50px_rgba(59,130,246,0.8)] blur-[8rem] rounded-full w-1/3 h-1/3 transition-opacity duration-700 ease-in-out">
-                                    </div>
-                                </>
-                            )}
+                            {/* Primary dashboard intense glow with dynamic opacity */}
+                            <div 
+                                className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-gradient-to-r from-blue-600 to-sky-400 w-3/4 h-1/2 transition-all -translate-x-1/2 -translate-y-1/2 duration-1000 ease-in-out"
+                                style={{ 
+                                    opacity: glowIntensity * 0.9,
+                                    filter: `blur(${5 + (glowIntensity * 2)}rem)`,
+                                    boxShadow: `0 0 ${100 + (glowIntensity * 40)}px ${50 + (glowIntensity * 20)}px rgba(37,99,235,${0.4 + (glowIntensity * 0.2)})` 
+                                }}
+                            />
+                            
+                            {/* Secondary dashboard glow with dynamic opacity */}
+                            <div 
+                                className="hidden lg:block right-1/4 bottom-1/4 -z-20 absolute bg-blue-500 rounded-full w-1/3 h-1/3 transition-all duration-1000 ease-in-out"
+                                style={{ 
+                                    opacity: glowIntensity * 0.75,
+                                    filter: `blur(${6 + (glowIntensity * 2)}rem)`,
+                                    boxShadow: `0 0 ${70 + (glowIntensity * 25)}px ${35 + (glowIntensity * 10)}px rgba(59,130,246,${0.5 + (glowIntensity * 0.2)})` 
+                                }}
+                            />
 
                             <div className="bg-background border border-border rounded-lg lg:rounded-[22px]">
                                 <Image

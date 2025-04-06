@@ -1,6 +1,10 @@
 
-import Spline from '@splinetool/react-spline/next';
+
+import EffectCards from '@/components/card/effect-cards';
 import Hero from './components/hero';
+import Companies from '@/components/companies/companies';
+
+// import Neuronthree from './components/THREE/component';
 
 
 export default function Home() {
@@ -12,8 +16,9 @@ export default function Home() {
     <div >
       <main className="flex flex-col min-h-screen font-serif transition-colors duration-300">
        <Hero/>
+<Companies/>
 
-        {/* Features Section */}
+<EffectCards/>
         <section id="features" className="bg-gray-50 dark:bg-black px-4 sm:px-6 lg:px-8 py-24">
           <div className="mx-auto max-w-7xl">
             <h2 className="mb-16 font-bold text-gray-900 dark:text-white text-4xl text-center">Powerful Features</h2>
@@ -80,9 +85,7 @@ export default function Home() {
         <section className="bg-gradient-to-br from-blue-50 dark:from-gray-900 to-white dark:to-gray-800 px-4 sm:px-6 lg:px-8 py-24">
           <div className="mx-auto max-w-7xl">
             <div className="flex lg:flex-row flex-col items-center">
-              <div className="relative mb-16 lg:mb-0 w-full lg:w-1/2 h-96">
-                <Spline scene="https://prod.spline.design/ENMTmlMkPTRL41GL/scene.splinecode" />
-              </div>
+             
               <div className="lg:pl-16 lg:w-1/2">
                 <h2 className="mb-6 font-bold text-gray-900 dark:text-white text-4xl">Explore Knowledge Like Never Before</h2>
                 <p className="mb-8 text-gray-600 dark:text-gray-300 text-xl leading-relaxed">

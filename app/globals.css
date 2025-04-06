@@ -111,3 +111,54 @@
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
 }
+
+@keyframes particleFlow {
+  0% {
+    transform: translateX(0) translateY(var(--random-y, 0px)) scaleX(1); /* Start outside right */
+    opacity: 0;
+    background-color: white; /* Start white (optional, harder to see) */
+     background-color: #67e8f9; /* Start cyan for visibility */
+     opacity: 0.7;
+  }
+   10% {
+      opacity: 1;
+      transform: translateX(-50px) translateY(var(--random-y, 0px)) scaleX(1.5); /* Appear and stretch slightly */
+       background-color: #22d3ee; /* Cyan-400 */
+   }
+  80% {
+    opacity: 1;
+     transform: translateX(-200px) translateY(var(--random-y, 0px)) scaleX(0.8); /* Move across screen */
+     background-color: #06b6d4; /* Cyan-500 */
+  }
+  100% {
+    transform: translateX(-250px) translateY(var(--random-y, 0px)) scaleX(0.5); /* Exit left and fade */
+    opacity: 0;
+     background-color: #0891b2; /* Cyan-600 */
+  }
+}
+
+/* Keyframes for Card 2: Ripple Effect */
+@keyframes ripple {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 1;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(10); /* Increased scale for larger ripple */
+    opacity: 0;
+  }
+}
+
+/* Optional: Keyframes for Card 3 (if needed beyond inline styles) */
+/* e.g., a subtle pulse for the core if not handled by inline styles */
+/* @keyframes corePulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 15px 0px rgba(129, 140, 248, 0.3); }
+  50% { transform: scale(1.05); box-shadow: 0 0 25px 0px rgba(129, 140, 248, 0.5); }
+} */
+
+/* Add custom gradient background if needed */
+@layer utilities {
+   .bg-gradient-radial {
+      background-image: radial-gradient(circle, var(--tw-gradient-stops));
+   }
+}
