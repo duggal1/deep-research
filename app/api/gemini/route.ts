@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, GenerateContentResponse } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY || "");
@@ -6,51 +6,58 @@ const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GEMINI_API_KEY || "");
 export async function POST(req: Request) {
   try {
     const { prompt } = await req.json();
+    if (!prompt) {
+      return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
+    }
+
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-pro-exp-03-25",
+      model: "gemini-2.0-pro-exp-02-05",
     });
 
     const generationConfig = {
-      temperature: 0.6,
+      temperature: 0.7,
       topP: 0.95,
       topK: 64,
-      maxOutputTokens: 65536,
+      maxOutputTokens: 8192,
       responseMimeType: "text/plain",
     };
 
     const chatSession = model.startChat({
-      generationConfig,
-      history: [],
     });
 
     const streamResult = await chatSession.sendMessageStream(prompt);
     const encoder = new TextEncoder();
-    let finalText = "";
-
-    const thinkingMessages = ["think out loud", "almost done", ":wait"];
+    let accumulatedText = "";
 
     const readableStream = new ReadableStream({
       async start(controller) {
-        for (const message of thinkingMessages) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "thinking", content: message })}\n\n`)
-          );
-          await new Promise((resolve) => setTimeout(resolve, 500));
-        }
+        try {
+          for await (const chunk of streamResult.stream) {
+            const text = chunk.text();
+            if (text) {
+              accumulatedText += text;
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: "content", content: text })}\n\n`)
+              );
+            }
+          }
 
-        for await (const chunk of streamResult.stream) {
-          const text = chunk.text();
-          finalText += text;
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify({ type: "content", content: text })}\n\n`)
+            encoder.encode(`data: ${JSON.stringify({ type: "final", content: accumulatedText })}\n\n`)
           );
+          controller.close();
+        } catch (error) {
+           console.error("Streaming Error:", error);
+           controller.error(error);
+           controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", error: "Streaming failed" })}\n\n`)
+            );
+            controller.close();
         }
-
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: "final", content: finalText })}\n\n`)
-        );
-        controller.close();
       },
+       cancel(reason) {
+         console.log("Stream cancelled:", reason);
+       }
     });
 
     return new NextResponse(readableStream, {
@@ -58,17 +65,19 @@ export async function POST(req: Request) {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {
-    console.error("Gemini API Error:", error);
+    console.error("Gemini API Setup Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to generate content", details: (error as Error).message },
+      { error: "Failed to initialize stream", details: errorMessage },
       { status: 500 }
     );
   }
 }
 
 export const GET = () => {
-  return NextResponse.json({ error: "Method Not Allowed" }, { status: 405 });
+  return NextResponse.json({ message: "Gemini API endpoint is active. Use POST to send prompts." });
 };

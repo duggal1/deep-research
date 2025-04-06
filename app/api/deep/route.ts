@@ -37,6 +37,14 @@ interface RequestBody {
   mode?: 'non-think' | 'think'; // Added mode to select model
 }
 
+function getFormattedDate(): string {
+  return new Intl.DateTimeFormat('en-US', {
+    year:   'numeric',
+    month:  'long',
+    day:    'numeric'
+  }).format(new Date());
+}
+
 // Poll status with logging
 async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise<ResearchResponse> {
   console.log(`[POLLING START] Job ID: ${jobId}, Timeout: ${timeoutMs}ms`);
@@ -71,7 +79,7 @@ export async function POST(req: Request) {
 
   let query: string | undefined;
   let params: ResearchParams | undefined;
-  let mode: 'non-think' | 'think' = 'think'; // Default mode
+  let mode: 'non-think' | 'think' = 'non-think'; // Default mode
 
   try {
     const rawBody = await req.text();
@@ -133,7 +141,7 @@ export async function POST(req: Request) {
         subQueries.map((subQuery) =>
           axios.post<ResearchResponse>(
             FIRECRAWL_URL,
-            { query: subQuery, maxDepth: 11, maxUrls: 12, timeLimit: 500 },
+            { query: subQuery, maxDepth: 8, maxUrls: 25, timeLimit: 500 },
             { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
           )
         )
@@ -168,10 +176,16 @@ export async function POST(req: Request) {
       generationConfig: {
         // Adjusted token/temp based on the new 'think' model potentially having different characteristics or defaults.
         // Keeping the previous logic, but you might want to fine-tune these if needed for the experimental model.
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 7500, 
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 20000, 
         temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,     
       },
     });
+
+    
+
+    const today = getFormattedDate();
+
+
 
 //use gemini 2.5 prev 
 const synthesisPrompt = `

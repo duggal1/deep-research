@@ -68,10 +68,8 @@ interface AiScoreDataItem {
     score: number;
     timestamp: number;
 }
-
 export default function FeaturesCloud() {
     return (
-
         <section className="px-4 py-16 md:py-32 bg-white dark:bg-gray-950 font-sans">
             <CustomAnimations />
             <div className="mx-auto grid max-w-5xl border dark:border-gray-700 rounded-xl shadow-sm md:grid-cols-2 overflow-hidden">
@@ -99,7 +97,7 @@ export default function FeaturesCloud() {
                     <div aria-hidden className="relative">
                         <div className="absolute inset-0 z-10 m-auto size-fit">
                             <div className="rounded-lg bg-white dark:bg-gray-800 z-10 relative flex size-fit w-fit items-center gap-2 border dark:border-gray-600 px-3 py-1.5 text-xs font-medium shadow-sm text-gray-700 dark:text-gray-200">
-                                 <Image
+                                <Image
                                     src="/icons/axion-logo.png"
                                     alt="Logo"
                                     width={16}
@@ -111,8 +109,9 @@ export default function FeaturesCloud() {
                             </div>
                         </div>
 
+                        {/* Ensured container has defined height (already present) */}
                         <div className="relative overflow-hidden h-[240px]">
-                            <div className="absolute inset-0 flex items-center justify-center opacity-80 dark:opacity-60">
+                            <div className="absolute inset-0 flex items-center justify-center">
                                 <Globe />
                             </div>
                         </div>
@@ -143,9 +142,10 @@ export default function FeaturesCloud() {
                     </div>
                 </div>
                 <div className="col-span-full border-t dark:border-gray-700 bg-gray-50/50 dark:bg-black/30 py-8">
-                    <AnimatedMetric />
+                    {/* <AnimatedMetric /> */}
                 </div>
-                <div className="relative col-span-full border-t dark:border-gray-700">
+                {/* Added explicit height to parent div to ensure chart renders */}
+                <div className="relative col-span-full border-t dark:border-gray-700" style={{ height: '400px' }}>
                     <div className="absolute z-10 max-w-lg px-6 pr-12 pt-6 md:px-12 md:pt-12">
                         <span className="text-zinc-500 dark:text-zinc-400 flex items-center gap-2 font-medium">
                             <Zap className="size-4 text-indigo-600 dark:text-indigo-400" />
@@ -170,7 +170,7 @@ export default function FeaturesCloud() {
                 </div>
             </div>
         </section>
-    )
+    );
 }
 
 const AnimatedCounter = ({ target, suffix = '', label = '' }: AnimatedCounterProps) => {
@@ -331,12 +331,8 @@ const AnimatedAiScoreChart = () => {
         aiScoreData.map(d => ({ ...d, score: 0 }))
     );
     const targetDataRef = useRef<AiScoreDataItem[]>(aiScoreData);
-    const animationProgressRef = useRef<number>(0);
     const frameRef = useRef<number>(0);
     const prefersReducedMotion = useReducedMotion();
-
-    const throttleRef = useRef<number>(0);
-    const throttleTime = 30;
 
     useEffect(() => {
         if (prefersReducedMotion) {
@@ -345,43 +341,30 @@ const AnimatedAiScoreChart = () => {
         }
 
         let startTime: number | null = null;
-        const duration = 5000;
+        const duration = 2000;
 
         const animate = (timestamp: number) => {
-            if (timestamp - throttleRef.current < throttleTime) {
-                frameRef.current = requestAnimationFrame(animate);
-                return;
-            }
-            throttleRef.current = timestamp;
-
             if (startTime === null) {
                 startTime = timestamp;
             }
             const elapsed = timestamp - startTime;
-            const loopProgress = (elapsed % duration) / duration;
+            const progress = Math.min(elapsed / duration, 1);
 
-            let easedProgress;
-            if (loopProgress < 0.5) {
-                easedProgress = 2 * loopProgress * loopProgress;
-            } else {
-                easedProgress = -1 + (4 - 2 * loopProgress) * loopProgress;
-            }
+            const easedProgress = 1 - Math.pow(1 - progress, 3);
 
-            animationProgressRef.current = easedProgress;
-
-            setAnimatedData(prevData => {
-                return targetDataRef.current.map((targetItem, index) => {
-                    const prevItem = prevData[index] ?? { ...targetItem, score: 0 };
-                    const animatedScore = targetItem.score * animationProgressRef.current;
-
+            setAnimatedData(() =>
+                targetDataRef.current.map((targetItem) => {
+                    const animatedScore = targetItem.score * easedProgress;
                     return {
                         ...targetItem,
                         score: animatedScore,
                     };
-                });
-            });
+                })
+            );
 
-            frameRef.current = requestAnimationFrame(animate);
+            if (progress < 1) {
+                frameRef.current = requestAnimationFrame(animate);
+            }
         };
 
         const timer = setTimeout(() => {

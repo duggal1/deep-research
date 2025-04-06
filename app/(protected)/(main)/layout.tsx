@@ -12,7 +12,7 @@ export default function MainLayout({
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="flex flex-col flex-1 overflow-y-auto">
         {/* Optional Header could go here */}
         {/* <header className="flex justify-between items-center px-6 border-b h-16"></header> */}
 
