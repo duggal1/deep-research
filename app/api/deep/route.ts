@@ -99,9 +99,9 @@ export async function POST(req: Request) {
       FIRECRAWL_URL,
       {
         query,
-        maxDepth: params?.maxDepth || 12,
-        maxUrls: params?.maxUrls || 120,
-        timeLimit: params?.timeLimit || 900,
+        maxDepth: params?.maxDepth || 5,
+        maxUrls: params?.maxUrls || 80,
+        timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
     );
@@ -133,7 +133,7 @@ export async function POST(req: Request) {
         subQueries.map((subQuery) =>
           axios.post<ResearchResponse>(
             FIRECRAWL_URL,
-            { query: subQuery, maxDepth: 6, maxUrls: 25, timeLimit: 500 },
+            { query: subQuery, maxDepth: 11, maxUrls: 12, timeLimit: 500 },
             { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
           )
         )
@@ -154,7 +154,7 @@ export async function POST(req: Request) {
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
     
     // Select model based on mode
-   // ... existing code ...
+ 
 
     // Step 3: Gemini Synthesis with Model Selection
     console.log('[GEMINI START] Initializing Gemini synthesis');
@@ -168,35 +168,104 @@ export async function POST(req: Request) {
       generationConfig: {
         // Adjusted token/temp based on the new 'think' model potentially having different characteristics or defaults.
         // Keeping the previous logic, but you might want to fine-tune these if needed for the experimental model.
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 60000 : 7500, 
-        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.2 : 0.3,     
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 7500, 
+        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,     
       },
     });
 
 //use gemini 2.5 prev 
+const synthesisPrompt = `
+Synthesize the following information into a comprehensive, detailed research report (minimum 2000 words) formatted in Markdown.
 
-    const synthesisPrompt = `
-      Synthesize the following information into a comprehensive, **concise**, and **decisive** research report formatted in Markdown.
+**Core Instructions:**
+1. **Length Requirement:** Generate a detailed report of AT LEAST 2000-3000 words. Include extensive analysis, examples, and thorough explanations.
 
-      **Core Instructions:**
-      1.  **Structure & Clarity:** Organize logically with clear headings. Front-load key findings and conclusions.
-      2.  **Quantify Everything:** Prioritize **concrete metrics** (percentages, numbers, speeds, costs, dates) over vague qualitative claims ("fast", "better"). Extract these directly from the sources. If sources lack metrics for a key area, state that clearly.
-      3.  **Source Primacy & Freshness:** Base the report *strictly* on the provided 'Sources' and 'Initial Analysis'. Prefer information from primary sources (official docs, research papers) if available in the context. Cite sources implicitly or explicitly where significant claims are made. Aim for relevance within the last 6-12 months if possible based on source dates, but use the provided sources regardless.
-      4.  **Code Examples (If Applicable & Found):** If the query is technical AND the provided sources contain relevant, concrete code examples, include them in appropriate Markdown code blocks. **Do NOT generate hypothetical or placeholder code examples if none exist in the source material.** Explain the provided code's logic clearly.
-      5.  **Data Visualization (Tables):** Use Markdown tables **early and strategically** to summarize key comparisons, specifications, benchmarks, or quantifiable data points for quick scanning. Keep surrounding prose minimal.
-      6.  **Decisive Conclusions:** Provide firm conclusions or recommendations based *only* on the synthesized information. Avoid hedging ("it depends"). State the main takeaway first, then add brief qualifications if necessary based *only* on the provided context.
-      7.  **Conciseness:** Eliminate redundancy. Be direct and to the point. Every sentence should add value. Aim for maximal insight with minimal text.
-      8.  **Real-World Relevance:** Where sources permit, connect findings to practical applications, case studies, or user impact mentioned in the source material.
+2. **Citation Format:** Always use proper Markdown links for citations:
+   - Format: \`[Source Name](URL)\`
+   - Example: According to [Netguru](https://www.netguru.com), ...
+   - EVERY major claim must have a linked citation
+   - Prefer format: "[SourceName.com](url)" over naked URLs
 
-      **Input Data:**
-      Sources:
-      ${JSON.stringify(research.data.sources, null, 2)}
+3. **Structure & Detail:**
+   - Start with an Executive Summary (500+ words)
+   - Include 5-8 main sections with detailed subsections
+   - Each major section should be 1000+ words
+   - Use tables for comparative data EARLY in the report
+   - Include relevant code examples (if found in sources)
+   - End with decisive conclusions
 
-      Initial Analysis from Firecrawl:
-      ${research.data.finalAnalysis}
+4. **Quantification & Metrics:**
+   - Prioritize concrete metrics over qualitative claims
+   - Include exact numbers, percentages, speeds, costs, dates
+   - Create comparative tables for quantifiable data points
+   - Clearly state if metrics are missing for key areas
+   - Use tables to summarize benchmarks and specifications
 
-      **Output Format:** Markdown Report
-    `;
+5. **Source Handling:**
+   - Base analysis STRICTLY on provided sources
+   - Prefer primary sources (official docs, research papers)
+   - Note source freshness (aim for last 6-12 months)
+   - Cite ALL significant claims
+   - Include source publication dates when available
+
+6. **Code Examples (Technical Topics):**
+   - ONLY include code examples found in source material
+   - NO hypothetical or generated code examples
+   - Use proper Markdown code blocks with language
+   - Explain existing code's logic and purpose
+   - Link code to source documentation
+
+7. **Data Presentation:**
+   - Use Markdown tables strategically and early
+   - Summarize key comparisons in tables
+   - Minimize prose around tables
+   - Present benchmarks and specs in structured format
+   - Include source citations in/after tables
+
+8. **Conclusions & Recommendations:**
+   - Provide firm, specific conclusions
+   - State main takeaway first
+   - Avoid hedging phrases ("it depends")
+   - Base recommendations only on provided data
+   - Include implementation considerations
+
+9. **Real-World Context:**
+   - Link findings to practical applications
+   - Include case studies from sources
+   - Discuss user/business impact
+   - Provide concrete implementation examples
+   - Focus on actionable insights
+
+10. **Content Requirements:**
+    - Deep technical analysis where applicable
+    - Concrete metrics and statistics
+    - Real-world examples and case studies
+    - Industry implications
+    - Future trends and predictions
+    - Critical analysis of limitations
+    - Practical applications
+
+11. **Citation Guidelines:**
+    - Every paragraph must have at least one citation
+    - Link directly to sources using Markdown syntax
+    - Format: "[Company/Source](URL) states/reports/indicates..."
+    - For multiple sources: "Research from [Source1](URL1) and [Source2](URL2) shows..."
+
+Input Data:
+Sources:
+${JSON.stringify(research.data.sources, null, 2)}
+
+Initial Analysis:
+${research.data.finalAnalysis}
+
+IMPORTANT: 
+- Generate a MINIMUM of 2000 words with extensive detail and proper Markdown source linking
+- Focus on depth, completeness, and thorough analysis while maintaining readability
+- Prioritize concrete metrics and quantifiable data
+- Use tables early and strategically
+- Base ALL content strictly on provided sources
+- Make decisive conclusions and recommendations
+`;
     console.log(`[GEMINI PROMPT] ${synthesisPrompt.substring(0, 500)}...`); // Log truncated prompt
 
     const geminiRes = await model.generateContent(synthesisPrompt);
