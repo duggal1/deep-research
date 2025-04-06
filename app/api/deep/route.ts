@@ -111,8 +111,8 @@ export async function POST(req: Request) {
       FIRECRAWL_URL,
       {
         query,
-        maxDepth: params?.maxDepth || 10,
-        maxUrls: params?.maxUrls || 300, // Firecrawl can fetch up to 60, we'll filter later
+        maxDepth: params?.maxDepth || 3,
+        maxUrls: params?.maxUrls || 150, // Firecrawl can fetch up to 60, we'll filter later
         timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
         subQueries.map((subQuery) =>
           axios.post<ResearchResponse>(
             FIRECRAWL_URL,
-            { query: subQuery, maxDepth: 8, maxUrls: 25, timeLimit: 500 },
+            { query: subQuery, maxDepth: 3, maxUrls: 100, timeLimit: 500 },
             { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
           )
         )
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     // Step 2.5: Fetch URLs from Deep Research and Use Jina Reader (Limit to 30 URLs)
     console.log('[JINA READER START]🔥 Fetching content with Jina Reader');
     // CHANGE MADE HERE: Limit to 30 URLs (adjust this number here to increase/decrease later)
-    const sourceUrls = research.data.sources.slice(0, 30).map(source => source.url); // Take first 30 URLs
+    const sourceUrls = research.data.sources.slice(0, 45).map(source => source.url); // Take first 30 URLs
     const jinaPromises = sourceUrls.map(async (url) => {
       try {
         const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
@@ -200,14 +200,15 @@ export async function POST(req: Request) {
     const model = genAI.getGenerativeModel({
       model: selectedModel,
       generationConfig: {
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 20000,
-        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 50000,
+        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.2,
       },
     });
 
     const today = getFormattedDate();
 
     const synthesisPrompt = `
+   Always start with  Date ${today} 
 Synthesize the following information into a comprehensive, detailed research report (minimum 2000 words) formatted in Markdown.
 **Most importnat Instructions:**
 - ❌ Never  Ever begin the output with triple backticks '''markdown'' as it will break the markdown parser but generate the report in markdown format.
