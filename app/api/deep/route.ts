@@ -6,6 +6,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY || 'fc-your-key';
 const GOOGLE_API_KEY = process.env.GEMINI_API_KEY || 'your-google-key';
 const FIRECRAWL_URL = 'https://api.firecrawl.dev/v1/deep-research';
+const FIRECRAWL_CRAWL_URL = 'https://api.firecrawl.dev/v1/crawl';
 
 // Types
 interface ResearchParams {
@@ -18,6 +19,7 @@ interface ResearchSource {
   url: string;
   title: string;
   description: string;
+  crawlData?: any; // Added to store deep crawl results
 }
 
 interface ResearchResponse {
@@ -31,29 +33,37 @@ interface ResearchResponse {
   currentDepth?: number;
 }
 
+interface CrawlResponse {
+  success: boolean;
+  id?: string;
+  status?: string;
+  data?: any[];
+}
+
 interface RequestBody {
   query: string;
   params?: ResearchParams;
-  mode?: 'non-think' | 'think'; // Added mode to select model
+  mode?: 'non-think' | 'think';
 }
 
 function getFormattedDate(): string {
   return new Intl.DateTimeFormat('en-US', {
-    year:   'numeric',
-    month:  'long',
-    day:    'numeric'
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
   }).format(new Date());
 }
 
-// Poll status with logging
-async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise<ResearchResponse> {
-  console.log(`[POLLING START] Job ID: ${jobId}, Timeout: ${timeoutMs}ms`);
+// Poll status with logging, updated to handle different endpoints
+async function pollJobStatus(jobId: string, endpoint: 'deep-research' | 'crawl', timeoutMs: number = 900000): Promise<any> {
+  console.log(`[POLLING START] Job ID: ${jobId}, Endpoint: ${endpoint}, Timeout: ${timeoutMs}ms`);
   const startTime = Date.now();
+  const url = `https://api.firecrawl.dev/v1/${endpoint}/${jobId}`;
 
   while (Date.now() - startTime < timeoutMs) {
-    console.log(`[POLLING] Checking status for Job ID: ${jobId}`);
+    console.log(`[POLLING] Checking status for Job ID: ${jobId} on ${endpoint}`);
     try {
-      const statusRes = await axios.get(`${FIRECRAWL_URL}/${jobId}`, {
+      const statusRes = await axios.get(url, {
         headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}` },
       });
       const statusData = statusRes.data;
@@ -70,10 +80,10 @@ async function pollJobStatus(jobId: string, timeoutMs: number = 900000): Promise
     }
   }
   console.error(`[POLLING TIMEOUT] Job ${jobId} exceeded ${timeoutMs}ms`);
-  throw new Error('Research timed out');
+  throw new Error(`${endpoint} job timed out`);
 }
 
-// POST Handler with model selection
+// POST Handler with enhanced deep crawling
 export async function POST(req: Request) {
   console.log('[REQUEST START] Incoming POST request');
 
@@ -123,7 +133,7 @@ export async function POST(req: Request) {
       research = initialResearch;
     } else if (initialResearch.id) {
       console.log(`[FIRECRAWL ASYNC] Job started, polling ID: ${initialResearch.id}`);
-      research = await pollJobStatus(initialResearch.id);
+      research = await pollJobStatus(initialResearch.id, 'deep-research');
     } else {
       console.log('[FIRECRAWL FAIL] No job ID returned');
       return NextResponse.json({ error: 'No job ID returned' }, { status: 500 });
@@ -146,7 +156,7 @@ export async function POST(req: Request) {
           )
         )
       );
-      const secondPassData = await Promise.all(secondPassRes.map((res) => res.data.id ? pollJobStatus(res.data.id) : Promise.resolve(res.data)));
+      const secondPassData = await Promise.all(secondPassRes.map((res) => res.data.id ? pollJobStatus(res.data.id, 'deep-research') : Promise.resolve(res.data)));
       research.data.sources = [...research.data.sources, ...secondPassData.flatMap(d => d.data.sources)];
       research.data.finalAnalysis += '\n\n' + secondPassData.map(d => d.data.finalAnalysis).join('\n');
       console.log(`[REFINE COMPLETE] Added ${research.data.sources.length} total sources`);
@@ -157,38 +167,63 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'No sources found for deep research' }, { status: 404 });
     }
 
+    // Step 2.5: Perform Extremely Deep Crawl on Each Source URL
+    console.log('[DEEP CRAWL START] Initiating deep crawl on source URLs');
+    const sourceUrls = research.data.sources.map(source => source.url);
+    const crawlPromises = sourceUrls.map(async (url) => {
+      try {
+        const crawlRes = await axios.post<CrawlResponse>(
+          FIRECRAWL_CRAWL_URL,
+          {
+            url,
+            limit: 100, // Adjust as needed for depth
+            scrapeOptions: { formats: ['markdown'] },
+            allowBackwardLinks: true, // For extensive crawling
+          },
+          { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
+        );
+        const crawlJob = crawlRes.data;
+        if (crawlJob.id) {
+          const crawlResult = await pollJobStatus(crawlJob.id, 'crawl');
+          return { url, data: crawlResult.data || [] };
+        }
+        return { url, data: crawlJob.data || [] };
+      } catch (error) {
+        console.error(`[DEEP CRAWL ERROR] Failed for ${url}: ${(error as Error).message}`);
+        return { url, data: [] };
+      }
+    });
+
+    const crawlResults = await Promise.all(crawlPromises);
+    console.log(`[DEEP CRAWL COMPLETE] Processed ${crawlResults.length} URLs`);
+
+    // Enhance sources with crawl data
+    const enhancedSources = research.data.sources.map(source => {
+      const crawlResult = crawlResults.find(result => result.url === source.url);
+      return {
+        ...source,
+        crawlData: crawlResult?.data || [],
+      };
+    });
+
     // Step 3: Gemini Synthesis with Model Selection
     console.log('[GEMINI START] Initializing Gemini synthesis');
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-    
-    // Select model based on mode
- 
 
-    // Step 3: Gemini Synthesis with Model Selection
-    console.log('[GEMINI START] Initializing Gemini synthesis');
-  
-    // Select model based on mode
-    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro-exp-03-25'; // Updated 'think' model name
+    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro-exp-03-25';
     console.log(`[MODEL SELECTED] Using ${selectedModel} based on mode: ${mode}`);
-    
+
     const model = genAI.getGenerativeModel({
       model: selectedModel,
       generationConfig: {
-        // Adjusted token/temp based on the new 'think' model potentially having different characteristics or defaults.
-        // Keeping the previous logic, but you might want to fine-tune these if needed for the experimental model.
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 20000, 
-        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,     
+        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 20000,
+        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.3,
       },
     });
 
-    
-
     const today = getFormattedDate();
 
-
-
-//use gemini 2.5 prev 
-const synthesisPrompt = `
+    const synthesisPrompt = `
 Synthesize the following information into a comprehensive, detailed research report (minimum 2000 words) formatted in Markdown.
 
 **Core Instructions:**
@@ -267,7 +302,7 @@ Synthesize the following information into a comprehensive, detailed research rep
 
 Input Data:
 Sources:
-${JSON.stringify(research.data.sources, null, 2)}
+${JSON.stringify(enhancedSources, null, 2)}
 
 Initial Analysis:
 ${research.data.finalAnalysis}
@@ -279,16 +314,15 @@ IMPORTANT:
 - Use tables early and strategically
 - Base ALL content strictly on provided sources
 - Make decisive conclusions and recommendations
+- Each source includes 'crawlData', which contains detailed markdown content from a deep crawl of that URL and its subpages. Use this data to enhance the report with in-depth information.
 `;
-    console.log(`[GEMINI PROMPT] ${synthesisPrompt.substring(0, 500)}...`); // Log truncated prompt
+    console.log(`[GEMINI PROMPT] ${synthesisPrompt.substring(0, 500)}...`);
 
     const geminiRes = await model.generateContent(synthesisPrompt);
-    // Add safety check for response structure
     const responseText = geminiRes.response?.text();
     if (!responseText) {
-        console.error("[GEMINI ERROR] No text generated in response:", geminiRes.response);
-        // Consider checking finishReason: geminiRes.response?.candidates?.[0]?.finishReason
-        throw new Error('Gemini failed to generate a valid report text.');
+      console.error("[GEMINI ERROR] No text generated in response:", geminiRes.response);
+      throw new Error('Gemini failed to generate a valid report text.');
     }
     const report = responseText;
     console.log(`[GEMINI RESULT] Report Length: ${report.length}`);
@@ -298,11 +332,11 @@ IMPORTANT:
     const response = {
       success: true,
       report,
-      sources: research.data.sources,
+      sources: enhancedSources,
       originalAnalysis: research.data.finalAnalysis,
       depthAchieved: research.currentDepth || 'unknown',
-      sourceCount: research.data.sources.length,
-      modelUsed: selectedModel, // Include model used in response
+      sourceCount: enhancedSources.length,
+      modelUsed: selectedModel,
     };
     console.log(`[RESPONSE SENT] ${JSON.stringify(response, null, 2)}`);
     return NextResponse.json(response);
