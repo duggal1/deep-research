@@ -2,45 +2,21 @@ import { ArrowRightIcon } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
-
 import { Button } from "@/components/ui/button";
-
 import Container from "@/components/Contanier";
 
 const Hero = () => {
     return (
         <div className="relative flex flex-col justify-center items-center py-20 w-full">
-
-            <div className="lg:hidden top-0 left-1/2 -z-10 absolute flex bg-blue-500 blur-[10rem] rounded-full size-40 -translate-x-1/2"></div>
+            {/* Dramatically enhanced primary glow effect - much more visible */}
+            <div className="lg:hidden top-0 left-1/2 -z-10 absolute bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400 shadow-[0_0_100px_50px_rgba(59,130,246,0.8)] blur-[5rem] rounded-full size-64 -translate-x-1/2 animate-pulse">
+            </div>
+            
+            {/* Second very visible glow element */}
+            <div className="lg:hidden top-10 right-1/3 -z-10 absolute bg-blue-400 opacity-90 shadow-[0_0_50px_25px_rgba(96,165,250,0.7)] blur-[4rem] rounded-full size-32">
+            </div>
 
             <div className="relative flex flex-col justify-center items-center gap-y-8">
-                {/* <Container className="hidden top-0 -z-10 absolute inset-0 lg:flex flex-col justify-center items-center mb-auto w-full min-h-screen">
-                    <OrbitingCircles
-                        speed={0.5}
-                        radius={300}
-                    >
-                        <Icons.circle1 className="size-4 text-foreground/70" />
-                        <Icons.circle2 className="size-1 text-foreground/80" />
-                    </OrbitingCircles>
-                    <OrbitingCircles
-                        speed={0.25}
-                        radius={400}
-                    >
-                        <Icons.circle2 className="size-1 text-foreground/50" />
-                        <Icons.circle1 className="size-4 text-foreground/60" />
-                        <Icons.circle2 className="size-1 text-foreground/90" />
-                    </OrbitingCircles>
-                    <OrbitingCircles
-                        speed={0.1}
-                        radius={500}
-                    >
-                        <Icons.circle2 className="size-1 text-foreground/50" />
-                        <Icons.circle2 className="size-1 text-foreground/90" />
-                        <Icons.circle1 className="size-4 text-foreground/60" />
-                        <Icons.circle2 className="size-1 text-foreground/90" />
-                    </OrbitingCircles>
-                </Container> */}
-
                 <div className="flex flex-col justify-center items-center gap-y-4 text-center">
                     <Container className="hidden lg:block relative overflow-hidden">
                         <button className="group relative grid shadow-[0_1000px_0_0_hsl(0_0%_15%)_inset] mx-auto px-2 py-1 rounded-full overflow-hidden transition-colors duration-200">
@@ -82,8 +58,13 @@ const Hero = () => {
                     </Container>
                     <Container delay={0.3} className="relative">
                         <div className="relative backdrop-blur-lg mx-auto mt-10 p-2 border border-border rounded-xl lg:rounded-[32px] max-w-6xl">
-                            <div className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-gradient-to-r from-sky-500 to-blue-600 blur-[4rem] lg:blur-[10rem] w-1/2 lg:w-3/4 h-1/4 -translate-x-1/2 -translate-y-1/2 animate-image-glow"></div>
-                            <div className="hidden lg:block -top-1/8 left-1/2 -z-20 absolute inset-0 bg-blue-600 blur-[10rem] w-1/4 h-1/4 -translate-x-1/2 -translate-y-1/2 animate-image-glow"></div>
+                            {/* Dramatically enhanced dashboard glow */}
+                            <div className="top-1/8 left-1/2 -z-10 absolute inset-0 bg-gradient-to-r from-blue-600 to-sky-400 shadow-[0_0_150px_75px_rgba(37,99,235,0.7)] blur-[6rem] w-3/4 h-1/2 -translate-x-1/2 -translate-y-1/2">
+                            </div>
+                            
+                            {/* Additional glow source */}
+                            <div className="hidden lg:block right-1/4 bottom-1/4 -z-20 absolute bg-blue-500 shadow-[0_0_100px_50px_rgba(59,130,246,0.8)] blur-[8rem] rounded-full w-1/3 h-1/3">
+                            </div>
 
                             <div className="bg-background border border-border rounded-lg lg:rounded-[22px]">
                                 <Image
@@ -94,15 +75,13 @@ const Hero = () => {
                                     className="rounded-lg lg:rounded-[20px]"
                                 />
                             </div>
-
                         </div>
                         <div className="bottom-0 absolute inset-x-0 bg-gradient-to-t from-background to-transparent w-full h-1/2"></div>
                     </Container>
-
                 </div>
             </div>
         </div>
     )
 };
 
-export default Hero
+export default Hero;
