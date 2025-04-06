@@ -1,4 +1,7 @@
 // crawl.mjs
+
+//ONE OF THE BEST OPEN SOURCE CRAWLERS I HAVE EVER TESTED 
+//🎉TRULY AMAZING
 import fetch from 'node-fetch';
 import pLimit from 'p-limit';
 
