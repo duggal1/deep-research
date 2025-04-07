@@ -112,7 +112,7 @@ export async function POST(req: Request) {
       {
         query,
         maxDepth: params?.maxDepth || 3,
-        maxUrls: params?.maxUrls || 150, // Firecrawl can fetch up to 60, we'll filter later
+        maxUrls: params?.maxUrls || 180,
         timeLimit: params?.timeLimit || 600,
       },
       { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
@@ -145,7 +145,7 @@ export async function POST(req: Request) {
         subQueries.map((subQuery) =>
           axios.post<ResearchResponse>(
             FIRECRAWL_URL,
-            { query: subQuery, maxDepth: 3, maxUrls: 100, timeLimit: 500 },
+            { query: subQuery, maxDepth: 2, maxUrls: 60, timeLimit: 500 },
             { headers: { Authorization: `Bearer ${FIRECRAWL_API_KEY}`, 'Content-Type': 'application/json' } }
           )
         )
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     // Step 2.5: Fetch URLs from Deep Research and Use Jina Reader (Limit to 30 URLs)
     console.log('[JINA READER START]🔥 Fetching content with Jina Reader');
     // CHANGE MADE HERE: Limit to 30 URLs (adjust this number here to increase/decrease later)
-    const sourceUrls = research.data.sources.slice(0, 45).map(source => source.url); // Take first 30 URLs
+    const sourceUrls = research.data.sources.slice(0, 100).map(source => source.url); // Take first 30 URLs
     const jinaPromises = sourceUrls.map(async (url) => {
       try {
         const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
@@ -191,11 +191,11 @@ export async function POST(req: Request) {
     });
 
     // Step 3: Gemini Synthesis with Model Selection
-    console.log('[GEMINI START] Initializing Gemini synthesis');
+    console.log('[GEMINI START]🔥✅ Initializing Gemini synthesis');
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 
     const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro-exp-03-25';
-    console.log(`[MODEL SELECTED] Using ${selectedModel} based on mode: ${mode}`);
+    console.log(`[MODEL SELECTED]🚀 Using ${selectedModel} based on mode: ${mode}`);
 
     const model = genAI.getGenerativeModel({
       model: selectedModel,
@@ -303,7 +303,7 @@ IMPORTANT:
 - Make decisive conclusions and recommendations
 - Each source includes 'crawlData', which contains detailed markdown content from Jina Reader for that URL. Use this data to enhance the report with in-depth information.
 `;
-    console.log(`[GEMINI PROMPT] ${synthesisPrompt.substring(0, 500)}...`);
+    console.log(`[GEMINI PROMPT]🚀${synthesisPrompt.substring(0, 500)}...`);
 
     const geminiRes = await model.generateContent(synthesisPrompt);
     const responseText = geminiRes.response?.text();
@@ -312,10 +312,10 @@ IMPORTANT:
       throw new Error('Gemini failed to generate a valid report text.');
     }
     const report = responseText;
-    console.log(`[GEMINI RESULT] Report Length: ${report.length}`);
+    console.log(`[GEMINI RESULT] ⚡️Report Length: ${report.length}`);
 
     // Step 4: Return Enhanced Result
-    console.log('[RESPONSE PREP] Preparing final response');
+    console.log('[RESPONSE PREP]🔥 Preparing final response');
     const response = {
       success: true,
       report,
@@ -325,11 +325,11 @@ IMPORTANT:
       sourceCount: enhancedSources.length,
       modelUsed: selectedModel,
     };
-    console.log(`[RESPONSE SENT] ${JSON.stringify(response, null, 2)}`);
+    console.log(`[RESPONSE SENT] ✅${JSON.stringify(response, null, 2)}`);
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error(`[ERROR] Shit hit the fan: ${(error as Error).message}`);
+    console.error(`[ERROR]😢 ❌Shit hit the fan either timeout is way too long or depth is > than 12 or something else happened: ${(error as Error).message}`);
     return NextResponse.json({ error: 'Server error: ' + (error as Error).message }, { status: 500 });
   }
 }
