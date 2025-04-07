@@ -56,6 +56,22 @@ export default function Timelines() {
             <li>Advanced Blaze Reasoner v2 with argument synthesis and contradiction detection</li>
             <li>Full-text traceability for every citation in the final answer</li>
             <li>Contextual follow-up system (auto-suggested sub-questions)</li>
+            <li>Currently scoring 32% on humanity&apos;s last exam, with projections reaching 41.2% soon</li>
+          </ul>
+        </div>
+      ),
+    },
+    {
+      title: "Coming Soon 🚧",
+      content: (
+        <div className="font-serif">
+          <p className="mb-4 font-normal text-neutral-800 dark:text-neutral-200 text-xs md:text-sm">
+            Upcoming features and improvements for Blaze include:
+          </p>
+          <ul className="space-y-1 ml-4 font-normal text-neutral-800 dark:text-neutral-200 text-xs md:text-sm list-disc">
+            <li>Enhanced multi-language support for global research capabilities</li>
+            <li>Blaze Reasoner v3 with improved reasoning and predictive analytics</li>
+            <li>Integration with external APIs for real-time data enrichment</li>
           </ul>
         </div>
       ),

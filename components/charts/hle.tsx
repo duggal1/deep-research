@@ -101,7 +101,10 @@ const Hle = () => {
   };
 
   // --- Custom Dot (Keep enhanced style) ---
-  interface CustomDotProps extends DotProps { payload?: any; }
+  interface CustomDotProps extends Omit<DotProps, 'key'> {
+    payload?: any;
+  }
+
   const CustomDot: React.FC<CustomDotProps> = (props) => {
     const { cx, cy, payload } = props;
     if (typeof cx !== 'number' || typeof cy !== 'number' || !isClient) return null;
@@ -219,12 +222,18 @@ const Hle = () => {
               stroke="url(#modernLineGradient)" // Sharp, vibrant gradient
               strokeWidth={3} // Slightly thicker for better visibility
               strokeLinecap="round"
-              dot={(props) => <CustomDot {...props} />} // Custom dots
-              activeDot={(props: any) => ( // Enhanced active dot with glow
-                 <g filter="url(#dotGlow)">
-                   <circle {...props} r={8} fill="#6366f1" stroke={colors.background} strokeWidth={2.5} />
-                 </g>
-              )}
+              dot={(props) => {
+                const { key, ...restProps } = props;
+                return <CustomDot key={key} {...restProps} />;
+              }} // Custom dots
+              activeDot={(props: any) => { // Enhanced active dot with glow
+                const { key, ...restProps } = props;
+                return (
+                  <g key={key} filter="url(#dotGlow)">
+                    <circle {...restProps} r={8} fill="#6366f1" stroke={colors.background} strokeWidth={2.5} />
+                  </g>
+                );
+              }}
               animationDuration={1200} // Slightly faster than background for effect
             />
           </LineChart>
