@@ -131,11 +131,12 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
     // Only include the first two messages (one user, one AI) for this example
     ].slice(0, 2), []);
 
-    // State for visible messages
+    // State for visible messages - initialize with empty array to control the flow
     const [visibleMessages, setVisibleMessages] = useState<Message[]>([])
     const [isTyping, setIsTyping] = useState(false)
     const [currentMessageIndex, setCurrentMessageIndex] = useState(0)
     const [typingText, setTypingText] = useState('')
+    const [animationComplete, setAnimationComplete] = useState(false) // Track if animation is complete
     const chatContainerRef = useRef<HTMLDivElement>(null)
     const prefersReducedMotion = useReducedMotion()
 
@@ -152,10 +153,16 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
 
     // Effect to handle message display and typing animation
     useEffect(() => {
-        // If user prefers reduced motion, just show all messages
+        // If animation is already complete, don't do anything
+        if (animationComplete) {
+            return;
+        }
+
+        // If user prefers reduced motion, just show all messages immediately
         if (prefersReducedMotion) {
             setVisibleMessages(allMessages.slice(0, 2)); // Show the messages immediately
             setCurrentMessageIndex(2); // Set index past available messages
+            setAnimationComplete(true); // Mark as complete
             return;
         }
 
@@ -166,14 +173,9 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             return
         }
 
-        // If we've shown all messages, do nothing further for this example
+        // If we've shown all messages, mark as complete
         if (currentMessageIndex >= allMessages.length) {
-             // Optional: Add a delay and reset if you want it to loop
-            const resetTimer = setTimeout(() => {
-                setVisibleMessages([allMessages[0]]);
-                setCurrentMessageIndex(1);
-            }, 100000); // Reset after 5 seconds
-            return () => clearTimeout(resetTimer);
+            setAnimationComplete(true); // Mark as complete to prevent further updates
             return;
         }
 
@@ -237,6 +239,8 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                                 // setTypingText(''); // Don't clear typing text here
                                 setVisibleMessages(prev => [...prev, { ...nextMessage, text: accumulatedText }]); // Add final message
                                 setCurrentMessageIndex(prev => prev + 1);
+                                // Mark animation as complete since this is the last message
+                                setAnimationComplete(true);
                             }, 400);
                         }
                     };
@@ -253,7 +257,7 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
 
         return () => clearTimeout(timer)
     // Ensure all dependencies are included
-    }, [visibleMessages, currentMessageIndex, prefersReducedMotion, allMessages])
+    }, [visibleMessages, currentMessageIndex, prefersReducedMotion, allMessages, animationComplete])
 
     // Effect to scroll to bottom when messages change or typing occurs
     useEffect(() => {
