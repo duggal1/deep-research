@@ -11,7 +11,7 @@ interface CardProps {
   onMouseMove?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseEnter?: (e: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: (e: React.MouseEvent<HTMLDivElement>) => void;
-  cardRef?: React.RefObject<HTMLDivElement>;
+  cardRef?: React.RefObject<HTMLDivElement | null>;
   isHovered: boolean;
   style?: React.CSSProperties; // Add style prop to support custom styling
 }
@@ -609,16 +609,15 @@ const Card3: React.FC = () => {
 const EffectCards: React.FC = () => {
   return (
     // Elegant background with subtle pattern
-    <div className="bg-white dark:bg-black py-16 min-h-screen dar">
+    (<div className="bg-white dark:bg-black py-16 min-h-screen dar">
       {/* Subtle grid pattern overlay */}
       <div className="absolute inset-0 bg-grid-pattern opacity-5 dark:opacity-10 pointer-events-none" />
-
       <div className="z-10 relative gap-12 grid md:grid-cols-3 mx-auto p-8 max-w-7xl"> {/* Increased gap for more breathing room */}
         <Card1 />
         <Card2 />
         <Card3 />
       </div>
-    </div>
+    </div>)
   );
 };
 

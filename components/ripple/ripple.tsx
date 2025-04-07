@@ -2,7 +2,6 @@ import React, { useState, useEffect, CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import Images from "@/app/(Marketing)/components/Svgs/svg";
 
-
 interface OrbitingIconProps {
   Icon: React.FC<any>;
   radius: number;
@@ -38,7 +37,7 @@ const OrbitingIcon: React.FC<OrbitingIconProps> = ({
   
   return (
     <div
-      className="absolute flex justify-center items-center bg-white dark:bg-gray-900 shadow-lg p-2 rounded-full hover:scale-110 transition-opacity transition-transform -translate-x-1/2 -translate-y-1/2 duration-500 transform"
+      className="absolute flex justify-center items-center bg-white/80 dark:bg-gray-800/90 shadow-lg backdrop-blur-sm p-2 border border-gray-100 dark:border-gray-700 rounded-full hover:scale-110 transition-all -translate-x-1/2 -translate-y-1/2 duration-300 transform"
       style={{
         left: `calc(50% + ${x}px)`,
         top: `calc(50% + ${y}px)`,
@@ -60,8 +59,8 @@ interface InteractiveRippleProps {
 
 const InteractiveRipple: React.FC<InteractiveRippleProps> = ({
   mainCircleSize = 210,
-  mainCircleOpacity = 0.15,
-  numCircles = 5,
+  mainCircleOpacity = 0.24,
+  numCircles = 8,
   className,
 }) => {
   // Select some icons from your Images object
@@ -89,25 +88,26 @@ const InteractiveRipple: React.FC<InteractiveRippleProps> = ({
   ];
 
   return (
-    <div className="relative flex justify-center items-center bg-gradient-to-br from-gray-50 dark:from-gray-900 to-gray-100 dark:to-gray-800 w-full h-full min-h-screen overflow-hidden">
+    <div className="relative flex justify-center items-center bg-gradient-to-br from-gray-50/80 dark:from-gray-900/80 to-gray-100/80 dark:to-gray-800/80 backdrop-blur-sm w-full h-full min-h-screen overflow-hidden">
       <div
         className={cn(
           "relative w-full h-full flex items-center justify-center",
           className
         )}
       >
-        {/* Ripple effect */}
-        <div className="absolute inset-0 flex justify-center items-center pointer-events-none select-none [mask-image:linear-gradient(to_bottom,white,transparent)]">
+        {/* Modern Ripple effect using the provided implementation */}
+        <div className="absolute inset-0 pointer-events-none select-none [mask-image:linear-gradient(to_bottom,white,transparent)]">
           {Array.from({ length: numCircles }, (_, i) => {
-            const size = mainCircleSize + i * 90;
-            const opacity = mainCircleOpacity - i * 0.02;
-            const animationDelay = `${i * 0.1}s`;
+            const size = mainCircleSize + i * 70;
+            const opacity = mainCircleOpacity - i * 0.03;
+            const animationDelay = `${i * 0.06}s`;
             const borderStyle = i === numCircles - 1 ? "dashed" : "solid";
+            const borderOpacity = 5 + i * 5;
             
             return (
               <div
                 key={i}
-                className="absolute border rounded-full animate-ripple"
+                className="absolute bg-foreground/25 border rounded-full animate-ripple"
                 style={{
                   width: `${size}px`,
                   height: `${size}px`,
@@ -115,10 +115,10 @@ const InteractiveRipple: React.FC<InteractiveRippleProps> = ({
                   animationDelay,
                   borderStyle,
                   borderWidth: "1px",
-                  borderColor: "currentColor",
+                  borderColor: `hsl(var(--foreground), ${borderOpacity / 100})`,
                   top: "50%",
                   left: "50%",
-                  transform: "translate(-50%, -50%)",
+                  transform: "translate(-50%, -50%) scale(1)",
                 }}
               />
             );
@@ -126,7 +126,7 @@ const InteractiveRipple: React.FC<InteractiveRippleProps> = ({
         </div>
         
         {/* Center element */}
-        <div className="z-10 relative flex justify-center items-center bg-white dark:bg-gray-800 shadow-lg p-6 rounded-full w-32 h-32">
+        <div className="z-10 relative flex justify-center items-center bg-white/90 dark:bg-gray-800/90 shadow-xl backdrop-blur-md p-6 border border-gray-100 dark:border-gray-700 rounded-full w-32 h-32">
           <div className="bg-clip-text bg-gradient-to-r from-blue-500 to-purple-600 font-bold text-transparent text-5xl">
             <span>+</span>
           </div>
@@ -140,5 +140,8 @@ const InteractiveRipple: React.FC<InteractiveRippleProps> = ({
     </div>
   );
 };
+
+// Add a display name for better debugging
+InteractiveRipple.displayName = "InteractiveRipple";
 
 export default InteractiveRipple;

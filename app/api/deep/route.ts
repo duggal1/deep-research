@@ -194,14 +194,14 @@ export async function POST(req: Request) {
     console.log('[GEMINI START]🔥✅ Initializing Gemini synthesis');
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
 
-    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.5-pro-exp-03-25';
+    const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.0-flash-thinking-exp-01-21';
     console.log(`[MODEL SELECTED]🚀 Using ${selectedModel} based on mode: ${mode}`);
 
     const model = genAI.getGenerativeModel({
       model: selectedModel,
       generationConfig: {
-        maxOutputTokens: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 55000 : 50000,
-        temperature: selectedModel === 'gemini-2.5-pro-exp-03-25' ? 0.1 : 0.2,
+        maxOutputTokens: selectedModel === 'gemini-2.0-flash-thinking-exp-01-21' ? 55000 : 50000,
+        temperature: selectedModel === 'gemini-2.0-flash-thinking-exp-01-21' ? 0.1 : 0.2,
       },
     });
 
@@ -209,7 +209,7 @@ export async function POST(req: Request) {
 
     const synthesisPrompt = `
    Always start with  Date ${today} 
-Synthesize the following information into a comprehensive, detailed research report (minimum 2000 words) formatted in Markdown.
+Synthesize the following information into a comprehensive, detailed research report (minimum 3000 words) formatted in Markdown.
 **Most importnat Instructions:**
 - ❌ Never  Ever begin the output with triple backticks '''markdown'' as it will break the markdown parser but generate the report in markdown format.
 
