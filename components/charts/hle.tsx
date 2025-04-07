@@ -1,20 +1,43 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
   ResponsiveContainer,
   ReferenceLine,
-  Area
+  Area,
+  DotProps
 } from 'recharts';
+
+// --- Theme Colors (Ensure these match your globals.css or Tailwind config) ---
+const colors = {
+  background: 'hsl(var(--background))',
+  foreground: 'hsl(var(--foreground))',
+  primary: 'hsl(var(--primary))', // Main accent (e.g., Violet)
+  primaryMuted: 'hsl(var(--primary) / 0.7)', // Slightly muted primary
+  primaryVibrant: 'hsl(var(--primary-vibrant, var(--primary)))', // A potentially brighter variant
+  primaryUltraMuted: 'hsl(var(--primary) / 0.25)', // Very soft for bg stroke/glow
+  mutedForeground: 'hsl(var(--muted-foreground))', // Subtle text/ticks
+  border: 'hsl(var(--border))',             // Subtle borders
+  white: '#FFFFFF',
+  black: '#000000',
+};
+
+const getPrimaryWithOpacity = (opacity: number) => `hsl(var(--primary) / ${opacity})`;
+const getVibrantWithOpacity = (opacity: number) => `hsl(var(--primary-vibrant, var(--primary)) / ${opacity})`;
+
 
 const Hle = () => {
   const [currentScore, setCurrentScore] = useState(33.0);
-  
-  // Sample data for AI model scores
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Sample data (kept the same)
   const data = [
     { date: '2024-01-24', model: 'Grok-2', score: 5 },
     { date: '2024-04-24', model: 'ChatGPT-4 Omni', score: 5 },
@@ -24,210 +47,203 @@ const Hle = () => {
     { date: '2025-03-25', model: 'OpenAI O3 Mini', score: 9 },
     { date: '2025-04-04', model: 'O3 Mini High', score: 11 },
     { date: '2025-04-25', model: 'OpenAI Deep Research', score: 28 },
-    { date: '2025-04-25', model: 'Blaze Deep Research', score: 33 }
+    { date: '2025-04-25', model: 'Blaze Deep Research', score: 33 } // Latest
   ];
-  
-  // Update the score in a loop
+
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentScore(prev => {
-        // Loop between 31 and 36
         const newScore = prev + 0.1;
         return newScore > 36 ? 31 : parseFloat(newScore.toFixed(1));
       });
     }, 100);
-    
     return () => clearInterval(interval);
   }, []);
-  
+
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
   };
 
+  // --- Custom Tooltip (Keep refined style) ---
   interface CustomTooltipProps {
-    active: boolean;
-    payload: any[]; // Specify the type of payload more precisely if possible
+    active?: boolean; payload?: any[]; label?: string;
   }
-
   const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      const isLatest = data.model === 'Blaze Deep Research';
-      
+     if (active && payload && payload.length) {
+      // Ensure we read from the *correct* payload entry if multiple lines exist
+      const dataPayload = payload.find(p => p.dataKey === 'score'); // Find payload for the main line
+      if (!dataPayload) return null; // Should not happen if configured correctly
+
+      const dataPoint = dataPayload.payload;
+      const isLatest = dataPoint.model === 'Blaze Deep Research';
+      const score = isLatest ? currentScore : dataPoint.score;
+
       return (
-        <div className="bg-white/80 dark:bg-black/80 shadow-2xl backdrop-blur-lg p-4 border border-gray-100 dark:border-gray-800 rounded-xl">
-          <div className={`flex items-center gap-2 ${isLatest ? "text-violet-600 dark:text-violet-400" : "text-gray-800 dark:text-gray-200"}`}>
-            <div className="bg-violet-500 rounded-full w-2 h-2"></div>
-            <p className="font-serif font-medium">{data.model}</p>
+        <div className="bg-white/70 dark:bg-black/70 shadow-xl backdrop-blur-md p-3 border dark:border-white/10 border-black/10 rounded-lg overflow-hidden font-serif text-sm">
+          <div className="flex justify-between items-center gap-2 mb-1.5">
+            <span className="font-semibold text-gray-900 dark:text-gray-50">{dataPoint.model}</span>
             {isLatest && (
-              <span className="bg-violet-100 dark:bg-violet-900/40 px-2 py-0.5 rounded-full font-serif text-violet-600 dark:text-violet-400 text-xs">Latest</span>
+              <span className="bg-primary/10 dark:bg-primary/20 px-2 py-0.5 rounded-full font-medium text-[10px] text-primary dark:text-primary">Latest</span>
             )}
           </div>
-          <p className="mt-1 font-serif text-gray-500 dark:text-gray-400 text-xs">{formatDate(data.date)}</p>
-          <p className="bg-clip-text bg-gradient-to-r from-violet-600 dark:from-violet-400 to-indigo-600 dark:to-indigo-400 mt-2 font-serif font-bold text-transparent text-3xl">
-            {isLatest ? currentScore.toFixed(1) : data.score}%
-          </p>
+          <p className="mb-2 text-muted-foreground text-xs">{formatDate(dataPoint.date)}</p>
+          <div className="flex items-baseline gap-1">
+             <span className="bg-clip-text bg-gradient-to-r from-primary via-primary-vibrant to-primary-muted font-bold text-transparent text-2xl">
+               {score.toFixed(1)}
+             </span>
+             <span className="text-muted-foreground text-xs">% Score</span>
+          </div>
         </div>
       );
     }
     return null;
   };
 
-  interface CustomDotProps {
-    cx: number;
-    cy: number;
-    payload: any;
-  }
-
+  // --- Custom Dot (Keep enhanced style) ---
+  interface CustomDotProps extends DotProps { payload?: any; }
   const CustomDot: React.FC<CustomDotProps> = (props) => {
     const { cx, cy, payload } = props;
-    const isLatest = payload.model === 'Blaze Deep Research';
-    const isHighScore = payload.score >= 20;
-    
+    if (typeof cx !== 'number' || typeof cy !== 'number' || !isClient) return null;
+
+    const isLatest = payload?.model === 'Blaze Deep Research';
+    const isHighScore = payload?.score >= 20 && !isLatest;
+    const primaryColor = colors.primary;
+    const vibrantColor = colors.primaryVibrant;
+    const backgroundColor = colors.background;
+
     if (isLatest) {
       return (
-        <g>
-          <circle 
-            cx={cx} 
-            cy={cy} 
-            r={14} 
-            fill="rgba(139, 92, 246, 0.15)" 
-            className="animate-ping"
-          />
-          <circle 
-            cx={cx} 
-            cy={cy} 
-            r={10} 
-            fill="rgba(139, 92, 246, 0.3)" 
-          />
-          <circle cx={cx} cy={cy} r={5} fill="#8B5CF6" />
-        </g>
-      );
-    } else if (isHighScore) {
-      return (
-        <g>
-          <circle cx={cx} cy={cy} r={6} fill="rgba(139, 92, 246, 0.2)" />
-          <circle cx={cx} cy={cy} r={4} fill="#8B5CF6" />
+        <g filter="url(#dotGlow)">
+          <circle cx={cx} cy={cy} r={10} fill={getVibrantWithOpacity(0.1)} className="animate-ping" style={{ animationDuration: '1.8s' }} />
+          <circle cx={cx} cy={cy} r={7} fill={getVibrantWithOpacity(0.15)} />
+          <circle cx={cx} cy={cy} r={4.5} fill={vibrantColor} stroke={backgroundColor} strokeWidth={1.5} />
         </g>
       );
     }
-    
-    return (
-      <circle cx={cx} cy={cy} r={3} fill="#8B5CF6" stroke="#fff" strokeWidth={1} />
-    );
+    if (isHighScore) {
+      return <circle cx={cx} cy={cy} r={4} fill={primaryColor} stroke={backgroundColor} strokeWidth={1.5} />;
+    }
+    return <circle cx={cx} cy={cy} r={2.5} fill={getPrimaryWithOpacity(0.6)} />;
   };
 
-  return (
-    <div className="shadow-xl p-8 rounded-xl w-full">
-      <div className="flex justify-between items-start mb-8">
-        <div>
-          <h2 className="font-serif font-bold text-gray-900 dark:text-white text-2xl tracking-tight">AI Model Performance</h2>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="inline-block bg-violet-500 rounded-full w-2 h-2"></span>
-            <span className="font-serif text-gray-500 dark:text-gray-400 text-sm">Intelligence Score (%)</span>
-          </div>
-        </div>
-        <div className="relative flex items-center animate-pulse">
 
-          <div className='relative flex justify-center items-center bg-black dark:bg-gray-800 rounded-md'>
-          <div className="font-bold text-gray-50 text-serif dark:text-gray-900 dark:font">
-          {currentScore.toFixed(1)}
-          </div>
-          </div>
+  // --- Main Component Render ---
+  return (
+    <div className="bg-gradient-to-br from-white dark:from-gray-900 via-white dark:via-gray-900 to-gray-50/50 dark:to-black shadow-lg p-4 border dark:border-white/5 border-black/5 rounded-xl w-full font-serif">
+      {/* Header Section - More compact and modern */}
+      <div className="flex flex-row justify-between items-center mb-4">
+        <div>
+          <h2 className="font-bold text-gray-900 dark:text-white text-lg tracking-tight">AI Performance Metrics</h2>
+          <p className="mt-0.5 text-muted-foreground text-xs">Intelligence Score Evolution</p>
+        </div>
+        <div className="flex items-center gap-2 bg-primary/5 dark:bg-primary/10 px-3 py-1 border border-primary/10 dark:border-primary/20 rounded-full">
+           <span className="relative flex w-2 h-2"><span className="inline-flex absolute bg-primary/70 opacity-75 rounded-full w-full h-full animate-ping"></span><span className={`relative inline-flex rounded-full h-2 w-2 bg-primary`}></span></span>
+           <span className="font-medium text-primary/90 dark:text-primary/90 text-xs">Live:</span>
+           <span className="bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500 font-bold text-transparent text-base">{currentScore.toFixed(1)}%</span>
         </div>
       </div>
-      
-      <div className="h-96">
+
+      {/* Chart Container - Reduced height */}
+      <div className="h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{ top: 20, right: 20, left: 10, bottom: 20 }}
-          >
+          <LineChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
             <defs>
-              <linearGradient id="scoreGradient" x1="0" y1="0" x2="1" y2="0">
-                <stop offset="0%" stopColor="#8B5CF6" stopOpacity={1} />
-                <stop offset="100%" stopColor="#6366F1" stopOpacity={1} />
+              {/* Gradient for the sharp foreground line */}
+              <linearGradient id="modernLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stopColor={colors.primaryVibrant} />
+                <stop offset="50%" stopColor={colors.primary} />
+                <stop offset="100%" stopColor={colors.primaryVibrant} />
               </linearGradient>
-              <linearGradient id="scoreAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.3} />
-                <stop offset="100%" stopColor="#6366F1" stopOpacity={0} />
+
+              {/* Enhanced Gradient for the underlying background stroke */}
+              <linearGradient id="backgroundStrokeGradient" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.15} />
+                  <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#6366f1" stopOpacity={0.15} />
               </linearGradient>
+
+              {/* Enhanced Area Fill Gradient */}
+              <linearGradient id="modernAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.3} />
+                <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
+              </linearGradient>
+
+              {/* SVG Filter for Dot Glow (Keep) */}
+              <filter id="dotGlow" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+
+              {/* SVG Filter for Background Stroke Blur (Optional) */}
+              <filter id="lineBlur" x="-50%" y="-50%" width="200%" height="200%">
+                 <feGaussianBlur stdDeviation="3" result="blurredLine" /> {/* Adjust stdDeviation for more/less blur */}
+              </filter>
+
             </defs>
-            
-            <CartesianGrid 
-              strokeDasharray="3 3" 
-              vertical={false} 
-              stroke="rgba(156, 163, 175, 0.1)" 
-            />
-            
-            <XAxis 
-              dataKey="date" 
-              tickFormatter={formatDate}
-              tick={{ fill: 'currentColor', fontSize: 12, fontFamily: 'serif' }}
-              axisLine={{ stroke: 'rgba(156, 163, 175, 0.1)' }}
-              tickLine={false}
-              dy={10}
-            />
-            
-            <YAxis 
-              tickFormatter={(value) => `${value}%`}
-              tick={{ fill: 'currentColor', fontSize: 12, fontFamily: 'serif' }}
-              axisLine={false}
-              tickLine={false}
-              domain={[0, 40]}
-              ticks={[0, 5, 10, 15, 20, 25, 30, 35, 40]}
-            />
-            
-            <Tooltip 
-              content={<CustomTooltip active={false} payload={[]} />}
-              cursor={false}
-            />
-            
-            <ReferenceLine 
-              y={20} 
-              stroke="rgba(139, 92, 246, 0.3)" 
-              strokeDasharray="4 4" 
-              label={{ 
-                value: 'Advanced AI Threshold', 
-                position: 'insideBottomRight',
-                fill: '#8B5CF6',
-                fontSize: 11,
-                fontFamily: 'serif'
-              }} 
-            />
-            
-            <Area
-              type="monotone"
-              dataKey="score"
-              stroke="none"
-              fill="url(#scoreAreaGradient)"
-              fillOpacity={1}
-            />
-            
+
+            {/* Axes and Reference Line (Keep minimal) */}
+            <XAxis dataKey="date" tickFormatter={formatDate} axisLine={false} tickLine={false} tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }} dy={10} interval="preserveStartEnd" />
+            <YAxis tickFormatter={(value) => `${value}%`} axisLine={false} tickLine={false} tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }} domain={[0, 'dataMax + 5']} width={40} />
+            <ReferenceLine y={20} stroke={colors.border} strokeDasharray="2 2" label={{ value: 'Advanced', position: 'insideTopRight', fill: colors.mutedForeground, fontSize: 10, fontFamily: 'inherit', dy: -5, dx: -10 }} />
+
+            {/* Tooltip (Adjusted payload logic in component) */}
+            <Tooltip content={<CustomTooltip />} cursor={{ stroke: colors.border, strokeDasharray: '4 4' }} />
+
+            {/* Area Fill (Subtle) */}
+            <Area type="monotone" dataKey="score" stroke="none" fill="url(#modernAreaGradient)" />
+
+             {/* =============================================== */}
+            {/* == ENHANCED BACKGROUND STROKE LINE (Rendered FIRST) == */}
+            {/* =============================================== */}
             <Line
               type="monotone"
-              dataKey="score"
-              stroke="url(#scoreGradient)"
-              strokeWidth={4}
-              dot={(props) => <CustomDot {...props} />}
-              activeDot={{ r: 8, strokeWidth: 0, fill: "#8B5CF6" }}
+              dataKey="score" // SAME dataKey as the main line
+              stroke="url(#backgroundStrokeGradient)" // Use the enhanced gradient
+              strokeWidth={12} // THICKER stroke for more dramatic effect
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              dot={false} // NO dots on the background line
+              activeDot={false} // NO active dot effect
+              filter="url(#lineBlur)" // Apply blur filter for glow effect
+              animationDuration={1500} // Slower animation for more dramatic effect
+              />
+
+            {/* =============================================== */}
+            {/* === ENHANCED FOREGROUND DATA LINE (Rendered SECOND) === */}
+            {/* =============================================== */}
+            <Line
+              type="monotone"
+              dataKey="score" // SAME dataKey
+              stroke="url(#modernLineGradient)" // Sharp, vibrant gradient
+              strokeWidth={3} // Slightly thicker for better visibility
+              strokeLinecap="round"
+              dot={(props) => <CustomDot {...props} />} // Custom dots
+              activeDot={(props: any) => ( // Enhanced active dot with glow
+                 <g filter="url(#dotGlow)">
+                   <circle {...props} r={8} fill="#6366f1" stroke={colors.background} strokeWidth={2.5} />
+                 </g>
+              )}
+              animationDuration={1200} // Slightly faster than background for effect
             />
           </LineChart>
         </ResponsiveContainer>
       </div>
-      
-      <div className="gap-4 grid grid-cols-3 mt-8">
-        {[...data].reverse().slice(0, 3).map((item, index) => (
-          <div key={index} className="bg-gray-200 dark:bg-gray-900 opacity-80 dark:bg-rabg-opacity-80 backdrop-blur-md p-4 rounded-xl">
-            <div className="font-serif text-gray-500 dark:text-gray-400 text-xs">{item.model}</div>
-            <div className="font-serif font-bold text-gray-900 dark:text-white text-2xl">
-              {item.score}%
-            </div>
-            <div className="font-serif text-gray-500 dark:text-gray-400 text-xs">{formatDate(item.date)}</div>
-          </div>
-        ))}
-      </div>
+
+      {/* Modern Bottom Section */}
+       <div className="mt-4 pt-3 dark:border-white/5 border-t border-black/5">
+         <h3 className="mb-2 font-medium text-muted-foreground text-xs">Recent Milestones</h3>
+         <div className="gap-2 grid grid-cols-3">
+           {[...data].reverse().slice(0, 3).map((item) => (
+             <div key={item.model} className="bg-gradient-to-br from-white dark:from-gray-900 to-gray-50/80 dark:to-black/80 hover:shadow-md p-2 border dark:border-white/5 dark:hover:border-indigo-900/30 border-black/5 rounded-lg transition-all">
+               <p className="font-medium text-gray-800 dark:text-gray-200 text-xs truncate">{item.model}</p>
+               <p className="bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500 mt-0.5 font-bold text-transparent text-base">{item.score}%</p>
+               <p className="mt-0.5 text-[9px] text-muted-foreground">{formatDate(item.date)}</p>
+             </div>
+           ))}
+         </div>
+       </div>
     </div>
   );
 };

@@ -169,11 +169,11 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
         // If we've shown all messages, do nothing further for this example
         if (currentMessageIndex >= allMessages.length) {
              // Optional: Add a delay and reset if you want it to loop
-            // const resetTimer = setTimeout(() => {
-            //     setVisibleMessages([allMessages[0]]);
-            //     setCurrentMessageIndex(1);
-            // }, 5000); // Reset after 5 seconds
-            // return () => clearTimeout(resetTimer);
+            const resetTimer = setTimeout(() => {
+                setVisibleMessages([allMessages[0]]);
+                setCurrentMessageIndex(1);
+            }, 100000); // Reset after 5 seconds
+            return () => clearTimeout(resetTimer);
             return;
         }
 
@@ -267,31 +267,31 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             return <div className={`whitespace-pre-wrap font-sans ${isOutgoing ? 'text-indigo-50' : 'text-gray-700 dark:text-gray-300'}`}>{content}</div>;
         }
 
-        // Base prose classes, removing size modifier (prose-sm) to use defaults or overrides
-        const proseBase = `prose dark:prose-invert max-w-none font-sans`;
-        // Specific classes for outgoing messages for better control
-        const proseOutgoing = `prose-light text-indigo-50`;
+        // Enhanced prose classes for a more modern look
+        const proseBase = `prose prose-sm dark:prose-invert max-w-none font-sans prose-headings:font-medium prose-p:leading-relaxed`;
+        // Enhanced classes for outgoing messages
+        const proseOutgoing = `prose-light text-indigo-50 prose-headings:text-white prose-strong:text-white/90`;
 
         return (
-            // Wrapper div controls the text color based on message type
-            <div className={`${proseBase} ${isOutgoing ? proseOutgoing : 'text-gray-800 dark:text-gray-100'}`}>
+            // Wrapper div with enhanced styling
+            <div className={`${proseBase} ${isOutgoing ? proseOutgoing : 'text-gray-800 dark:text-gray-100 prose-headings:text-gray-900 dark:prose-headings:text-white/95'}`}>
                 <ReactMarkdown
                     components={{
-                        // Refined styles for markdown elements
-                        h1: ({node, ...props}) => <h1 className="text-md  font-serif font-semibold mb-2.5 mt-3 first:mt-0" {...props} />, // Slightly larger base size
-                        h2: ({node, ...props}) => <h2 className="text-[0.95rem] font-serif font-semibold mb-2 mt-2.5" {...props} />,
-                        h3: ({node, ...props}) => <h3 className="text-[0.9rem]font-serif font-medium opacity-95 mb-1.5 mt-2" {...props} />,
-                        p: ({node, ...props}) => <p className="mb-2.5 leading-relaxed" {...props} />, // Slightly more space
-                        ul: ({node, ...props}) => <ul className="list-disc list-outside pl-4 mb-2.5 space-y-1" {...props} />, // list-outside, more space
-                        ol: ({node, ...props}) => <ol className="list-decimal list-outside pl-4 mb-2.5 space-y-1" {...props} />,
-                        li: ({node, ...props}) => <li className="my-0.5" {...props} />, // Ensure list items have minimal space
+                        // Modern styles for markdown elements
+                        h1: ({node, ...props}) => <h1 className="bg-clip-text bg-gradient-to-r from-indigo-600 dark:from-indigo-400 to-violet-600 dark:to-violet-400 mt-3 first:mt-0 mb-2.5 font-sans font-bold text-md text-transparent" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="mt-2.5 mb-2 font-sans font-semibold text-[0.95rem] text-indigo-700 dark:text-indigo-300" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="mt-2 mb-1.5 font-sans font-medium text-[0.9rem] text-indigo-600 dark:text-indigo-400" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-2.5 text-gray-700 dark:text-gray-200 leading-relaxed" {...props} />,
+                        ul: ({node, ...props}) => <ul className="space-y-1 mb-2.5 pl-4 text-gray-700 dark:text-gray-200 list-disc list-outside" {...props} />,
+                        ol: ({node, ...props}) => <ol className="space-y-1 mb-2.5 pl-4 text-gray-700 dark:text-gray-200 list-decimal list-outside" {...props} />,
+                        li: ({node, ...props}) => <li className="my-0.5 text-gray-700 dark:text-gray-200" {...props} />,
                         // --- Enhanced Link Styling ---
                         a: ({node, ...props}) => (
                             <a
-                                className={`font-medium underline decoration-dotted underline-offset-2 transition-colors duration-150 ease-in-out
+                                className={`font-medium no-underline transition-all duration-200 ease-in-out rounded-md px-1.5 py-0.5 border
                                     ${isOutgoing
-                                        ? 'text-indigo-200 decoration-indigo-300/50 hover:text-white hover:decoration-white/70'
-                                        : 'text-indigo-600 decoration-indigo-500/40 hover:text-indigo-800 dark:text-indigo-400 dark:decoration-indigo-400/50 dark:hover:text-indigo-300 dark:hover:decoration-indigo-300/70'
+                                        ? 'text-white border-white/20 hover:bg-white/10 hover:border-white/30'
+                                        : 'text-indigo-600 border-indigo-200/30 hover:border-indigo-400/50 hover:bg-indigo-50/30 dark:text-indigo-300 dark:border-indigo-500/20 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-900/30'
                                     }`}
                                 target="_blank"
                                 rel="noopener noreferrer"
@@ -299,32 +299,36 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                             />
                         ),
                         strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
-                        em: ({node, ...props}) => <em className="italic opacity-90" {...props} />,
+                        em: ({node, ...props}) => <em className="opacity-90 italic" {...props} />,
                         // --- Enhanced Code Styling ---
                         code: ({ node, inline, className, children, ...props }: any) => {
                             const match = /language-(\w+)/.exec(className || '');
                             return !inline && match ? (
-                                // Code blocks (no examples in current text, but styled anyway)
-                                <div className="my-3 bg-gray-100 dark:bg-gray-900 p-3 rounded-md overflow-x-auto custom-scrollbar">
+                                // Code blocks with modern styling
+                                <div className="bg-gradient-to-r from-gray-50 dark:from-gray-900 to-gray-100 dark:to-gray-800 my-3 p-3 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto custom-scrollbar">
                                     <code className={`language-${match[1]} !bg-transparent !p-0 text-xs font-mono`} {...props}>
                                         {children}
                                     </code>
                                 </div>
                             ) : (
-                                // Inline code
-                                <code className={`px-1.5 py-0.5 rounded text-[0.8rem] font-mono ${isOutgoing ? 'bg-white/15' : 'bg-gray-200 dark:bg-gray-700'}`} {...props}>
+                                // Modern inline code
+                                <code className={`px-1.5 py-0.5 rounded-md text-[0.8rem] font-mono ${isOutgoing ? 'bg-white/15 border border-white/10' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border dark:border-indigo-800/50'}`} {...props}>
                                     {children}
                                 </code>
                             );
                         },
-                        // --- Enhanced Blockquote Styling ---
+                        // --- Modern Blockquote Styling ---
                         blockquote: ({node, ...props}) => (
                             <blockquote
-                                className={`pl-3 border-l-2 my-2.5 italic text-opacity-80 ${isOutgoing ? 'border-indigo-300/50' : 'border-gray-300 dark:border-gray-600'}`}
+                                className={`pl-3 border-l-2 my-3 italic ${
+                                    isOutgoing
+                                    ? 'border-white/40 text-white/90 bg-white/5 py-1 rounded-r-md'
+                                    : 'border-indigo-400 dark:border-indigo-500 text-gray-600 dark:text-gray-300 bg-indigo-50/30 dark:bg-indigo-900/20 py-1 rounded-r-md'
+                                }`}
                                 {...props}
                             />
                         ),
-                        hr: ({node, ...props}) => <hr className={`my-4 ${isOutgoing ? 'border-white/20' : 'border-gray-200 dark:border-gray-700'}`} {...props}/>
+                        hr: ({node, ...props}) => <hr className={`my-4 ${isOutgoing ? 'border-white/20' : 'border-indigo-200/50 dark:border-indigo-800/50'}`} {...props}/>
                     }}
                 >
                     {content}
@@ -334,10 +338,9 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
     };
 
     return (
-        <div 
+        <div
             ref={chatContainerRef}
-            // Ensure background color respects dark mode
-            className="flex flex-col space-y-3 bg-gray-50 dark:bg-black p-3 rounded-lg h-[240px] overflow-y-auto text-[13px] scroll-smooth custom-scrollbar font-sans" // Base text-sm (14px), slightly smaller (13px)
+            className="flex flex-col space-y-4 bg-transparent p-4 rounded-2xl h-[500px] overflow-y-auto font-serif text-[13px] scroll-smooth custom-scrollbar"
         >
             {/* --- Enhanced Global Styles --- */}
             <style jsx global>{`
@@ -348,55 +351,55 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                 .prose-light blockquote { border-left-color: rgba(199, 210, 254, 0.6); color: rgba(238, 242, 255, 0.9); }
                 .prose-light hr { border-color: rgba(255, 255, 255, 0.15); }
 
-                /* General dark mode prose adjustments */
+                /* Enhanced dark mode prose adjustments with more vibrant colors */
                 .dark .prose-invert {
-                     --tw-prose-body: theme(colors.gray.300);
+                     --tw-prose-body: theme(colors.gray.200);
                      --tw-prose-headings: theme(colors.white);
-                     --tw-prose-lead: theme(colors.gray.400);
-                     --tw-prose-bold: theme(colors.white);
-                     --tw-prose-counters: theme(colors.gray.400);
-                     --tw-prose-bullets: theme(colors.gray.600);
-                     --tw-prose-hr: theme(colors.gray.700);
-                     --tw-prose-quotes: theme(colors.gray.100);
-                     --tw-prose-quote-borders: theme(colors.gray.700);
-                     --tw-prose-captions: theme(colors.gray.400);
-                     --tw-prose-code: theme(colors.white);
-                     --tw-prose-pre-code: theme(colors.gray.300);
-                     --tw-prose-pre-bg: theme(colors.gray.900);
-                     --tw-prose-th-borders: theme(colors.gray.600);
-                     --tw-prose-td-borders: theme(colors.gray.700);
+                     --tw-prose-lead: theme(colors.gray.300);
+                     --tw-prose-bold: theme(colors.indigo.200);
+                     --tw-prose-counters: theme(colors.indigo.400);
+                     --tw-prose-bullets: theme(colors.violet.500);
+                     --tw-prose-hr: theme(colors.indigo.800);
+                     --tw-prose-quotes: theme(colors.indigo.100);
+                     --tw-prose-quote-borders: theme(colors.violet.500);
+                     --tw-prose-captions: theme(colors.indigo.300);
+                     --tw-prose-code: theme(colors.indigo.100);
+                     --tw-prose-pre-code: theme(colors.gray.200);
+                     --tw-prose-pre-bg: rgba(109, 40, 217, 0.15);
+                     --tw-prose-th-borders: theme(colors.indigo.600);
+                     --tw-prose-td-borders: theme(colors.indigo.800);
                 }
 
-                /* --- Sleek Custom Scrollbar --- */
+                /* --- Modern Custom Scrollbar --- */
                 .custom-scrollbar::-webkit-scrollbar {
-                    width: 5px; /* Thinner */
-                    height: 5px;
+                    width: 4px; /* Even thinner */
+                    height: 4px;
                 }
                 .custom-scrollbar::-webkit-scrollbar-track {
                     background: transparent;
                 }
                 .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background-color: rgba(156, 163, 175, 0.3); /* Lighter, more transparent */
+                    background-color: rgba(99, 102, 241, 0.2); /* Indigo with transparency */
                     border-radius: 10px;
                 }
                  /* Dark mode scrollbar thumb */
                 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
-                    background-color: rgba(75, 85, 99, 0.5);
+                    background-color: rgba(139, 92, 246, 0.3); /* Violet with transparency */
                 }
                  /* Hover state for scrollbar thumb */
                 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background-color: rgba(156, 163, 175, 0.5);
+                    background-color: rgba(99, 102, 241, 0.4); /* Darker on hover */
                 }
                 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-                    background-color: rgba(75, 85, 99, 0.7);
+                    background-color: rgba(139, 92, 246, 0.5); /* Darker on hover */
                 }
                  /* Firefox scrollbar */
                 .custom-scrollbar {
                     scrollbar-width: thin;
-                    scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+                    scrollbar-color: rgba(99, 102, 241, 0.2) transparent;
                 }
                .dark .custom-scrollbar {
-                    scrollbar-color: rgba(75, 85, 99, 0.5) transparent;
+                    scrollbar-color: rgba(139, 92, 246, 0.3) transparent;
                 }
 
                 /* --- Bounce animation for typing indicator --- */
@@ -421,70 +424,72 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             {visibleMessages.map((message) => (
                 <div 
                     key={message.id}
-                    className={`flex items-start gap-2 ${message.type === 'incoming' ? 'justify-start' : 'justify-end'}`} // Reduced gap
+                    className={`flex items-start gap-3 ${message.type === 'incoming' ? 'justify-start' : 'justify-end'}`}
                 >
                     {/* User Avatar */}
                     {message.type === 'incoming' && (
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center mt-0.5">
-                            <User className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                            <img src="https://images.unsplash.com/photo-1601288496920-b6154fe3626a?q=80&w=1826&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8MHx8fHw%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
 
                     {/* Bubble Content */}
                     <div
-                        className={`flex flex-col max-w-[85%] shadow-sm transition-all duration-300 ease-out ${ // Increased max-width slightly
+                        className={`flex flex-col max-w-[85%] shadow-lg transition-all duration-300 ease-out ${
                             message.type === 'incoming'
-                                ? 'bg-white dark:bg-gray-800 rounded-2xl rounded-tl-md' // Softer rounding, sharper corner
-                                : 'bg-gradient-to-br from-indigo-500 to-indigo-600 dark:from-indigo-600 dark:to-indigo-700 text-white rounded-2xl rounded-tr-md' // Gradient for AI, softer rounding
-                        } p-3`} // Slightly larger padding
+                                ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border border-gray-100 dark:border-gray-800 rounded-2xl rounded-tl-md'
+                                : 'bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white rounded-2xl rounded-tr-md border border-indigo-400/10 dark:border-violet-500/20'
+                        } p-4`}
                     >
                         <div className="w-full">
                             {renderMarkdown(message.text, message.type === 'outgoing')}
                         </div>
-                        <div className={`mt-1.5 text-right text-[10px] opacity-70 ${message.type === 'incoming' ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-100 dark:text-indigo-300'}`}>
+                        <div className={`mt-2 text-right text-[11px] opacity-70 ${message.type === 'incoming' ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-100 dark:text-indigo-300'}`}>
                             {message.time}
                         </div>
                     </div>
 
                      {/* AI Avatar */}
                     {message.type === 'outgoing' && (
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center mt-0.5">
-                            <Bot className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                            <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/blaze.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
                 </div>
             ))}
             
             {isTyping && (
-                <div className={`flex items-start gap-2 ${allMessages[currentMessageIndex]?.type === 'incoming' ? 'justify-start' : 'justify-end'}`}>
+                <div className={`flex items-start gap-3 ${allMessages[currentMessageIndex]?.type === 'incoming' ? 'justify-start' : 'justify-end'}`}>
                     {/* Typing Avatar */}
                     {allMessages[currentMessageIndex]?.type === 'incoming' ? (
-                         <div className="flex-shrink-0 w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center mt-0.5">
-                             <User className="w-3.5 h-3.5 text-gray-500 dark:text-gray-400" />
+                         <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                            <img src="https://images.unsplash.com/photo-1601288496920-b6154fe3626a?q=80&w=1826&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8MHx8fHw%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
                          </div>
                     ) : (
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center mt-0.5">
-                            <Bot className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                            <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/blaze.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
 
                     {/* Typing Bubble Content */}
                     {allMessages[currentMessageIndex]?.type === 'incoming' ? (
-                         <div className={`flex items-center bg-white dark:bg-gray-800 px-3 py-2 rounded-2xl rounded-tl-md shadow-sm h-[34px]`}> {/* Match bubble style */}
-                             <span className="flex space-x-1.5">
-                                <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-dot-bounce" style={{ animationDelay: '0ms' }}></span>
-                                <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-dot-bounce" style={{ animationDelay: '100ms' }}></span>
-                                <span className="w-1.5 h-1.5 bg-gray-400 dark:bg-gray-500 rounded-full animate-dot-bounce" style={{ animationDelay: '200ms' }}></span>
+                         <div className={`flex items-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-3 rounded-2xl rounded-tl-md shadow-lg border border-gray-100 dark:border-gray-800 h-[40px]`}>
+                             <span className="flex space-x-2">
+                                <span className="bg-indigo-400 dark:bg-indigo-500 rounded-full w-2 h-2 animate-dot-bounce" style={{ animationDelay: '0ms' }}></span>
+                                <span className="bg-indigo-400 dark:bg-indigo-500 rounded-full w-2 h-2 animate-dot-bounce" style={{ animationDelay: '100ms' }}></span>
+                                <span className="bg-indigo-400 dark:bg-indigo-500 rounded-full w-2 h-2 animate-dot-bounce" style={{ animationDelay: '200ms' }}></span>
                              </span>
                          </div>
                     ) : (
                         // Show partial response for AI typing
-                        <div className={`flex flex-col bg-gradient-to-br from-indigo-500 to-indigo-600 dark:from-indigo-600 dark:to-indigo-700 text-white shadow-sm p-3 rounded-2xl rounded-tr-md max-w-[85%]`}>
+                        <div className={`flex flex-col bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white shadow-lg p-4 rounded-2xl rounded-tr-md max-w-[85%] border border-indigo-400/10 dark:border-violet-500/20`}>
                             <div className="w-full">
                                 {renderMarkdown(typingText, true)}
-                                {/* Minimalist pulsing dot */}
-                                <div className="h-2 mt-1.5 flex items-center">
-                                    <span className="w-1 h-1 bg-indigo-200 dark:bg-indigo-400 rounded-full animate-dot-pulse"></span>
+                                {/* Enhanced pulsing dot */}
+                                <div className="flex items-center gap-1.5 mt-2 h-2">
+                                    <span className="bg-violet-200 dark:bg-violet-300 rounded-full w-1.5 h-1.5 animate-dot-pulse"></span>
+                                    <span className="bg-violet-200 dark:bg-violet-300 rounded-full w-1.5 h-1.5 animate-dot-pulse" style={{ animationDelay: '300ms' }}></span>
+                                    <span className="bg-violet-200 dark:bg-violet-300 rounded-full w-1.5 h-1.5 animate-dot-pulse" style={{ animationDelay: '600ms' }}></span>
                                 </div>
                             </div>
                         </div>

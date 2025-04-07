@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CornerDownLeft, Cpu, BrainCircuit, Activity } from 'lucide-react';
 
-// --- Base Card Structure ---
+// --- Base Card Structure (Slightly Refined) ---
 interface CardProps {
   children: React.ReactNode;
   className?: string;
@@ -13,7 +13,7 @@ interface CardProps {
   onMouseLeave?: (e: React.MouseEvent<HTMLDivElement>) => void;
   cardRef?: React.RefObject<HTMLDivElement | null>;
   isHovered: boolean;
-  style?: React.CSSProperties; // Add style prop to support custom styling
+  style?: React.CSSProperties;
 }
 
 const BaseCard: React.FC<CardProps> = ({
@@ -28,34 +28,51 @@ const BaseCard: React.FC<CardProps> = ({
 }) => {
   return (
     <div
-      ref={cardRef}
-      className={`relative flex flex-col items-start bg-white dark:bg-black mx-auto p-6 border border-neutral-200 dark:border-neutral-800 max-w-sm h-[30rem] overflow-visible rounded-lg shadow-subtle dark:shadow-subtle-dark transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] ${className}`}
+      ref={cardRef as React.RefObject<HTMLDivElement>}
+      className={`
+        relative flex flex-col items-start
+        bg-white dark:bg-neutral-900/80 backdrop-blur-sm  // Slightly transparent dark bg
+        border border-neutral-200/60 dark:border-neutral-800/50 // Fainter borders
+        max-w-sm h-[30rem] rounded-xl shadow-md shadow-neutral-200/30 dark:shadow-black/30 // Softer shadow
+        transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]
+        overflow-hidden group
+        ${className}
+      `}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       onMouseMove={onMouseMove}
       style={{
-         perspective: '1200px', // Enhance perspective for 3D effects
-         ...style, // Merge custom styles passed from parent
+        perspective: '1000px',
+        ...style,
       }}
     >
-      {/* Subtle Corner Accents */}
+      {/* Fainter Corner Accents */}
       {[
-        'top-1 left-1',
-        'bottom-1 left-1 rotate-90',
-        'top-1 right-1 -rotate-90',
-        'bottom-1 right-1 rotate-180',
+        'top-2 left-2', 'bottom-2 left-2 rotate-90',
+        'top-2 right-2 -rotate-90', 'bottom-2 right-2 rotate-180',
       ].map((pos, i) => (
         <div
           key={i}
-          className={`absolute ${pos} w-4 h-4 transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] flex items-center justify-center text-neutral-300 dark:text-neutral-700 ${
-            isHovered ? 'scale-125 opacity-100 text-cyan-500 dark:text-cyan-400' : 'opacity-50'
-          }`}
-          style={{ transformOrigin: 'center center' }}
-        >
-           <CornerDownLeft className="w-2.5 h-2.5" strokeWidth={1.5} />
-        </div>
+          className={`
+            absolute ${pos} w-2.5 h-2.5
+            transition-all duration-300 ease-out text-neutral-300 dark:text-neutral-700
+            group-hover:opacity-80 group-hover:text-cyan-500 dark:group-hover:text-cyan-400 opacity-20
+          `}
+        > <CornerDownLeft className="w-1.5 h-1.5" strokeWidth={2} /> </div>
       ))}
-      <div className="z-10 relative flex flex-col w-full h-full"> {/* Ensure content is above corners */}
+
+      {/* Subtle Hover Glow (Moved inside, less intense) */}
+      <div className="z-0 absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
+        <div className={`
+            absolute -inset-4 z-0 transition-opacity duration-400 ease-out
+            bg-gradient-radial from-cyan-500/0 via-cyan-500/5 to-cyan-500/0
+            dark:from-cyan-400/0 dark:via-cyan-400/5 dark:to-cyan-400/0
+            opacity-0 group-hover:opacity-100 blur-xl
+          `}/>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="z-10 relative flex flex-col p-6 w-full h-full">
          {children}
       </div>
     </div>
@@ -63,57 +80,130 @@ const BaseCard: React.FC<CardProps> = ({
 };
 
 
-// --- Card 1: Laptop Particle Ingress/Egress ---
+// --- Card 1: Laptop Particle Ingress/Egress (Horizontal Flow) ---
 
 interface FlowParticleProps {
   id: number;
   isHovered: boolean;
-  laptopWidth: number; // Pass laptop width for animation calculations
+  laptopScreenCenterX: number;
+  laptopScreenCenterY: number;
+  containerWidth: number;
+  // No containerHeight needed if strictly horizontal
 }
 
-const FlowParticle: React.FC<FlowParticleProps> = ({ id, isHovered, laptopWidth }) => {
-  // SUPER FAST particles with minimal variation
-  const duration = Math.random() * 0.6 + 0.6; // 0.6s to 1.2s (much faster)
-  const delay = Math.random() * 0.8; // 0s to 0.8s delay (quicker start)
-  const verticalOffset = Math.random() * 40 - 20; // Vertical range (-20px to +20px)
+const FlowParticle: React.FC<FlowParticleProps> = ({
+  id, isHovered, laptopScreenCenterX, laptopScreenCenterY, containerWidth
+}) => {
+  const duration = Math.random() * 1.0 + 1.8; // 1.8s to 2.8s (slightly slower/smoother)
+  const delay = Math.random() * duration * 0.7;
+  const size = Math.random() * 1.2 + 0.8; // 0.8px to 2.0px (even smaller)
 
-  // LARGER particle sizes for better visibility
-  const size = Math.random() * 2.5 + 2.0; // 2.0px to 4.5px (much bigger)
+  // Determine start side (left or right)
+  const startSide = Math.random() > 0.5 ? 'right' : 'left';
+  const startX = startSide === 'right' ? containerWidth + 20 : -20; // Start off-screen horizontal
+  const startYOffset = (Math.random() - 0.5) * 60; // Vertical spread +/- 30px around center
+  const startY = laptopScreenCenterY + startYOffset;
 
-  // Dynamically set CSS variables for the keyframe animation
+  // End position on the opposite side
+  const endX = startSide === 'right' ? -20 : containerWidth + 20;
+  const endYOffset = (Math.random() - 0.5) * 40; // Slightly different vertical spread on exit
+  const endY = laptopScreenCenterY + endYOffset;
+
+  // Mid point (center of the laptop screen)
+  const midX = laptopScreenCenterX;
+  const midY = laptopScreenCenterY;
+
+  // Adjust horizontal control points for a more direct path
+  const controlX1 = startX * 0.4 + midX * 0.6;
+  const controlY1 = startY * 0.6 + midY * 0.4; // Curve slightly towards center vertically
+  const controlX2 = endX * 0.4 + midX * 0.6;
+  const controlY2 = endY * 0.6 + midY * 0.4;
+
+  const keyframes = `
+    @keyframes particleFlowHoriz_${id} {
+      0% {
+        transform: translate(${startX}px, ${startY}px) scale(0.5);
+        opacity: 0;
+      }
+      15% {
+         opacity: 0.6;
+         transform: translate(${controlX1}px, ${controlY1}px) scale(0.8);
+      }
+      50% {
+        transform: translate(${midX}px, ${midY}px) scale(1); // Hit center
+        opacity: 1;
+      }
+      85% {
+        opacity: 0.6;
+        transform: translate(${controlX2}px, ${controlY2}px) scale(0.8);
+      }
+      100% {
+        transform: translate(${endX}px, ${endY}px) scale(0.5);
+        opacity: 0;
+      }
+    }
+  `;
+
   const style: React.CSSProperties = {
-    '--particle-y-offset': `${verticalOffset}px`,
-    '--laptop-width': `${laptopWidth}px`,
-    width: `${size}px`,
-    height: `${size}px`,
-    // Use dark particles in light mode, light particles in dark mode for contrast
-    backgroundColor: 'var(--particle-color, rgba(0, 0, 0, 0.7))',
+    position: 'absolute', top: 0, left: 0,
+    width: `${size}px`, height: `${size}px`, borderRadius: '50%',
+    // Brighter particle color for visibility
+    backgroundColor: 'var(--particle-color, #06b6d4)',
+    opacity: 0,
+    // Use a smoother easing function
     animation: isHovered
-      ? `particleFlowInOut ${duration}s cubic-bezier(0.2, 0.8, 0.2, 1) ${delay}s infinite`
+      ? `particleFlowHoriz_${id} ${duration}s cubic-bezier(0.45, 0.05, 0.55, 0.95) ${delay}s infinite`
       : 'none',
-  } as React.CSSProperties; // Type assertion needed for CSS variables
+    // Softer blend mode
+    mixBlendMode: 'lighten', // Often looks cleaner than 'screen'
+    willChange: 'transform, opacity',
+  };
 
   return (
-    <div
-      key={id}
-      className="top-1/2 right-0 absolute opacity-0 rounded-full particle" // Start right
-      style={style}
-    />
+    <>
+      <style>{keyframes}</style>
+      <div style={style} />
+    </>
   );
 };
 
 const Card1: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
-  const laptopRef = useRef<HTMLDivElement>(null);
-  const [laptopWidth, setLaptopWidth] = useState(208); // Default width (w-52 = 13rem = 208px)
+  const laptopScreenRef = useRef<HTMLDivElement>(null);
+  const particleContainerRef = useRef<HTMLDivElement>(null);
+
+  const [dimensions, setDimensions] = useState({ screenX: 100, screenY: 100, containerW: 200 });
 
   useEffect(() => {
-    // Update laptop width if needed
-    if (laptopRef.current) {
-      setLaptopWidth(laptopRef.current.offsetWidth);
-    }
+    const calculateDims = () => {
+      if (laptopScreenRef.current && particleContainerRef.current && cardRef.current) {
+        const screenRect = laptopScreenRef.current.getBoundingClientRect();
+        const containerRect = particleContainerRef.current.getBoundingClientRect();
+
+        const screenX = screenRect.left - containerRect.left + screenRect.width / 2;
+        const screenY = screenRect.top - containerRect.top + screenRect.height / 2; // Center Y still needed
+
+        setDimensions({
+          screenX: screenX,
+          screenY: screenY, // Pass Y center for vertical alignment
+          containerW: containerRect.width,
+        });
+      }
+    };
+    calculateDims();
+    window.addEventListener('resize', calculateDims);
+    return () => window.removeEventListener('resize', calculateDims);
   }, []);
+
+  // Cleaner hover style
+  const cardHoverStyle: React.CSSProperties = {
+    transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease-out',
+    transform: isHovered ? 'scale(1.02)' : 'scale(1)', // Removed rotation for simplicity
+    boxShadow: isHovered
+      ? '0 12px 24px -8px rgba(0, 180, 220, 0.1), 0 6px 12px -6px rgba(0, 180, 220, 0.08)' // Refined shadow
+      : '0 4px 8px -4px rgba(0, 0, 0, 0.05)', // Subtler base shadow
+  };
 
   return (
     <BaseCard
@@ -121,84 +211,64 @@ const Card1: React.FC = () => {
       isHovered={isHovered}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className="group"
-      style={{
-        transition: 'transform 0.4s ease-out',
-        transform: isHovered ? 'scale(1.02)' : 'none',
-      }}
+      style={cardHoverStyle}
+      className="dark:[--particle-color:#67e8f9]" // Lighter cyan for dark mode particles
     >
-      {/* Content Area */}
-      <div className="flex flex-col justify-between pt-10 w-full h-full"> {/* Increased top padding */}
-        {/* Top Section: Laptop Graphic - With overflow visible for particles */}
+      <div className="flex flex-col justify-between w-full h-full">
+        {/* Top Section: Laptop Graphic */}
         <div className="relative flex justify-center items-center mb-6 w-full h-48 overflow-visible">
-          {/* Laptop Base with enhanced hover effect */}
+          {/* Particle Container - Needs to span horizontally */}
           <div
-            className={`absolute bottom-1 w-60 h-1.5 bg-gradient-to-r from-neutral-300 via-neutral-200 to-neutral-300 dark:from-neutral-700 dark:via-neutral-800 dark:to-neutral-700 rounded-b-sm transition-all duration-300 ease-out ${isHovered ? 'translate-y-1 scale-x-[1.02]' : ''}`}
-            style={{
-              boxShadow: isHovered ? '0 2px 8px -2px rgba(6, 182, 212, 0.2)' : 'none',
-              transformOrigin: 'center top',
-            }}
-          />
-
-          {/* Laptop Screen Area */}
-          <div
-            ref={laptopRef}
-            className="relative bg-black border border-neutral-300 dark:border-neutral-700 rounded-t-md w-52 h-36 overflow-hidden"
-            style={{
-              transformStyle: 'preserve-3d',
-              transform: isHovered
-                ? 'perspective(800px) rotateY(15deg) rotateX(5deg) scale(1.05)'
-                : 'perspective(800px) rotateY(0deg) rotateX(0deg)',
-              transition: 'transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1)',
-              boxShadow: isHovered
-                ? '0 10px 30px -10px rgba(0, 0, 0, 0.3), 0 0 15px -5px rgba(6, 182, 212, 0.4)'
-                : 'none',
-            }}
+            ref={particleContainerRef}
+            className="z-0 absolute inset-x-[-50px] inset-y-0 pointer-events-none" // Wider horizontally
           >
-            {/* Inner Screen Surface with glow effect */}
-            <div className="absolute inset-0 bg-black">
-              {/* Screen glow effect */}
-              <div
-                className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 via-transparent to-cyan-500/10"
-                style={{
-                  opacity: isHovered ? 1 : 0,
-                  transition: 'opacity 0.4s ease-out',
-                  filter: 'blur(4px)',
-                }}
+            {isHovered && Array.from({ length: 25 }).map((_, i) => ( // Fewer particles
+              <FlowParticle
+                key={i} id={i} isHovered={isHovered}
+                laptopScreenCenterX={dimensions.screenX}
+                laptopScreenCenterY={dimensions.screenY} // Pass Y center
+                containerWidth={dimensions.containerW}
               />
+            ))}
+          </div>
 
-              {/* Particle Container - Positioned to allow particles to flow outside laptop */}
-              <div className="z-10 absolute -inset-40 overflow-visible">
-                {/* Generate MORE particles when hovered */}
-                {isHovered && Array.from({ length: 50 }).map((_, i) => (
-                  <FlowParticle key={i} id={i} isHovered={isHovered} laptopWidth={laptopWidth} />
-                ))}
-              </div>
-
-              {/* Subtle screen reflection */}
-              <div
-                className="absolute inset-0 bg-gradient-to-b from-cyan-500/10 to-transparent"
-                style={{
-                  opacity: isHovered ? 0.3 : 0,
-                  transition: 'opacity 0.4s ease-out',
-                  height: '30%',
-                }}
-              />
+          {/* Laptop Visual (Simplified) */}
+          <div className="z-10 relative flex flex-col items-center">
+            {/* Laptop Screen */}
+            <div
+              ref={laptopScreenRef}
+              className={`
+                relative w-44 h-28 bg-neutral-900 dark:bg-black // Slightly smaller
+                border border-neutral-300 dark:border-neutral-700/80 rounded-t-md
+                transition-all duration-400 ease-out overflow-hidden
+              `}
+              style={{
+                transform: isHovered ? 'scale(1.03)' : 'scale(1)', // Simpler scale transform
+                boxShadow: isHovered
+                  ? 'inset 0 0 15px rgba(6, 182, 212, 0.1)'
+                  : 'inset 0 0 3px rgba(0,0,0,0.1)',
+              }}
+            >
+              {/* Inner Screen Glow (More subtle) */}
+              <div className="absolute inset-0 bg-gradient-to-br from-cyan-600/5 dark:from-cyan-400/5 via-transparent to-cyan-600/10 dark:to-cyan-400/10 opacity-0 group-hover:opacity-60 blur-[2px] transition-opacity duration-500 ease-out" />
+              {/* Removed Scanline */}
             </div>
+            {/* Laptop Base (Simpler) */}
+            <div className={`w-52 h-1.5 bg-neutral-200 dark:bg-neutral-800 rounded-b-sm transition-transform duration-400 ease-out ${isHovered ? 'scaleX(1.015)' : ''}`} />
           </div>
         </div>
 
         {/* Bottom Section: Text Content */}
-        <div className="px-2"> {/* Add slight horizontal padding */}
-          <Cpu className="mb-3 w-5 h-5 text-cyan-600 dark:text-cyan-400" strokeWidth={1.5}/>
-          <h2 className="mb-1.5 font-semibold text-black dark:text-white text-base transition-transform group-hover:translate-x-0.5 duration-300 transform">
+        <div className="flex flex-col flex-grow justify-end">
+          <Cpu className="mb-2.5 w-5 h-5 text-cyan-600 dark:text-cyan-400" strokeWidth={1.5}/>
+          <h2 className="mb-1.5 font-medium text-neutral-900 dark:text-white text-base"> {/* Slightly smaller title */}
             Blaze Deep Research
           </h2>
-          <p className="mb-5 font-normal text-neutral-600 dark:group-hover:text-neutral-300 dark:text-neutral-400 group-hover:text-neutral-700 text-sm leading-relaxed transition-opacity duration-300">
-            Supercharge your app with advanced agentic capabilities and unparalleled insights.
+          <p className="mb-4 font-normal text-neutral-500 dark:text-neutral-400/80 text-sm leading-relaxed"> {/* Slightly lighter text */}
+            Advanced agentic capabilities for unparalleled insights and application performance.
           </p>
-          <p className="inline-block bg-cyan-400/10 dark:bg-cyan-400/10 dark:group-hover:bg-cyan-400/15 group-hover:bg-cyan-400/15 px-3 py-1 border border-neutral-200 dark:border-neutral-700 dark:group-hover:border-cyan-800 group-hover:border-cyan-200 rounded-full font-normal text-cyan-700 dark:text-cyan-300 text-xs transition-all duration-300">
-            Advanced Agentic Engine
+          <p className="inline-block bg-cyan-50/80 dark:bg-cyan-900/30 px-2.5 py-0.5 border border-cyan-100 dark:border-cyan-900/50 dark:group-hover:border-cyan-700/80 group-hover:border-cyan-200 rounded-full font-medium text-cyan-700 dark:text-cyan-300 text-xs transition-colors duration-300">
+            Agentic Engine
           </p>
         </div>
       </div>
@@ -207,99 +277,52 @@ const Card1: React.FC = () => {
 };
 
 
-// --- Card 2: Ripple Effect --- Refined Sleekness
+// --- Card 2: Ripple Effect (Simplified & Cleaner) ---
 
-interface Ripple {
-  id: number;
-  x: number;
-  y: number;
-  size: number;
-  color: string; // Add color variation
-  speed: number; // Add speed variation
-}
+interface Ripple { id: number; x: number; y: number; size: number; color: string; duration: number; }
 
 const Card2: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [ripples, setRipples] = useState<Ripple[]>([]);
   const cardRef = useRef<HTMLDivElement>(null);
-  const lastRippleTime = useRef(0); // For throttling
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const lastRippleTime = useRef(0);
+  const rippleCleanupTimers = useRef<NodeJS.Timeout[]>([]);
 
-  // Add automatic ripples when hovered but not moving
-  useEffect(() => {
-    if (!isHovered || !cardRef.current) return;
+  useEffect(() => { return () => { rippleCleanupTimers.current.forEach(clearTimeout); }; }, []);
 
-    // Create automatic ripples at current mouse position
-    const interval = setInterval(() => {
-      const rect = cardRef.current?.getBoundingClientRect();
-      if (!rect) return;
-
-      // Create ripple at last known mouse position
-      const x = mousePos.x;
-      const y = mousePos.y;
-
-      // Only add auto-ripple if we have a valid position inside the card
-      if (x > 0 && y > 0 && x < rect.width && y < rect.height) {
-        addRipple(x, y, true); // true = auto-generated (smaller)
-      }
-    }, 800); // Every 800ms
-
-    return () => clearInterval(interval);
-  }, [isHovered, mousePos]);
-
-  const addRipple = (x: number, y: number, isAuto = false) => {
+  const addRipple = (x: number, y: number) => {
     const now = Date.now();
-
-    // More aggressive throttling for manual ripples, less for auto
-    const throttleTime = isAuto ? 200 : 30;
-    if (now - lastRippleTime.current < throttleTime) return;
-
+    if (now - lastRippleTime.current < 80) return; // Slower ripple creation
     lastRippleTime.current = now;
-    if (!cardRef.current) return;
 
-    // Size variation - auto ripples are smaller
-    const baseSize = isAuto ? 30 : 80;
-    const sizeVariation = isAuto ? 10 : 40;
-    const size = Math.random() * sizeVariation + baseSize;
+    const size = Math.random() * 40 + 80; // 80px to 120px (Smaller max size)
+    const duration = 1.0 + Math.random() * 0.6; // 1.0s to 1.6s (Slightly slower)
+    const colors = ['#06b6d480', '#22d3ee70', '#0891b290']; // Cyan shades with alpha
+    const color = colors[Math.floor(Math.random() * colors.length)];
 
-    // Speed variation - auto ripples are slower
-    const speed = isAuto ?
-      0.8 + Math.random() * 0.4 : // 0.8-1.2s
-      0.6 + Math.random() * 0.3;  // 0.6-0.9s
+    const newRipple: Ripple = { id: now, x, y, size, color, duration };
+    setRipples(prev => [...prev.slice(-8), newRipple]); // Keep only max 8 ripples
 
-    // Color variation - subtle differences in cyan hue
-    const hues = ['#22d3ee', '#06b6d4', '#0891b2', '#0e7490'];
-    const color = hues[Math.floor(Math.random() * hues.length)];
-
-    const newRipple: Ripple = {
-      id: now + Math.random(),
-      x,
-      y,
-      size,
-      color,
-      speed
-    };
-
-    setRipples(prev => [...prev.slice(-20), newRipple]); // Keep max 20 ripples
-
-    // Remove ripple after animation completes
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       setRipples(prev => prev.filter(r => r.id !== newRipple.id));
-    }, speed * 1000 + 100); // Match animation duration + buffer
+      rippleCleanupTimers.current = rippleCleanupTimers.current.filter(t => t !== timer);
+    }, duration * 1000);
+    rippleCleanupTimers.current.push(timer);
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current) return;
-
     const rect = cardRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    addRipple(e.clientX - rect.left, e.clientY - rect.top);
+  };
 
-    // Update mouse position for auto-ripples
-    setMousePos({ x, y });
-
-    // Add manual ripple
-    addRipple(x, y);
+  // Cleaner hover style
+  const cardHoverStyle: React.CSSProperties = {
+      transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease-out',
+      transform: isHovered ? 'scale(1.02)' : 'scale(1)', // No rotation
+      boxShadow: isHovered
+        ? '0 12px 24px -8px rgba(0, 180, 220, 0.1), 0 6px 12px -6px rgba(0, 180, 220, 0.08)'
+        : '0 4px 8px -4px rgba(0, 0, 0, 0.05)',
   };
 
   return (
@@ -307,298 +330,224 @@ const Card2: React.FC = () => {
       cardRef={cardRef}
       isHovered={isHovered}
       onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false);
-        // Clear all ripples when mouse leaves
-        setTimeout(() => setRipples([]), 300);
-      }}
+      onMouseLeave={() => setIsHovered(false)} // Keep simple leave
       onMouseMove={isHovered ? handleMouseMove : undefined}
-      className="group bg-gradient-to-br from-cyan-50/80 dark:from-cyan-950/30 via-white dark:via-black to-blue-50/80 dark:to-blue-950/30"
-      style={{
-        transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-        transform: isHovered ? `scale(1.05)` : 'scale(1)',
-        boxShadow: isHovered
-          ? '0 20px 40px -20px rgba(6, 182, 212, 0.15), 0 10px 20px -15px rgba(6, 182, 212, 0.1)'
-          : '0 5px 10px -5px rgba(0, 0, 0, 0.1)',
-      }}
+      style={cardHoverStyle}
+      className="bg-white dark:bg-neutral-900/80" // Match other cards
     >
-      {/* Ripple Container */}
-      <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+      {/* Ripple Container - Behind Content */}
+      <div className="z-0 absolute inset-0 rounded-xl overflow-hidden pointer-events-none">
         {ripples.map(ripple => (
           <div
             key={ripple.id}
-            className="absolute pointer-events-none"
+            className="absolute rounded-full"
             style={{
-              left: ripple.x,
-              top: ripple.y,
-              width: `${ripple.size}px`,
-              height: `${ripple.size}px`,
+              left: ripple.x, top: ripple.y,
+              width: `${ripple.size}px`, height: `${ripple.size}px`,
               transform: 'translate(-50%, -50%) scale(0)',
-              borderRadius: '50%',
-              border: `1px solid ${ripple.color}20`, // Very transparent border
-              background: 'transparent', // No fill, just border and glow
-              animation: `rippleSleek ${ripple.speed}s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`
+              // Just border, no background fill for cleaner look
+              border: `1px solid ${ripple.color}`,
+              animation: `rippleExpandFade ${ripple.duration}s cubic-bezier(0.2, 0.8, 0.2, 1) forwards`,
+              willChange: 'transform, opacity',
             }}
           />
         ))}
       </div>
 
-      {/* Content Area (ensure it's above ripples) */}
-      <div className="z-10 relative flex flex-col justify-between px-2 pt-10 w-full h-full">
-        {/* Top Section: Interactive Neural Network Visualization */}
-        <div className="flex justify-center items-center mb-6 w-full h-48">
-          <div
-            className={`relative flex items-center justify-center transition-all duration-500 ease-out ${isHovered ? 'scale-110' : 'scale-100'}`}
-          >
-            {/* Central node */}
-            <div
-              className={`relative flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 dark:from-cyan-500 dark:to-blue-600 transition-all duration-500 ease-out ${isHovered ? 'scale-110' : 'scale-100'}`}
-              style={{
-                boxShadow: isHovered
-                  ? '0 0 20px 0 rgba(6, 182, 212, 0.3), 0 0 8px 0 rgba(6, 182, 212, 0.5)'
-                  : '0 0 10px 0 rgba(6, 182, 212, 0.2)'
-              }}
-            >
-              <Activity
-                className="w-8 h-8 text-white/90 transition-transform duration-500"
-                strokeWidth={1.5}
-                style={{
-                  transform: isHovered ? 'scale(1.1)' : 'scale(1)'
-                }}
-              />
+      {/* Content Area - Above Ripples */}
+      <div className="z-10 relative flex flex-col justify-between w-full h-full">
+         {/* Top Section: Simplified Graphic */}
+        <div className="relative flex justify-center items-center mb-6 w-full h-48">
+           <div className={`relative flex items-center justify-center transition-transform duration-400 ease-out ${isHovered ? 'scale-105' : 'scale-100'}`}>
+             {/* Central node */}
+            <div className={`relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-cyan-400 to-blue-500 dark:from-cyan-500 dark:to-blue-600 transition-all duration-400 ease-out shadow-lg ${isHovered ? 'shadow-cyan-400/20 scale-105' : 'shadow-cyan-500/10'}`}>
+              <Activity className="w-6 h-6 text-white/90" strokeWidth={1.5} />
             </div>
-
-            {/* Orbital rings */}
-            {[28, 44, 60].map((size, i) => (
-              <div
-                key={i}
-                className="absolute border border-cyan-300/20 dark:border-cyan-400/20 rounded-full"
-                style={{
-                  width: `${size}px`,
-                  height: `${size}px`,
-                  transition: 'all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-                  transform: isHovered ? `rotate(${i % 2 === 0 ? 45 : -45}deg) scale(1.1)` : 'rotate(0deg) scale(1)',
-                  opacity: isHovered ? 0.8 : 0.4
-                }}
-              />
-            ))}
-
-            {/* Pulsing background glow */}
-            <div
-              className="absolute bg-cyan-400/5 dark:bg-cyan-400/10 blur-xl rounded-full w-32 h-32 transition-all duration-500"
-              style={{
+            {/* Removed Orbital rings */}
+            {/* Simpler Pulsing background glow */}
+            <div className="absolute bg-cyan-400/5 dark:bg-cyan-400/10 blur-xl rounded-full w-32 h-32 transition-all duration-600 ease-out pointer-events-none" style={{
                 transform: isHovered ? 'scale(1.5)' : 'scale(1)',
-                opacity: isHovered ? 1 : 0,
-                animation: isHovered ? 'pulse 3s ease-in-out infinite alternate' : 'none'
-              }}
-            />
+                opacity: isHovered ? 0.6 : 0, // Less intense opacity
+                animation: isHovered ? 'pulseSimple 3s ease-in-out infinite alternate' : 'none'
+            }}/>
           </div>
         </div>
 
         {/* Bottom Section: Text Content */}
-        <div>
-          <Activity className="mb-3 w-5 h-5 text-cyan-600 dark:text-cyan-400" strokeWidth={1.5}/>
-          <h2 className="mb-1.5 font-semibold text-black dark:text-white text-base transition-transform group-hover:translate-x-0.5 duration-300 transform">
+        <div className="flex flex-col flex-grow justify-end">
+          <Activity className="mb-2.5 w-5 h-5 text-cyan-600 dark:text-cyan-400" strokeWidth={1.5}/>
+          <h2 className="mb-1.5 font-medium text-neutral-900 dark:text-white text-base">
             Neural Mapping
           </h2>
-          <p className="mb-5 font-normal text-neutral-600 dark:group-hover:text-neutral-300 dark:text-neutral-400 group-hover:text-neutral-700 text-sm leading-relaxed transition-opacity duration-300">
-            Interactive network visualization with real-time pattern detection. Move cursor to observe signal propagation.
+          <p className="mb-4 font-normal text-neutral-500 dark:text-neutral-400/80 text-sm leading-relaxed">
+            Visualize network activity and signal propagation in real-time.
           </p>
-          <p className="inline-block bg-cyan-400/10 dark:bg-cyan-400/10 dark:group-hover:bg-cyan-400/15 group-hover:bg-cyan-400/15 px-3 py-1 border border-neutral-200 dark:border-neutral-700 dark:group-hover:border-cyan-800 group-hover:border-cyan-200 rounded-full font-normal text-cyan-700 dark:text-cyan-300 text-xs transition-all duration-300">
-            Real-time Pattern Detection
+          <p className="inline-block bg-cyan-50/80 dark:bg-cyan-900/30 px-2.5 py-0.5 border border-cyan-100 dark:border-cyan-900/50 dark:group-hover:border-cyan-700/80 group-hover:border-cyan-200 rounded-full font-medium text-cyan-700 dark:text-cyan-300 text-xs transition-colors duration-300">
+            Real-time Visualization
           </p>
         </div>
       </div>
+
+      {/* Define Keyframes */}
+      <style>{`
+        @keyframes rippleExpandFade { /* Just border expanding and fading */
+          from { transform: translate(-50%, -50%) scale(0); opacity: 0.8; }
+          to   { transform: translate(-50%, -50%) scale(1); opacity: 0; }
+        }
+        @keyframes pulseSimple { /* Simple pulse animation */
+          from { opacity: 0.4; transform: scale(1.4); }
+          to   { opacity: 0.7; transform: scale(1.5); }
+        }
+      `}</style>
     </BaseCard>
   );
 };
 
 
-// --- Card 3: AI Genetic/Neuron Effect --- Refined Sleekness
+// --- Card 3: AI Neuron Effect (Simplified & Cleaner) ---
 
 const Card3: React.FC = () => {
   const [isHovered, setIsHovered] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
-  const center = useRef({ x: 0, y: 0 });
-  const [synapses, setSynapses] = useState<{ angle: number; length: number; pulse: number }[]>([]);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const center = useRef({ x: 150, y: 150 }); // Estimate
 
-  // Initialize synapses and calculate center
-  useEffect(() => {
-    if (!isInitialized) {
-      // Create random synapses
-      const newSynapses = Array.from({ length: 8 }).map(() => ({
-        angle: Math.random() * 360,
-        length: 40 + Math.random() * 40, // 40-80px
-        pulse: Math.random() * 3 + 1 // 1-4s pulse cycle
-      }));
-      setSynapses(newSynapses);
-      setIsInitialized(true);
-    }
+  // Fewer, simpler synapses
+  const [synapses] = useState(() => Array.from({ length: 7 }).map(() => ({ // Reduced count
+      angle: Math.random() * 360,
+      baseLength: 50 + Math.random() * 35, // 50-85px
+      pulseSpeed: 2 + Math.random() * 2,   // 2 - 4s cycle
+      color: `hsla(${240 + Math.random() * 50}, 80%, 70%, 0.7)` // Indigo/Purple range, fixed alpha
+  })));
 
-    // Calculate center
-    if (cardRef.current) {
-      const rect = cardRef.current.getBoundingClientRect();
-      center.current = { x: rect.width / 2, y: rect.height / 2 };
-    }
-
-    // Add resize handler
-    const handleResize = () => {
+  const updateCenter = () => {
       if (cardRef.current) {
-        const rect = cardRef.current.getBoundingClientRect();
-        center.current = { x: rect.width / 2, y: rect.height / 2 };
+          const rect = cardRef.current.getBoundingClientRect();
+          // Center slightly higher for visual balance
+          center.current = { x: rect.width / 2, y: rect.height * 0.40 };
       }
-    };
+  };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [isInitialized]);
+  useEffect(() => {
+      updateCenter();
+      window.addEventListener('resize', updateCenter);
+      return () => window.removeEventListener('resize', updateCenter);
+  }, []);
 
-  // Handle mouse movement for 3D effect
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!cardRef.current) return;
     const rect = cardRef.current.getBoundingClientRect();
     setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
-  // Calculate displacement and intensity for effects
+  const handleMouseEnter = () => { setIsHovered(true); updateCenter(); };
+
+  // Calculate tilt and intensity (Less intense effects)
   const displacementX = mousePos.x - center.current.x;
   const displacementY = mousePos.y - center.current.y;
   const distance = Math.sqrt(displacementX ** 2 + displacementY ** 2);
-  const maxDistance = Math.sqrt(center.current.x ** 2 + center.current.y ** 2);
-  const intensity = isHovered ? Math.min(1, distance / (maxDistance * 0.7)) : 0; // More sensitive
+  const maxPossibleDistance = Math.max(center.current.x, center.current.y) * 1.2;
+  const intensity = isHovered ? Math.min(1, distance / maxPossibleDistance) * 0.7 : 0; // Reduced max intensity
 
-  // Calculate tilt angles based on mouse position
-  const rotateX = isHovered ? (-displacementY / (center.current.y * 0.1)) * intensity : 0; // More responsive
-  const rotateY = isHovered ? (displacementX / (center.current.x * 0.1)) * intensity : 0;
+  const rotateX = isHovered ? (-displacementY / center.current.y) * 8 * intensity : 0; // Reduced tilt sensitivity
+  const rotateY = isHovered ? (displacementX / center.current.x) * 8 * intensity : 0;
+
+   // Cleaner hover style
+  const cardHoverStyle: React.CSSProperties = {
+      transition: 'transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.4s ease-out',
+      transform: `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(${1 + intensity * 0.03})`, // Less scale
+      boxShadow: isHovered
+        ? `0 ${8 + intensity * 15}px ${20 + intensity * 30}px -10px rgba(99, 102, 241, ${0.1 + intensity * 0.15})` // Subtler shadow
+        : '0 4px 8px -4px rgba(0, 0, 0, 0.05)',
+  };
 
   return (
     <BaseCard
       cardRef={cardRef}
       isHovered={isHovered}
-      onMouseEnter={() => {
-        setIsHovered(true);
-        // Recalculate center on enter in case of layout shifts
-        if (cardRef.current) {
-          const rect = cardRef.current.getBoundingClientRect();
-          center.current = { x: rect.width / 2, y: rect.height / 2 };
-        }
-      }}
+      onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setIsHovered(false)}
       onMouseMove={handleMouseMove}
-      className="group bg-gradient-to-br from-indigo-50/90 dark:from-indigo-950/30 via-white dark:via-black to-purple-50/90 dark:to-purple-950/30"
-      style={{
-        transition: 'transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-        transform: `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale(${1 + intensity * 0.06})`, // More dramatic scale
-        boxShadow: isHovered
-          ? `0 ${10 + intensity * 20}px ${20 + intensity * 40}px -15px rgba(99, 102, 241, ${0.1 + intensity * 0.3})` // More dramatic shadow with indigo tint
-          : '0 5px 10px -5px rgba(0, 0, 0, 0.1)',
-      }}
+      style={cardHoverStyle}
+      className="bg-white dark:bg-neutral-900/80" // Match other cards
     >
-      {/* Content Area */}
-      <div className="z-10 relative flex flex-col justify-between px-2 pt-10 w-full h-full">
-        {/* Top Section: Advanced Neural Network Visualization */}
+      <div className="z-10 relative flex flex-col justify-between w-full h-full">
+        {/* Top Section: Simplified Neuron Visualization */}
         <div className="relative flex justify-center items-center mb-6 w-full h-48">
-          {/* Neural Core - Pulsating with intensity */}
-          <div
-            className="relative flex justify-center items-center bg-gradient-radial from-indigo-400 dark:from-indigo-500 via-purple-500 dark:via-purple-600 to-blue-500 dark:to-blue-600 rounded-full w-20 h-20 transition-all duration-500 ease-out"
-            style={{
-              transform: `scale(${1 + intensity * 0.15})`, // More dramatic pulse
-              boxShadow: `0 0 ${10 + intensity * 30}px 0px rgba(129, 140, 248, ${0.2 + intensity * 0.4})`, // Stronger glow
-              animation: isHovered ? `pulse ${2 + intensity * 2}s ease-in-out infinite alternate` : 'none', // Dynamic pulse speed
-            }}
-          >
-            <BrainCircuit
-              className="w-10 h-10 text-white/90 transition-all duration-500"
-              strokeWidth={1.2}
-              style={{
-                transform: `scale(${1 + intensity * 0.1}) rotate(${intensity * 15}deg)`, // Subtle rotation with intensity
-                filter: `drop-shadow(0 0 ${2 + intensity * 3}px rgba(255, 255, 255, 0.8))`, // Icon glow
-              }}
-            />
-          </div>
-
-          {/* Dynamic Neural Synapses */}
-          {synapses.map((synapse, i) => {
-            // Calculate dynamic properties based on hover and intensity
-            const angle = synapse.angle + (isHovered ? intensity * 30 * (i % 2 === 0 ? 1 : -1) : 0);
-            const length = synapse.length + (isHovered ? intensity * 20 : 0);
-            const pulseSpeed = synapse.pulse - (isHovered ? intensity * 1.5 : 0); // Faster when hovered
-            const opacity = isHovered ? 0.2 + intensity * 0.7 : 0.1;
-            const thickness = 1 + (isHovered ? intensity * 1 : 0); // Thicker with intensity
-
-            return (
+          <div className="absolute inset-0 flex justify-center items-center" style={{ perspective: '600px' }}>
+              {/* Neural Core (Simpler) */}
               <div
-                key={i}
-                className="absolute origin-center pointer-events-none" // Start from center
-                style={{
-                  left: '50%',
-                  top: '50%',
-                  transform: `translate(-50%, -50%) rotate(${angle}deg)`, // Rotate around center
-                  width: `${length}px`, // Set length
-                  height: `${thickness}px`, // Dynamic thickness
-                  transition: 'all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1)',
-                }}
+                  className="relative flex justify-center items-center bg-gradient-to-br from-indigo-400 dark:from-indigo-500 via-purple-500 dark:via-purple-600 to-fuchsia-500 dark:to-fuchsia-600 rounded-full w-14 h-14 transition-all duration-400 ease-out" // Slightly smaller
+                  style={{
+                      transform: `scale(${1 + intensity * 0.08})`, // Less core scaling
+                      boxShadow: `0 0 ${5 + intensity * 15}px 0px hsla(255, 60%, 70%, ${0.2 + intensity * 0.3})`, // Less intense glow
+                      // Removed core pulse animation for simplicity
+                  }}
               >
-                {/* The visible line part with gradient */}
-                <div
-                  className="top-1/2 left-0 absolute bg-gradient-to-r from-transparent via-indigo-300/80 dark:via-indigo-400/80 to-transparent w-full h-full"
-                  style={{
-                    opacity: opacity,
-                    transform: 'translateY(-50%)',
-                    animation: isHovered ? `pulse ${pulseSpeed}s ease-in-out infinite alternate` : 'none',
-                  }}
-                />
-
-                {/* Endpoint node with glow */}
-                <div
-                  className="top-1/2 right-0 absolute bg-indigo-300 dark:bg-indigo-400 rounded-full -translate-y-1/2"
-                  style={{
-                    width: `${2 + intensity * 2}px`,
-                    height: `${2 + intensity * 2}px`,
-                    opacity: opacity * 1.2,
-                    boxShadow: isHovered ? `0 0 ${3 + intensity * 5}px rgba(129, 140, 248, ${0.3 + intensity * 0.5})` : 'none',
-                  }}
-                />
+                  <BrainCircuit
+                      className="w-7 h-7 text-white/90 transition-transform duration-500 ease-out" // Smaller icon
+                      strokeWidth={1.3}
+                      style={{ transform: `scale(${1 + intensity * 0.05})` }} // Simple scale on icon
+                  />
               </div>
-            );
-          })}
 
-          {/* Background Neural Field - Subtle grid pattern */}
-          <div
-            className="absolute opacity-20 rounded-full w-full h-full pointer-events-none"
-            style={{
-              background: `radial-gradient(circle, transparent 50%, rgba(129, 140, 248, 0.03) 100%),
-                          linear-gradient(to right, transparent 95%, rgba(129, 140, 248, 0.05) 100%) 0 0 / 20px 20px,
-                          linear-gradient(to bottom, transparent 95%, rgba(129, 140, 248, 0.05) 100%) 0 0 / 20px 20px`,
-              transform: `scale(${isHovered ? 1.1 : 1}) rotate(${isHovered ? intensity * 10 : 0}deg)`,
-              opacity: isHovered ? 0.3 : 0.1,
-              transition: 'all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)',
-            }}
-          />
+              {/* Simplified Synapses */}
+              {synapses.map((synapse, i) => {
+                  const currentAngle = synapse.angle + intensity * 15 * (i % 2 === 0 ? 1 : -1);
+                  const currentLength = synapse.baseLength + intensity * 10; // Less length change
+                  const opacity = 0.4 + intensity * 0.4; // Less opacity change
+                  const thickness = 0.8 + intensity * 0.5; // Thinner lines
+
+                  return (
+                      <div
+                          key={i}
+                          className="top-1/2 left-1/2 absolute origin-left pointer-events-none"
+                          style={{
+                              width: `${currentLength}px`, height: `${thickness}px`,
+                              transform: `translate(-50%, -50%) rotate(${currentAngle}deg) translateX(${7 * (1 + intensity * 0.08)}px)`, // Adjusted offset from core
+                              transition: 'all 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                              transformOrigin: 'center left',
+                          }}
+                      >
+                          {/* Simple Synapse Line (No gradient or complex pulse) */}
+                          <div
+                              className="rounded-full w-full h-full"
+                              style={{
+                                  backgroundColor: synapse.color,
+                                  opacity: opacity,
+                                  // Simple fade pulse instead of complex gradient/blur pulse
+                                  animation: isHovered ? `pulseSynapseSimple ${synapse.pulseSpeed}s ease-in-out infinite alternate` : 'none',
+                              }}
+                          />
+                      </div>
+                  );
+              })}
+              {/* Removed Background Field */}
+          </div>
         </div>
 
-        {/* Bottom Section: Text Content with Interactive Hover Effects */}
-        <div>
-          <BrainCircuit
-            className="mb-3 w-5 h-5 text-indigo-600 dark:text-indigo-400 transition-all duration-300"
-            strokeWidth={1.5}
-            style={{
-              transform: isHovered ? 'translateX(3px)' : 'none',
-            }}
-          />
-          <h2 className="mb-1.5 font-semibold text-black dark:text-white text-base transition-transform group-hover:translate-x-0.5 duration-300 transform">
+        {/* Bottom Section: Text Content */}
+        <div className="flex flex-col flex-grow justify-end">
+          <BrainCircuit className="mb-2.5 w-5 h-5 text-indigo-600 dark:text-indigo-400" strokeWidth={1.5}/>
+          <h2 className="mb-1.5 font-medium text-neutral-900 dark:text-white text-base">
             Blaze Genetic AI
           </h2>
-          <p className="mb-5 font-normal text-neutral-600 dark:group-hover:text-neutral-300 dark:text-neutral-400 group-hover:text-neutral-700 text-sm leading-relaxed transition-opacity duration-300">
-            Advanced genetic deep research engine with adaptive, self-organizing neural pathways.
+          <p className="mb-4 font-normal text-neutral-500 dark:text-neutral-400/80 text-sm leading-relaxed">
+            Adaptive AI core leveraging genetic algorithms for advanced deep research.
           </p>
-          <p className="inline-block bg-indigo-400/10 dark:bg-indigo-400/10 dark:group-hover:bg-indigo-500/15 group-hover:bg-indigo-500/15 px-3 py-1 border border-neutral-200 dark:border-neutral-700 dark:group-hover:border-indigo-800 group-hover:border-indigo-200 rounded-full font-normal text-indigo-700 dark:text-indigo-300 text-xs transition-all duration-300">
+          <p className="inline-block bg-indigo-50/80 dark:bg-indigo-900/30 px-2.5 py-0.5 border border-indigo-100 dark:border-indigo-900/50 dark:group-hover:border-indigo-700/80 group-hover:border-indigo-200 rounded-full font-medium text-indigo-700 dark:text-indigo-300 text-xs transition-colors duration-300">
             Genetic AI Core
           </p>
         </div>
       </div>
+
+       {/* Define Keyframes */}
+      <style>{`
+        @keyframes pulseSynapseSimple { /* Simple opacity pulse */
+          from { opacity: ${0.3 + intensity * 0.3}; }
+          to   { opacity: ${0.5 + intensity * 0.5}; }
+        }
+      `}</style>
     </BaseCard>
   );
 };
@@ -608,18 +557,33 @@ const Card3: React.FC = () => {
 
 const EffectCards: React.FC = () => {
   return (
-    // Elegant background with subtle pattern
-    (<div className="bg-white dark:bg-black py-16 min-h-screen dar">
-      {/* Subtle grid pattern overlay */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-5 dark:opacity-10 pointer-events-none" />
-      <div className="z-10 relative gap-12 grid md:grid-cols-3 mx-auto p-8 max-w-7xl"> {/* Increased gap for more breathing room */}
+    <div className="relative bg-neutral-100/50 dark:bg-black py-20 min-h-screen overflow-x-clip">
+       {/* Very subtle background noise/texture */}
+       <div
+        className="z-0 absolute inset-0 opacity-[0.015] dark:opacity-[0.02]"
+        style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'4\' height=\'4\' viewBox=\'0 0 4 4\'%3E%3Cpath fill=\'%239C92AC\' fill-opacity=\'0.1\' d=\'M1 3h1v1H1V3zm2-2h1v1H3V1z\'%3E%3C/path%3E%3C/svg%3E")' }}
+       />
+       {/* Background gradient */}
+       <div className="z-0 absolute inset-0 bg-gradient-to-b from-white dark:from-black via-neutral-50/80 dark:via-neutral-950/90 to-neutral-100 dark:to-neutral-900" />
+
+      <div className="z-10 relative gap-8 md:gap-6 lg:gap-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 mx-auto px-4 md:px-6 max-w-6xl"> {/* Adjusted max-width and gaps */}
         <Card1 />
         <Card2 />
         <Card3 />
       </div>
-    </div>)
+       {/* Global Styles (Keep ripple/particle keyframes specific to components now) */}
+       <style global jsx>{`
+          body {
+            /* Optional: Smoother font rendering */
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+          }
+          .bg-gradient-radial {
+             background-image: radial-gradient(circle, var(--tw-gradient-stops));
+          }
+       `}</style>
+    </div>
   );
 };
 
 export default EffectCards;
-

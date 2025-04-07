@@ -21,7 +21,7 @@ export default function Home() {
        <Hero/>
 <Companies/>
 
-<EffectCards/>
+{/* <EffectCards/> Consuming more javascript at bundle time  */}
 <Timelines/>
 <FeaturesGrid/>
 
