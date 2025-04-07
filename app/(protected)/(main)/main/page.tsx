@@ -296,7 +296,7 @@ export default function Home() {
 
         return (
            // Cleaner container: subtle border, less shadow
-          <div className="group code-block relative bg-white dark:bg-black shadow-sm my-6 border border-gray-200 dark:border-gray-900/80 rounded-lg overflow-hidden">
+          <div className="group code-block relative bg-white dark:bg-black/95 shadow-sm my-6 border border-gray-200 dark:border-gray-800/90 rounded-lg overflow-hidden">
             <div className="flex justify-between items-center bg-gray-50 dark:bg-gray-900/70 px-4 py-2 border-gray-200 dark:border-gray-700/80 border-b">
               <div className="flex items-center gap-2 font-mono font-medium text-gray-500 dark:text-gray-400 text-xs">
                 {/* <TerminalIcon className="w-4 h-4" /> // Icon optional, can uncomment if desired */}
@@ -663,7 +663,7 @@ export default function Home() {
         href={source.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-black dark:hover:bg-gray-900/60 shadow-sm hover:shadow-md p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-700/80 dark:hover:border-gray-600 rounded-lg w-full transition-all duration-150"
+        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-black/90 dark:hover:bg-gray-900/60 shadow-sm hover:shadow-md dark:shadow-blue-500/5 p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700 rounded-lg w-full transition-all duration-150"
       >
         {/* Subtle Favicon container */}
         <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 mt-0.5 border border-gray-200 dark:border-gray-600 rounded w-8 h-8">
@@ -705,7 +705,7 @@ export default function Home() {
   };
 
   return (
-    <div className="sm:px-6 lg:px-8 py-12 dapx-4"> 
+    <div className="dark:bg-black sm:px-6 lg:px-8 py-12 min-h-screen dapx-4"> 
       {/* Title and Description */}
       <div className="space-y-8 mx-auto mb-12 max-w-3xl">
         <motion.div
@@ -742,7 +742,7 @@ export default function Home() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="e.g., Explain quantum entanglement with code examples"
               // Adjust right padding for buttons
-              className="block bg-white dark:bg-gray-900/80 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-700 focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+              className="block bg-white dark:bg-black/90 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-800 focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleDeepResearch('non-think')} // Default Enter triggers 'non-think'
               disabled={loading}
             />
@@ -824,7 +824,7 @@ export default function Home() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.4, ease: "circOut" }}
-            className="space-y-6 bg-gradient-to-br from-white dark:from-gray-900 via-gray-50 dark:via-gray-950/90 to-gray-100 dark:to-black/90 shadow-2xl backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-700/60 rounded-2xl overflow-hidden"
+            className="space-y-6 bg-gradient-to-br from-white dark:from-black via-gray-50 dark:via-gray-950 to-gray-100 dark:to-black/95 shadow-2xl dark:shadow-blue-500/5 backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-800/80 rounded-2xl overflow-hidden"
           >
              {/* Header */}
              <div className="flex sm:flex-row flex-col justify-between items-center gap-4">
@@ -854,7 +854,7 @@ export default function Home() {
                  animate={{ opacity: 1, height: 'auto' }}
                  exit={{ opacity: 0, height: 0 }}
                  transition={{ duration: 0.3, delay: 0.1 }}
-                 className="bg-purple-50 dark:bg-purple-900/30 shadow-sm px-4 py-3 border-purple-500 border-l-4 rounded-r-lg text-purple-700 dark:text-purple-300"
+                 className="bg-purple-50 dark:bg-purple-950/20 shadow-sm px-4 py-3 border-purple-500 border-l-4 rounded-r-lg text-purple-700 dark:text-purple-300"
                >
                  <div className="flex items-center gap-2">
                    <BrainIcon className="flex-shrink-0 w-5 h-5 text-purple-600 dark:text-purple-400" />
@@ -868,7 +868,7 @@ export default function Home() {
              {/* Modern Progress Bar with Gradient Effect */}
              <ModernProgress
                indeterminate={true}
-               className="shadow-inner backdrop-blur-md rounded-full h-3"
+               className="dark:bg-black/40 shadow-inner backdrop-blur-md rounded-full h-3"
                indicatorClassName={cn(
                  "rounded-full bg-gradient-to-r",
                  loadingMode === 'think'
@@ -902,7 +902,7 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="flex items-start gap-4 bg-red-50 dark:bg-red-900/30 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-500/50 rounded-xl text-red-700 dark:text-red-300"
+            className="flex items-start gap-4 bg-red-50 dark:bg-black/80 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-300"
           >
             <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
               <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
@@ -937,7 +937,7 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            className="bg-gradient-to-b from-white dark:from-gray-900 to-gray-50 dark:to-gray-900/95 shadow-xl backdrop-blur-xl mt-8 border border-gray-200 dark:border-gray-700/80 rounded-2xl overflow-hidden" // Added overflow-hidden
+            className="bg-gradient-to-b from-white dark:from-black to-gray-50 dark:to-black/95 shadow-xl dark:shadow-blue-500/5 backdrop-blur-xl mt-8 border border-gray-200 dark:border-gray-800/80 rounded-2xl overflow-hidden" // Added overflow-hidden
           >
             {/* Wrap content in padding */}
             <div className="p-6 md:p-10">

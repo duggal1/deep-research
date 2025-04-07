@@ -47,18 +47,18 @@ export default function FeaturesGrid() {
             <CustomAnimations />
             <div className="gap-6 grid grid-cols-1 md:grid-cols-2 mx-auto max-w-6xl">
                 {/* Card 1 - Top Left */}
-                <div className="group relative hover:bg-gray-50/80 dark:hover:bg-gray-900/80 shadow-md border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden transition-all duration-500">
+                <div className="group relative hover:bg-gray-50/80 dark:hover:bg-gray-900/80 shadow-md border border-gray-100 dark:border-gray-800 rounded-xl h-[700px] overflow-hidden transition-all duration-500">
                     <div className="z-10 relative p-4 sm:p-6">
-                        {/* <span className="flex items-center gap-2 font-medium text-zinc-500 dark:text-zinc-400">
+                        <span className="flex items-center gap-2 font-medium text-zinc-500 dark:text-zinc-400">
                             <GlobeIcon className="size-4 text-indigo-600 dark:text-indigo-400" />
                             <span className="bg-clip-text bg-gradient-to-r from-indigo-600 dark:from-indigo-400 to-violet-500 dark:to-violet-400 text-transparent">
-                                Autonomous Lead Generation
+                                Global Knowledge Network
                             </span>
                         </span>
 
-                        <p className="mt-8 font-semibold text-gray-900 dark:text-white text-2xl leading-tight">
-                            AI agents that autonomously identify and qualify high-value prospects across global markets.
-                        </p> */}
+                        <p className="my-6 font-semibold text-gray-900 dark:text-white text-2xl leading-tight">
+                            Accessing worldwide information sources to deliver comprehensive and accurate research results.
+                        </p>
                     <Globes/>
                         <div className="inline-flex items-center mt-4 font-medium text-indigo-600 dark:text-indigo-400 text-sm cursor-pointer">
                             <span>Learn more</span>
@@ -84,7 +84,7 @@ export default function FeaturesGrid() {
                 </div>
 
                 {/* Card 2 - Top Right */}
-                <div className="group relative hover:bg-gray-50/80 dark:hover:bg-gray-900/50 shadow-sm border dark:border-gray-700 rounded-xl overflow-hidden transition-all duration-500">
+                <div className="group relative hover:bg-gray-50/80 dark:hover:bg-gray-900/50 shadow-sm border dark:border-gray-700 rounded-xl h-[700px] overflow-hidden transition-all duration-500">
                     <div className="z-10 relative p-4 sm:p-6">
                         <span className="flex items-center gap-2 font-medium text-zinc-500 dark:text-zinc-400">
                             <MessageSquare className="size-4 text-indigo-600 dark:text-indigo-400" />
@@ -93,16 +93,13 @@ export default function FeaturesGrid() {
                             </span>
                         </span>
 
-                        <p className="my-6 font-semibold text-gray-900 dark:text-white text-2xl leading-tight">
+                        <p className="mb-4 font-semibold text-gray-900 dark:text-white text-2xl leading-tight">
                             AI-powered research providing comprehensive analysis and synthesized insights on complex topics.
                         </p>
 
-
-                       
-                         
+                        <div className="w-full">
                             <MarkdownChat/>
-   
-             
+                        </div>
                     </div>
                 </div>
 

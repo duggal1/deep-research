@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client"
 
 import React, { useEffect, useRef, useState } from 'react'
@@ -44,88 +45,92 @@ export const MarkdownChat = () => {
             id: 2,
             type: 'outgoing' as 'outgoing',
             text: `### Key Points
-
-- Research suggests dark energy drives the universe's accelerated expansion, but it may not be constant, possibly weakening over time.
-
-- Recent observations, like high-redshift supernovae and DESI data, indicate dark energy might evolve, challenging early 21st-century models.
-
-- Gravitational wave events offer indirect insights, while dark energy fluctuations hint at changing behavior, adding complexity to our understanding.
-
-- The evidence leans toward evolving dark energy, but more data is needed, with ongoing debate about its nature and future implications.
-
-### Direct Answer
-
-Dark energy is likely the main force behind the universe's accelerating expansion, but recent findings suggest it might not be a steady force as once thought. Instead, it seems to be changing, possibly getting weaker over time, which could mean the universe might not keep expanding forever but could eventually slow down or even collapse.
-
-**Recent Observations and Their Impact**
-
-New data from high-redshift supernovae, collected by projects like the Dark Energy Survey ([Dark Energy Survey Results](https://news.fnal.gov/2024/01/final-supernova-results-from-dark-energy-survey-offer-unique-insights-into-the-expansion-of-the-universe/)), show the largest and most precise measurements yet. These align with the standard model but don't rule out the idea that dark energy varies. Gravitational wave observations, while mainly about testing gravity, can indirectly help by checking how gravity behaves on large scales, potentially affecting dark energy models. Additionally, the Dark Energy Spectroscopic Instrument (DESI) suggests dark energy might be weakening, which we call "fluctuations" here, meaning it's not constant as early models assumed.
-
-**Comparison to Early Models**
-
-In the early 2000s, scientists thought dark energy was a constant, like a fixed background energy. Now, with these new observations, we see it might change, refining our view. This shift could mean big changes for how we predict the universe's future, moving away from the idea of endless expansion to possibly a collapse, which is a major update from what we believed 25 years ago.
+- Research suggests dark energy drives the universe's accelerated expansion, but it may not be constant, potentially weakening over time.
+- Recent observations, like high-redshift supernovae and large-scale galaxy surveys, hint at evolving dark energy, challenging early 21st-century models.
+- Gravitational wave events provide additional insights into expansion rates, though their impact on dark energy understanding is less direct.
+- The evidence leans toward dynamical dark energy, but findings are not conclusive, with ongoing debates about the universe's future.
 
 ---
 
-### Survey Note: Detailed Analysis of Mechanisms Driving Accelerated Expansion
+### Direct Answer
 
-This section provides a comprehensive overview of the current understanding of the universe's accelerated expansion, focusing on the most plausible mechanisms and how recent observations refine our knowledge compared to early 21st-century models. It incorporates detailed findings from high-redshift supernovae, gravitational wave events, and dark energy fluctuations, ensuring a thorough examination for researchers and enthusiasts alike.
+Dark energy is likely the main force behind the universe's accelerating expansion, but recent research suggests it might not be a fixed, unchanging force as once thought. Instead, it seems to be evolving, possibly weakening over time, which could change how we see the universe's future.
 
-#### Background on Accelerated Expansion
+**High-Redshift Supernovae**  
+Observations of distant supernovae, especially from the Dark Energy Survey (DES), have given us a clearer picture of how the universe expanded in the past. These studies show that while the standard model (where dark energy is constant) still fits, there are signs it might vary, refining our understanding beyond early 21st-century ideas that assumed it was always the same.
 
-The accelerated expansion of the universe was first discovered in 1998 through observations of type Ia supernovae by the Supernova Cosmology Project and the High-Z Supernova Search Team ([Accelerating Expansion of the Universe](https://en.wikipedia.org/wiki/Accelerating_expansion_of_the_universe)). These "standard candles," with nearly uniform brightness, allowed distance measurements compared to their redshift, revealing that the universe's expansion is speeding up. This finding led to the hypothesis of dark energy, a mysterious force making up about 70% of the universe's energy density, as per current consensus ([AccessScience on Accelerating Universe](https://www.accessscience.com/content/accelerating-universe/800550)).
+**Gravitational Wave Events**  
+When black holes or neutron stars collide, they create ripples in space-time called gravitational waves. These events help measure how fast the universe is expanding by giving us distance and speed data. While they don't directly show changes in dark energy, they offer another way to check our models, adding to the overall picture compared to earlier models.
 
-Early 21st-century models, particularly the Lambda-CDM model, assumed dark energy was a cosmological constant, a uniform energy density filling space, driving steady acceleration. This model was consistent with observations like the cosmic microwave background (CMB) and galaxy clustering, but its nature remained speculative, with candidates including vacuum energy or scalar fields like quintessence.
+**Dark Energy Fluctuations**  
+Recent surveys, like the Dark Energy Spectroscopic Instrument (DESI), suggest dark energy might not be steady but could be changing. This idea, seen in how galaxies are spread out, challenges the early belief that dark energy was a constant force, suggesting it might affect the universe differently over time.
 
-#### Most Plausible Mechanisms as of April 2025
+Overall, these findings suggest dark energy is more complex than we thought, with ongoing research needed to confirm if it’s truly changing and what that means for the universe’s fate.
 
-As of April 6, 2025, the most plausible mechanisms for the accelerated expansion center on dark energy, but recent data suggest it may not be constant. The leading mechanisms include:
+---
 
-1.  **Dark Energy as a Cosmological Constant**: This remains the simplest explanation, where dark energy is a constant energy density, consistent with Einstein's initial cosmological constant idea. It fits well with many observations but struggles to explain recent tensions, like the Hubble constant discrepancy.
+---
 
-2.  **Evolving Dark Energy**: Recent findings from the Dark Energy Spectroscopic Instrument (DESI) suggest dark energy might be weakening over time. A study published in March 2025 indicated that DESI's analysis of nearly 15 million galaxies and quasars shows dark energy's impact may be decreasing, challenging the constant model ([Reuters on Dark Energy Changing](https://www.reuters.com/science/evidence-mounts-that-universes-dark-energy-is-changing-over-time-2025-03-19/)). This could imply dynamic models like quintessence, where dark energy's density varies, or even new physics beyond the standard model.
+### Survey Note: Detailed Analysis of Mechanisms Driving the Universe's Accelerated Expansion
+
+The accelerated expansion of the universe, first discovered in the late 1990s through observations of type Ia supernovae, has been a cornerstone of modern cosmology. As of April 2025, the prevailing mechanism is dark energy, a mysterious component estimated to constitute about 70% of the universe's energy density. However, recent observations have refined our understanding, suggesting that dark energy may not be a simple cosmological constant as proposed in early 21st-century models, but rather a dynamical entity with potential fluctuations over time. This section explores the latest data from high-redshift supernovae, gravitational wave events, and dark energy fluctuations, comparing them to earlier models and highlighting the implications for cosmology.
+
+#### Background: Early 21st-Century Models
+In the early 2000s, following the discovery of cosmic acceleration, the Lambda Cold Dark Matter (ΛCDM) model became the standard framework. This model posits that dark energy is a cosmological constant (Λ), a uniform energy density associated with empty space, driving the universe's expansion at a constant rate. It was consistent with observations from the cosmic microwave background (CMB), large-scale structure, and supernovae, suggesting a future of eternal expansion leading to a "big freeze." Alternative models, such as quintessence, proposed dynamical dark energy with varying density, but these were less favored due to lack of definitive evidence.
+
+#### Recent Observations and Their Impact
+
+##### High-Redshift Supernovae
+High-redshift supernovae, particularly type Ia, serve as "standard candles" due to their consistent brightness, allowing precise distance measurements. The Dark Energy Survey (DES), culminating in its five-year dataset released in early 2024, analyzed approximately 1,500 high-redshift supernovae, significantly expanding on earlier samples like Pantheon+. This quintupled the number of high-quality supernovae at redshifts greater than 0.5, providing tighter constraints on cosmological parameters ([The Dark Energy Survey: Cosmology Results With ~1500 New High-redshift Type Ia Supernovae Using The Full 5-year Dataset](https://arxiv.org/html/2401.02929v3)). 
+
+The DES results are consistent with ΛCDM but show hints of deviations, suggesting that dark energy's equation of state (w, the ratio of pressure to energy density) might vary. This aligns with observations from the Supernova Legacy Survey and Hubble Space Telescope, indicating dark energy has been present for at least 9 billion years, potentially evolving ([Dark Energy - Wikipedia](https://en.wikipedia.org/wiki/Dark_energy)). Compared to early models, these findings refine our understanding by suggesting a more dynamic history, challenging the assumption of constancy.
+
+##### Gravitational Wave Events
+Gravitational waves, detected since 2015 by observatories like LIGO and Virgo, arise from cataclysmic events such as binary black hole mergers. These "standard sirens" offer distance measurements through waveform analysis, and with electromagnetic counterparts (e.g., neutron star mergers), they provide redshift data for Hubble constant (H₀) estimation. Recent studies, such as those presented at the 2023 National Astronomy Meeting, suggest that future detectors could use gravitational lensing of waves to probe structure growth, indirectly informing dark energy models ([Gravitational waves may reveal nature of dark matter | UCL News](https://www.ucl.ac.uk/news/2023/aug/gravitational-waves-may-reveal-nature-dark-matter)).
+
+However, their direct impact on dark energy understanding is less pronounced compared to supernovae. They primarily contribute by offering an independent measure of H₀, helping resolve tensions like the Hubble tension (discrepancy between early and late universe measurements). This refines early models by providing cross-verification, but their role in probing dark energy fluctuations is secondary, focusing more on compact object physics ([Gravitational-wave physics and astronomy in the 2020s and 2030s | Nature Reviews Physics](https://www.nature.com/articles/s42254-021-00303-8)).
+
+##### Dark Energy Fluctuations
+The term "dark energy fluctuations" likely refers to variations in dark energy density over time or space, a concept explored through large-scale structure surveys. The Dark Energy Spectroscopic Instrument (DESI), operational since 2021, has mapped nearly 15 million galaxies and quasars, providing the largest 3D map of the universe to date. Its first-year data, released in April 2024, and subsequent analyses suggest that dark energy may be weakening, with its influence potentially decreasing over the past 4–5 billion years ([Unexpected dark energy finding may change our understanding of the universe | CNN](https://www.cnn.com/2025/04/02/science/desi-dark-energy-results/index.html)).
+
+This challenges the cosmological constant model, suggesting a dynamical dark energy akin to quintessence or other models like quintom-B, where the equation of state varies ([Study: Early dark energy could resolve cosmology’s two biggest puzzles | MIT News](https://news.mit.edu/2024/study-early-dark-energy-could-resolve-cosmologys-two-biggest-puzzles-0913)). DESI's findings, combined with baryon acoustic oscillation (BAO) measurements, indicate that dark energy's evolution could alter the universe's fate, potentially leading to a "big crunch" rather than eternal expansion ([Dark energy is weakening and the universe could (eventually) collapse, study says : NPR](https://www.npr.org/2025/03/20/nx-s1-5333843/dark-energy-weakening-universe-collapse-desi)). This is a significant refinement over early models, which assumed uniformity.
+
+#### Comparative Analysis with Early 21st-Century Models
+Early 21st-century models, rooted in ΛCDM, assumed dark energy was a constant, leading to predictions of indefinite acceleration and a cold, dark future. Recent observations refine this by suggesting:
+
+- **Supernovae Data:** Increased precision from high-redshift samples shows potential evolution, hinting at dynamical models, unlike the static assumption of early models.
+- **Gravitational Waves:** Offer independent H₀ measurements, helping test ΛCDM consistency, but their impact on dark energy dynamics is indirect, adding to the toolkit beyond early methods.
+- **Dark Energy Fluctuations:** DESI's findings of weakening dark energy challenge constancy, suggesting a need for models with time-varying density, a departure from early uniform assumptions.
+
+#### Implications and Future Directions
+These refinements suggest a more complex universe, with dark energy potentially influencing expansion differently over cosmic history. If confirmed, this could lead to new physics, with implications for fundamental theories like general relativity. Future missions, such as NASA's Nancy Grace Roman Space Telescope (launching by May 2027) and the Vera C. Rubin Observatory (operational in 2025), will further probe these dynamics ([What is Dark Energy? Inside Our Accelerating, Expanding Universe - NASA Science](https://science.nasa.gov/dark-energy/)).
+
+The controversy lies in the statistical significance of these findings, with some researchers noting that DESI's results are "tantalizing" but not conclusive, potentially due to statistical flukes or biases ([New Data Hint at Changing Dark Energy — and a Different Cosmic Fate - Sky & Telescope](https://skyandtelescope.org/astronomy-news/dark-energy-changing-different-cosmic-fate/)). This highlights the need for continued observation and cross-verification across methods.
+
+#### Table: Comparison of Observations and Their Impact
+
+| Observation Type          | Early 21st-Century Role                     | Recent Findings (as of April 2025)                     | Refinement Over Early Models                     |
+|---------------------------|---------------------------------------------|-------------------------------------------------------|-------------------------------------------------|
+| High-Redshift Supernovae  | Standard candles for expansion history      | Larger samples (e.g., DES 1,500+ SNe) suggest evolving dark energy | Hints at dynamical models, tighter constraints   |
+| Gravitational Wave Events | Not significant, post-2015 discovery        | Independent H₀ measurements, potential for lensing studies | Cross-verifies expansion rate, indirect impact  |
+| Dark Energy Fluctuations  | Assumed constant, no fluctuations           | DESI suggests weakening, potential time variation      | Challenges constancy, suggests dynamical nature |
+
+This table summarizes how each observation type has evolved, refining our understanding beyond the static dark energy models of the early 21st century.
+
+In conclusion, the evidence leans toward a dynamical dark energy, with recent observations providing a richer, more nuanced picture of cosmic acceleration, though further research is needed to solidify these findings.
+
+---
 
 ### Key Citations
-
-- [Dark Energy Survey Results offer unique insights into the expansion of the universe](https://news.fnal.gov/2024/01/final-supernova-results-from-dark-energy-survey-offer-unique-insights-into-the-expansion-of-the-universe/)
-
-- [The Dark Energy Survey: Cosmology Results with ~1500 New High-redshift Type Ia Supernovae Using The Full 5-year Dataset](https://arxiv.org/abs/2401.02929)
-
-- [Evidence mounts that universe's dark energy is changing over time](https://www.reuters.com/science/evidence-mounts-that-universes-dark-energy-is-changing-over-time-2025-03-19/)
-
-- [New observations of the universe show how mysterious dark energy may be evolving](https://abc17news.com/cnn-other/2025/04/02/new-observations-of-the-universe-show-how-mysterious-dark-energy-may-be-evolving/)
-
-- [Dark energy: mysterious cosmic force appears to be weakening, say scientists](https://www.theguardian.com/science/2025/mar/19/dark-energy-mysterious-cosmic-force-weakening-universe-expansion)
-
-- [Gravitational waves may reveal nature of dark matter](https://www.ucl.ac.uk/news/2023/aug/gravitational-waves-may-reveal-nature-dark-matter)
-
-- [Dark Energy and Dark Matter research at Harvard & Smithsonian](https://www.cfa.harvard.edu/research/topic/dark-energy-and-dark-matter)
-
-- [Frontiers in Astronomy and Space Sciences on Multi-Messenger Gravitational Waves](https://www.frontiersin.org/journals/astronomy-and-space-sciences/articles/10.3389/fspas.2018.00044/full)
-
-- [MIT News on Early Dark Energy resolving cosmological puzzles](https://news.mit.edu/2024/study-early-dark-energy-could-resolve-cosmologys-two-biggest-puzzles-0913)
-
-- [New Scientist on DESI 2025 and understanding dark energy](https://www.newscientist.com/article/mg26435232-300-could-2025-be-the-year-we-finally-start-to-understand-dark-energy/)
-
-- [NPR on Dark Energy potentially weakening and universe collapse](https://www.npr.org/2025/03/20/nx-s1-5333843/dark-energy-weakening-universe-collapse-desi)
-
-- [CNN on DESI findings and evolving dark energy](https://www.cnn.com/2025/04/02/science/desi-dark-energy-results/index.html)
-
-- [Quanta Magazine on Dark Energy possibly getting weaker](https://www.quantamagazine.org/is-dark-energy-getting-weaker-new-evidence-strengthens-the-case-20250319/)
-
-- [Washington Post on universe expansion and weakening dark energy](https://www.washingtonpost.com/science/2025/03/19/universe-dark-energy-nasa-telescope/)
-
-- [Labrujulaverde on dark energy possibly being an illusion](https://www.labrujulaverde.com/en/2024/12/scientists-claim-dark-energy-does-not-exist-and-accelerated-expansion-of-universe-is-an-illusion-caused-by-gravity-slowing-down-time/)
-
-- [Penn Today on Dark Energy Survey uncovering universe complexity](https://penntoday.upenn.edu/news/dark-energy-survey-uncovers-clues-universes-complexity)
-
-- [AccessScience on the accelerating universe](https://www.accessscience.com/content/accelerating-universe/800550)
-
-- [Accelerating expansion of the universe Wikipedia page](https://en.wikipedia.org/wiki/Accelerating_expansion_of_the_universe)
-
-- [Expansion of the universe Wikipedia page](https://en.wikipedia.org/wiki/Expansion_of_the_universe)
-
-- [Dark energy Wikipedia page](https://en.wikipedia.org/wiki/Dark_energy)`,
+- [The Dark Energy Survey: Cosmology Results With ~1500 New High-redshift Type Ia Supernovae Using The Full 5-year Dataset](https://arxiv.org/html/2401.02929v3)
+- [Unexpected dark energy finding may change our understanding of the universe](https://www.cnn.com/2025/04/02/science/desi-dark-energy-results/index.html)
+- [Dark energy is weakening and the universe could (eventually) collapse, study says : NPR](https://www.npr.org/2025/03/20/nx-s1-5333843/dark-energy-weakening-universe-collapse-desi)
+- [Gravitational waves may reveal nature of dark matter | UCL News](https://www.ucl.ac.uk/news/2023/aug/gravitational-waves-may-reveal-nature-dark-matter)
+- [Study: Early dark energy could resolve cosmology’s two biggest puzzles | MIT News](https://news.mit.edu/2024/study-early-dark-energy-could-resolve-cosmologys-two-biggest-puzzles-0913)
+- [What is Dark Energy? Inside Our Accelerating, Expanding Universe - NASA Science](https://science.nasa.gov/dark-energy/)
+- [New Data Hint at Changing Dark Energy — and a Different Cosmic Fate - Sky & Telescope](https://skyandtelescope.org/astronomy-news/dark-energy-changing-different-cosmic-fate/)
+- [Gravitational-wave physics and astronomy in the 2020s and 2030s | Nature Reviews Physics](https://www.nature.com/articles/s42254-021-00303-8)
+- [Dark Energy - Wikipedia](https://en.wikipedia.org/wiki/Dark_energy)`,
             time: '2:02 PM'
         }
     // Only include the first two messages (one user, one AI) for this example
@@ -202,15 +207,15 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                         setVisibleMessages(prev => [...prev, nextMessage])
                         setCurrentMessageIndex(prev => prev + 1)
                     }
-                }, 25); // Slightly slower user typing
+                }, 10); // Much faster user typing
 
                 return () => clearInterval(typingInterval)
             } 
             // For outgoing messages (Deep Research response), simulate thinking then show chunks
             else {
-                // First, simulate AI thinking
-                // Adjust thinking time based on complexity/length
-                const thinkingTime = Math.min(1800, nextMessage.text.length * 0.18);
+                // Faster AI thinking time
+                // Significantly reduced thinking time for faster response
+                const thinkingTime = Math.min(600, nextMessage.text.length * 0.05);
                 
                 setTimeout(() => {
                     // Then start showing chunks of text, split by paragraphs
@@ -225,10 +230,10 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                             chunkIndex++;
                             scrollToBottom();
 
-                            // Calculate delay based on chunk length for more natural feel
+                            // Much faster delay for rapid text display
                             const delay = chunkIndex > 0 && chunkIndex <= chunks.length
-                                ? Math.max(150, Math.min(600, chunks[chunkIndex - 1].length * 1.0))
-                                : 200;
+                                ? Math.max(50, Math.min(150, chunks[chunkIndex - 1].length * 0.2))
+                                : 50;
 
                             setTimeout(showChunks, delay);
                         } else {
@@ -250,10 +255,10 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             }
         }
 
-        // Start typing the next message after a delay
+        // Start typing the next message with minimal delay
         const timer = setTimeout(() => {
             startTypingAnimation()
-        }, 1200) // Initial delay before AI starts "typing"
+        }, 400) // Much shorter initial delay
 
         return () => clearTimeout(timer)
     // Ensure all dependencies are included
@@ -271,7 +276,7 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             return <div className={`whitespace-pre-wrap font-sans ${isOutgoing ? 'text-indigo-50' : 'text-gray-700 dark:text-gray-300'}`}>{content}</div>;
         }
 
-        // Enhanced prose classes for a more modern look
+        // Enhanced prose classes with appropriate text size
         const proseBase = `prose prose-sm dark:prose-invert max-w-none font-sans prose-headings:font-medium prose-p:leading-relaxed`;
         // Enhanced classes for outgoing messages
         const proseOutgoing = `prose-light text-indigo-50 prose-headings:text-white prose-strong:text-white/90`;
@@ -282,17 +287,17 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                 <ReactMarkdown
                     components={{
                         // Modern styles for markdown elements
-                        h1: ({node, ...props}) => <h1 className="bg-clip-text bg-gradient-to-r from-indigo-600 dark:from-indigo-400 to-violet-600 dark:to-violet-400 mt-3 first:mt-0 mb-2.5 font-sans font-bold text-md text-transparent" {...props} />,
-                        h2: ({node, ...props}) => <h2 className="mt-2.5 mb-2 font-sans font-semibold text-[0.95rem] text-indigo-700 dark:text-indigo-300" {...props} />,
-                        h3: ({node, ...props}) => <h3 className="mt-2 mb-1.5 font-sans font-medium text-[0.9rem] text-indigo-600 dark:text-indigo-400" {...props} />,
-                        p: ({node, ...props}) => <p className="mb-2.5 text-gray-700 dark:text-gray-200 leading-relaxed" {...props} />,
-                        ul: ({node, ...props}) => <ul className="space-y-1 mb-2.5 pl-4 text-gray-700 dark:text-gray-200 list-disc list-outside" {...props} />,
-                        ol: ({node, ...props}) => <ol className="space-y-1 mb-2.5 pl-4 text-gray-700 dark:text-gray-200 list-decimal list-outside" {...props} />,
-                        li: ({node, ...props}) => <li className="my-0.5 text-gray-700 dark:text-gray-200" {...props} />,
+                        h1: ({node, ...props}) => <h1 className="bg-clip-text bg-gradient-to-r from-indigo-600 dark:from-indigo-400 to-violet-600 dark:to-violet-400 mt-2 first:mt-0 mb-1.5 font-sans font-bold text-transparent text-base" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="mt-1.5 mb-1 font-sans font-semibold text-[0.95rem] text-indigo-700 dark:text-indigo-300" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="mt-1.5 mb-1 font-sans font-medium text-[0.9rem] text-indigo-600 dark:text-indigo-400" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-1.5 text-[0.9rem] text-gray-700 dark:text-gray-200 leading-tight" {...props} />,
+                        ul: ({node, ...props}) => <ul className="space-y-0.5 mb-1.5 pl-3 text-[0.9rem] text-gray-700 dark:text-gray-200 list-disc list-outside" {...props} />,
+                        ol: ({node, ...props}) => <ol className="space-y-0.5 mb-1.5 pl-3 text-[0.9rem] text-gray-700 dark:text-gray-200 list-decimal list-outside" {...props} />,
+                        li: ({node, ...props}) => <li className="my-0.5 text-[0.9rem] text-gray-700 dark:text-gray-200" {...props} />,
                         // --- Enhanced Link Styling ---
                         a: ({node, ...props}) => (
                             <a
-                                className={`font-medium no-underline transition-all duration-200 ease-in-out rounded-md px-1.5 py-0.5 border
+                                className={`font-medium no-underline transition-all duration-200 ease-in-out rounded-sm px-1 py-0.5 border text-[0.85rem]
                                     ${isOutgoing
                                         ? 'text-white border-white/20 hover:bg-white/10 hover:border-white/30'
                                         : 'text-indigo-600 border-indigo-200/30 hover:border-indigo-400/50 hover:bg-indigo-50/30 dark:text-indigo-300 dark:border-indigo-500/20 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-900/30'
@@ -316,7 +321,7 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                                 </div>
                             ) : (
                                 // Modern inline code
-                                <code className={`px-1.5 py-0.5 rounded-md text-[0.8rem] font-mono ${isOutgoing ? 'bg-white/15 border border-white/10' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border dark:border-indigo-800/50'}`} {...props}>
+                                <code className={`px-1.5 py-0.5 rounded-md text-[0.9rem] font-mono ${isOutgoing ? 'bg-white/15 border border-white/10' : 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 dark:border dark:border-indigo-800/50'}`} {...props}>
                                     {children}
                                 </code>
                             );
@@ -344,7 +349,7 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
     return (
         <div
             ref={chatContainerRef}
-            className="flex flex-col space-y-4 bg-transparent p-4 rounded-2xl h-[500px] overflow-y-auto font-serif text-[13px] scroll-smooth custom-scrollbar"
+            className="flex flex-col space-y-3 bg-transparent p-3 rounded-2xl h-[500px] overflow-y-auto font-serif text-[14px] scroll-smooth custom-scrollbar"
         >
             {/* --- Enhanced Global Styles --- */}
             <style jsx global>{`
@@ -428,11 +433,11 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             {visibleMessages.map((message) => (
                 <div 
                     key={message.id}
-                    className={`flex items-start gap-3 ${message.type === 'incoming' ? 'justify-start' : 'justify-end'}`}
+                    className={`flex items-start gap-2 ${message.type === 'incoming' ? 'justify-start' : 'justify-end'}`}
                 >
                     {/* User Avatar */}
                     {message.type === 'incoming' && (
-                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                        <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
                             <img src="https://images.unsplash.com/photo-1601288496920-b6154fe3626a?q=80&w=1826&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8MHx8fHw%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
@@ -441,21 +446,21 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                     <div
                         className={`flex flex-col max-w-[85%] shadow-lg transition-all duration-300 ease-out ${
                             message.type === 'incoming'
-                                ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border border-gray-100 dark:border-gray-800 rounded-2xl rounded-tl-md'
-                                : 'bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white rounded-2xl rounded-tr-md border border-indigo-400/10 dark:border-violet-500/20'
+                                ? 'bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border border-gray-100 dark:border-gray-800 rounded-xl rounded-tl-md'
+                                : 'bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white rounded-xl rounded-tr-md border border-indigo-400/10 dark:border-violet-500/20'
                         } p-4`}
                     >
                         <div className="w-full">
                             {renderMarkdown(message.text, message.type === 'outgoing')}
                         </div>
-                        <div className={`mt-2 text-right text-[11px] opacity-70 ${message.type === 'incoming' ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-100 dark:text-indigo-300'}`}>
+                        <div className={`mt-1 text-right text-[9px] opacity-70 ${message.type === 'incoming' ? 'text-gray-500 dark:text-gray-400' : 'text-indigo-100 dark:text-indigo-300'}`}>
                             {message.time}
                         </div>
                     </div>
 
                      {/* AI Avatar */}
                     {message.type === 'outgoing' && (
-                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                        <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
                             <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/blaze.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
@@ -463,21 +468,21 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
             ))}
             
             {isTyping && (
-                <div className={`flex items-start gap-3 ${allMessages[currentMessageIndex]?.type === 'incoming' ? 'justify-start' : 'justify-end'}`}>
+                <div className={`flex items-start gap-2 ${allMessages[currentMessageIndex]?.type === 'incoming' ? 'justify-start' : 'justify-end'}`}>
                     {/* Typing Avatar */}
                     {allMessages[currentMessageIndex]?.type === 'incoming' ? (
-                         <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                         <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
                             <img src="https://images.unsplash.com/photo-1601288496920-b6154fe3626a?q=80&w=1826&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8MHx8fHw%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
                          </div>
                     ) : (
-                        <div className="flex-shrink-0 rounded-full w-8 h-8 overflow-hidden">
+                        <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
                             <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/blaze.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
 
                     {/* Typing Bubble Content */}
                     {allMessages[currentMessageIndex]?.type === 'incoming' ? (
-                         <div className={`flex items-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-4 py-3 rounded-2xl rounded-tl-md shadow-lg border border-gray-100 dark:border-gray-800 h-[40px]`}>
+                         <div className={`flex items-center bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm px-3 py-2 rounded-xl rounded-tl-md shadow-lg border border-gray-100 dark:border-gray-800 h-[32px]`}>
                              <span className="flex space-x-2">
                                 <span className="bg-indigo-400 dark:bg-indigo-500 rounded-full w-2 h-2 animate-dot-bounce" style={{ animationDelay: '0ms' }}></span>
                                 <span className="bg-indigo-400 dark:bg-indigo-500 rounded-full w-2 h-2 animate-dot-bounce" style={{ animationDelay: '100ms' }}></span>
@@ -486,7 +491,7 @@ As of April 6, 2025, the most plausible mechanisms for the accelerated expansion
                          </div>
                     ) : (
                         // Show partial response for AI typing
-                        <div className={`flex flex-col bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white shadow-lg p-4 rounded-2xl rounded-tr-md max-w-[85%] border border-indigo-400/10 dark:border-violet-500/20`}>
+                        <div className={`flex flex-col bg-gradient-to-br from-indigo-500 to-violet-600 dark:from-indigo-500 dark:to-violet-700 text-white shadow-lg p-4 rounded-xl rounded-tr-md max-w-[85%] border border-indigo-400/10 dark:border-violet-500/20`}>
                             <div className="w-full">
                                 {renderMarkdown(typingText, true)}
                                 {/* Enhanced pulsing dot */}
