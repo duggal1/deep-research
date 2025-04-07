@@ -20,16 +20,22 @@ export const MarkdownChat = () => {
     type ReactMarkdownComponentProps = {
         components?: Record<string, React.ComponentType<any>>;
         children: string;
+        remarkPlugins?: any[];
     };
 
     type ReactMarkdownComponent = React.ComponentType<ReactMarkdownComponentProps>;
 
     const [ReactMarkdown, setReactMarkdown] = useState<ReactMarkdownComponent | null>(null);
-    
+    const [RemarkGfm, setRemarkGfm] = useState<any>(null);
+
     useEffect(() => {
-        // Dynamically import ReactMarkdown
-        import('react-markdown').then(module => {
-            setReactMarkdown(() => module.default);
+        // Dynamically import ReactMarkdown and remark-gfm for table support
+        Promise.all([
+            import('react-markdown'),
+            import('remark-gfm')
+        ]).then(([reactMarkdownModule, remarkGfmModule]) => {
+            setReactMarkdown(() => reactMarkdownModule.default);
+            setRemarkGfm(() => remarkGfmModule.default);
         });
     }, []);
 
@@ -271,8 +277,8 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
 
     // Render markdown content
     const renderMarkdown = (content: string, isOutgoing: boolean) => {
-        if (!ReactMarkdown) {
-             // Fallback rendering if ReactMarkdown is not loaded yet
+        if (!ReactMarkdown || !RemarkGfm) {
+             // Fallback rendering if ReactMarkdown or RemarkGfm is not loaded yet
             return <div className={`whitespace-pre-wrap font-sans ${isOutgoing ? 'text-indigo-50' : 'text-gray-700 dark:text-gray-300'}`}>{content}</div>;
         }
 
@@ -285,6 +291,7 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
             // Wrapper div with enhanced styling
             <div className={`${proseBase} ${isOutgoing ? proseOutgoing : 'text-gray-800 dark:text-gray-100 prose-headings:text-gray-900 dark:prose-headings:text-white/95'}`}>
                 <ReactMarkdown
+                    remarkPlugins={[RemarkGfm]}
                     components={{
                         // Modern styles for markdown elements
                         h1: ({node, ...props}) => <h1 className="bg-clip-text bg-gradient-to-r from-indigo-600 dark:from-indigo-400 to-violet-600 dark:to-violet-400 mt-2 first:mt-0 mb-1.5 font-sans font-bold text-transparent text-base" {...props} />,
@@ -337,7 +344,18 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
                                 {...props}
                             />
                         ),
-                        hr: ({node, ...props}) => <hr className={`my-4 ${isOutgoing ? 'border-white/20' : 'border-indigo-200/50 dark:border-indigo-800/50'}`} {...props}/>
+                        hr: ({node, ...props}) => <hr className={`my-4 ${isOutgoing ? 'border-white/20' : 'border-indigo-200/50 dark:border-indigo-800/50'}`} {...props}/>,
+                        // Table styling with responsive design
+                        table: ({node, ...props}) => (
+                            <div className="my-4 border border-gray-200 dark:border-gray-700 rounded-lg overflow-x-auto">
+                                <table className="min-w-full text-sm border-collapse" {...props} />
+                            </div>
+                        ),
+                        thead: ({node, ...props}) => <thead className={`${isOutgoing ? 'bg-white/10' : 'bg-gray-100 dark:bg-gray-800'}`} {...props} />,
+                        tbody: ({node, ...props}) => <tbody className="divide-y divide-gray-200 dark:divide-gray-700" {...props} />,
+                        tr: ({node, ...props}) => <tr className={`${isOutgoing ? 'border-b border-white/10 hover:bg-white/5' : 'border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} {...props} />,
+                        th: ({node, ...props}) => <th className="px-3 py-2 font-medium text-[0.85rem] text-left" {...props} />,
+                        td: ({node, ...props}) => <td className="px-3 py-2 text-[0.85rem] break-words whitespace-normal" {...props} />
                     }}
                 >
                     {content}
