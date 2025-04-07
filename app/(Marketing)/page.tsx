@@ -5,6 +5,7 @@ import Hero from './components/hero';
 import Companies from '@/components/companies/companies';
 import Timelines from '@/components/changelog/changelog';
 import FeaturesGrid from './components/Feature-grid/Features-grids';
+import RechartsHle from '@/components/charts/main/components/recharts-hle';
 
 
 // import Neuronthree from './components/THREE/component';
@@ -24,6 +25,7 @@ export default function Home() {
 {/* <EffectCards/> Consuming more javascript at bundle time  */}
 <Timelines/>
 <FeaturesGrid/>
+<RechartsHle/>
 
 
         {/* CTA Section */}

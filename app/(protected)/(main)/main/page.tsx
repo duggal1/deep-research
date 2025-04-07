@@ -107,7 +107,7 @@ const formatCurrency = (value: string): string => {
   return value; // Return as-is if not a currency value
 };
 
-export default function Home() {
+export default function RechartsHle() {
   const [query, setQuery] = useState('');
   const [report, setReport] = useState<string | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
