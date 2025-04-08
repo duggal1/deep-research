@@ -1,6 +1,7 @@
 "use client"
 import {Hle} from '@/components/charts/hle';
 import { MarkdownChat } from '@/components/Feature-section/markdown-chat';
+import Container from '@/components/global/Contanier';
 import { Globe } from '@/components/magicui/globe';
 import InteractiveRipple from '@/components/ripple/ripple';
 import { Globes } from '@/components/ui/modern-globe';
@@ -43,6 +44,7 @@ const CustomAnimations = () => (
 
 export default function FeaturesGrid() {
     return (
+        <Container delay={0.1}>
         <section className="bg-white dark:bg-gray-950 px-4 py-12 md:py-24 font-sans">
             <CustomAnimations />
             <div className="gap-6 grid grid-cols-1 md:grid-cols-2 mx-auto max-w-6xl">
@@ -146,5 +148,6 @@ export default function FeaturesGrid() {
                 </div>
             </div>
         </section>
+        </Container>
     );
 }

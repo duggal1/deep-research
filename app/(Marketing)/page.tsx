@@ -7,6 +7,7 @@ import Timelines from '@/components/changelog/changelog';
 import FeaturesGrid from './components/Feature-grid/Features-grids';
 import {BlazePerformanceCharts} from '@/components/charts/main/components/recharts-hle';
 import Footer from '@/components/Footer/footer';
+import Container from '@/components/global/Contanier';
 
 
 // import Neuronthree from './components/THREE/component';
@@ -29,7 +30,7 @@ export default function Home() {
 <BlazePerformanceCharts/>
 
 
-        {/* CTA Section */}
+<Container delay={0.1}>
         <section className="bg-gradient-to-r from-blue-700 to-blue-900 px-4 sm:px-6 lg:px-8 py-24">
           <div className="mx-auto max-w-4xl text-center">
             <h2 className="mb-6 font-bold text-white text-4xl">Ready to Transform Your Research?</h2>
@@ -44,6 +45,7 @@ export default function Home() {
             </div>
           </div>
         </section>
+        </Container>
 
         <Footer/>
       </main>

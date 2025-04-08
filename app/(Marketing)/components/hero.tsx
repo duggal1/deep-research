@@ -1,5 +1,5 @@
 "use client";
-import { ArrowRightIcon, PlayIcon } from "lucide-react"; // Added PlayIcon
+import { ArrowRightIcon, PlayIcon, ZapIcon } from "lucide-react"; // Added PlayIcon
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react"; // Added useRef
 
@@ -147,7 +147,8 @@ const Hero = () => {
                             speedSegment={0.3}
                             as="h1"
                             className="mt-8 lg:mt-16 xl:text-[5.25rem] text-6xl md:text-7xl text-balance">
-                           Blaze: AI Built for Exhaustive Research
+                           Blaze - 
+                           AI Built for Exhaustive Research
                         </TextEffect>
                         <TextEffect
                             per="line"
@@ -163,9 +164,9 @@ const Hero = () => {
                     <Container delay={0.25} className="z-20">
                         <div className="flex justify-center items-center gap-x-4 mt-6">
                             <Link href="#early-access" className="group flex items-center gap-2"> {/* Changed href */}
-                                <Button size="lg" variant="default"> {/* Ensure variant is set */}
-                                    Request Early Access ⚡️
-                                    <ArrowRightIcon className="size-4 transition-all group-hover:translate-x-1 duration-300" />
+                                <Button size="lg" variant="default" className="shadow-md font-medium"> 
+                                    Request Early Access 
+                                    <ZapIcon className="fill-orange-500 size-3 text-orange-500 transition-all group-hover:translate-x-1 filln durtion-200" />
                                 </Button>
                             </Link>
                         </div>
@@ -199,8 +200,7 @@ const Hero = () => {
                                 }}
                             />
 
-                            {/* Video Player Container */}
-                            <div className="relative bg-background border border-border rounded-lg lg:rounded-[22px] overflow-hidden"> {/* Added overflow-hidden */}
+<div className="relative bg-background border border-border rounded-lg lg:rounded-[22px] overflow-hidden"> {/* Added overflow-hidden */}
                                 <video
                                     ref={videoRef}
                                     src="/videos/blaze-demo.mp4" // <<<<<==== IMPORTANT: Replace with your actual video path
@@ -213,9 +213,7 @@ const Hero = () => {
                                     className="display-block rounded-lg lg:rounded-[20px] w-full h-auto" // Ensure video scales
                                     controls={isPlaying} // Show controls ONLY when playing
                                     onEnded={() => {
-                                        // The 'loop' attribute handles restarting.
-                                        // If loop needs manual help (unlikely), you could add:
-                                        // if (videoRef.current) videoRef.current.play();
+                                        // Loop handles restarting
                                     }}
                                 >
                                     Your browser does not support the video tag.
@@ -223,24 +221,26 @@ const Hero = () => {
 
                                 {/* Play Button Overlay - Shown only when video is NOT playing */}
                                 {!isPlaying && (
-                             <button
-                             aria-label="Play Video"
-                             onClick={handlePlayPause}
-                             className="group z-10 absolute inset-0 flex justify-center items-center bg-black/40 backdrop-blur-sm w-full h-full transition-opacity duration-300 ease-in-out cursor-pointer"
-                           >
-                            <div className="absolute inset-0 flex justify-center items-center rounded-2xl scale-[0.95] group-hover:scale-100 transition-all duration-200 ease-out">
-                              <div className="flex justify-center items-center bg-gradient-to-r from-blue-600/20 to-cyan-500/20 backdrop-blur-xl rounded-full size-72">
-                                <div className="relative flex justify-center items-center bg-gradient-to-br from-blue-600 via-blue-500 to-cyan-400 shadow-[0_0_30px_-5px_rgba(59,130,246,0.5)] rounded-full size-32 scale-100 group-hover:scale-[1.1] transition-all duration-200 ease-out">
-                                  <PlayIcon
-                                    className="fill-white size-16 text-white scale-100 group-hover:scale-105 transition-transform duration-200 ease-out"
-                                    style={{
-                                      filter: "drop-shadow(0 8px 6px rgb(0 0 0 / 0.1))"
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                           </button>
+                                    <button
+                                        aria-label="Play Video"
+                                        onClick={handlePlayPause}
+                                        className="group z-10 absolute inset-0 flex justify-center items-center bg-black/40 backdrop-blur-sm w-full h-full transition-opacity duration-300 ease-in-out cursor-pointer"
+                                    >
+                                        <div className="absolute inset-0 flex justify-center items-center rounded-2xl scale-[0.95] group-hover:scale-100 transition-all duration-200 ease-out">
+                                            <div className="flex justify-center items-center bg-gradient-to-r from-blue-600/20 to-cyan-500/20 backdrop-blur-xl rounded-full size-[28rem]"> {/* Outer decorative circle */}
+                                                <div className="relative flex justify-center items-center bg-gradient-to-b from-blue-800 via-blue-00 to-cyan-500 shadow-[0_0_30px_-5px_rgba(59,130,246,0.5)] rounded-full size-64 scale-100 group-hover:scale-[1.1] transition-all duration-200 ease-out"> {/* Inner decorative circle */}
+                                                    <PlayIcon
+                                                        // 👇 CHANGE THIS VALUE TO ADJUST ICON SIZE 👇
+                                                        className="fill-white w-28 h-28 text-white scale-100 group-hover:scale-105 transition-transform duration-200 ease-out q"
+                                                        // Example values: size-40 (10rem), size-48 (12rem), size-52 (13rem), size-60 (15rem)
+                                                        style={{
+                                                            filter: "drop-shadow(0 8px 6px rgb(0 0 0 / 0.1))"
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
                                 )}
                             </div>
                         </div>

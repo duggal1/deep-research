@@ -203,7 +203,7 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
                             setVisibleMessages([allMessages[0], { ...allMessages[1], text: accumulatedText }]);
                             
                             // Wait 2.5 seconds before restarting
-                            setTimeout(startAnimation, 2500);
+                            setTimeout(startAnimation, 6500);
                         }
                     };
 

@@ -4,8 +4,8 @@
 import Images from "@/app/(Marketing)/components/Svgs/svg";
 import { Sparkles } from "./particles";
 import { InfiniteSlider } from "./motion-scroll";
-import { defaultAngle } from "@tsparticles/engine";
 import { useTheme } from "next-themes";
+import Container from "../global/Contanier";
 
 
 
@@ -55,6 +55,7 @@ const logos = [
 export default function Companies() {
     const { theme } = useTheme()
   return (
+    <Container delay={0.05}>
     <div className="w-full h-screen overflow-hidden">
       <div className="mx-auto mt-32 w-full max-w-2xl">
       <div className="flex flex-col justify-center items-center">
@@ -113,6 +114,7 @@ export default function Companies() {
         />
       </div>
       </div>
+      </Container>
 
   )
 }

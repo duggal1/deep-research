@@ -1,5 +1,6 @@
 import React from "react";
 import { Timeline } from "@/components/ui/timeline";
+import Container from "../global/Contanier";
 
 export default function Timelines() {
   const data = [
@@ -79,8 +80,10 @@ export default function Timelines() {
   ];
 
   return (
+        <Container delay={0.1}>
     <div className="w-full">
       <Timeline data={data} />
     </div>
+    </Container>
   );
 }

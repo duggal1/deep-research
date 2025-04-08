@@ -18,6 +18,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"; // Assuming path is correct
+import Container from '@/components/global/Contanier';
 
 // --- Data Definitions ---
 
@@ -89,7 +90,7 @@ export function BlazePerformanceCharts() {
   const latestGPQA = gpqaData[gpqaData.length - 1];
 
   return (
-    // Use a standard Card, styling controlled by shadcn/ui theme
+    <Container delay={0.05}>
     <Card className="shadow-sm hover:shadow-md mx-auto border-border/60 w-full max-w-6xl transition-shadow duration-300">
       <CardHeader className="pb-4">
         {/* Main Title - More prominent */}
@@ -280,8 +281,6 @@ export function BlazePerformanceCharts() {
         </div>
       </CardFooter>
     </Card>
+    </Container>
   );
 }
-
-// Optional: Export as default or named
-// export default BlazePerformanceCharts;
