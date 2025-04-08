@@ -48,7 +48,7 @@ export function MainNavbar() {
           <div className="relative flex justify-between items-center py-3 lg:py-3">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <Image src="/blaze.png" alt="Blaze Research" width={40} height={40} priority />
+              <Image src="/blaze.png" alt="Blaze Research" width={60} height={60} priority />
               <span className="font-bold text-xl tracking-tight">
                 Blaze<span className="text-primary">Research</span>
                <span className="font-serif font-medium text-emerald-500 dark:text-green-500">(Beta)</span>

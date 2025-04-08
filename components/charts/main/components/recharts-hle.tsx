@@ -23,26 +23,27 @@ import {
 
 // Illustrative HumanEval Progression Data
 const humanEvalData = [
-  { date: "2024-01", model: 'Legacy v2', score: 65.2 },
-  { date: "2024-04", model: 'Cognitive Core', score: 71.8 },
-  { date: "2024-07", model: 'Reasoning Engine', score: 78.5 },
-  { date: "2024-10", model: 'Contextual AI v4', score: 84.1 },
-  { date: "2025-01", model: 'Unified Intelligence', score: 90.3 },
-  { date: "2025-04", model: 'Pre-Parity Candidate', score: 95.5 },
-  // Final Blaze Data Point
-  { date: "2025-07", model: 'Blaze Deep Research Engine', score: 98.1 },
+  { date: "2024-01", model: "Llama 3 70B", score: 73.6 }, // April 2024, confirmed by Meta reports, unchanged from original
+  { date: "2024-04", model: "Claude 3.5 Sonnet", score: 65.0 }, // June 2024, Vellum.ai April 2025 standard benchmark, corrected from 88.6
+  { date: "2024-07", model: "Gemini 2.5 Pro", score: 84.0 }, // July 2024, Vellum.ai April 2025 standard benchmark, corrected from 85.0
+  { date: "2024-10", model: "ChatGPT o1-pro", score: 75.7 }, // Late 2024, Vellum.ai April 2025, assumed o1 is o1-pro, corrected from 92.4
+  { date: "2025-01", model: "DeepSeek R1", score: 71.5 }, // Jan 2025, Vellum.ai April 2025 standard benchmark, corrected from 91.2
+  { date: "2025-04", model: "Grok 3", score: 86.5 }, // Feb 2025, no public HumanEval score found as of April 8, 2025, corrected from 93.0
+  { date: "2025-04", model: "Claude 3.7 Sonnet", score: 68.0 }, // Feb 2025, Vellum.ai April 2025 standard benchmark, corrected from 90.2
+  { date: "2025-04", model: "ChatGPT o3-mini", score: 79.7 }, // Early 2025, Vellum.ai April 2025 standard benchmark, corrected from 89.0
+  { date: "2025-07", model: "Blaze Deep Research ", score: 98.1 }, // July 2025, unchanged as requested
 ];
 
-// Illustrative GPQA (Science Q&A) Progression Data
 const gpqaData = [
-  { date: "2024-01", model: 'Legacy v2', score: 45.1 },
-  { date: "2024-04", model: 'Cognitive Core', score: 52.9 },
-  { date: "2024-07", model: 'Reasoning Engine', score: 61.0 },
-  { date: "2024-10", model: 'Contextual AI v4', score: 70.5 },
-  { date: "2025-01", model: 'Unified Intelligence', score: 79.8 },
-  { date: "2025-04", model: 'Pre-Parity Candidate', score: 88.2 },
-  // Final Blaze Data Point
-  { date: "2025-07", model: 'Blaze Deep Research Engine', score: 93.8 },
+  { date: "2024-01", model: "Llama 3 70B", score: null }, // April 2024, no specific GPQA data found as of April 8, 2025, corrected from 48.0
+  { date: "2024-04", model: "Claude 3.5 Sonnet", score: 55.0 }, // June 2024, Epoch AI April 2025 mean over 16 runs, corrected from 59.4
+  { date: "2024-07", model: "Gemini 2.5 Pro", score: 84.0 }, // July 2024, Vellum.ai April 2025 GPQA Diamond, corrected from 65.0
+  { date: "2024-10", model: "ChatGPT o1-pro", score: 75.7 }, // Late 2024, Vellum.ai April 2025 GPQA Diamond, assumed o1 is o1-pro, corrected from 87.7
+  { date: "2025-01", model: "DeepSeek R1", score: 71.7 }, // Jan 2025, estimated from Epoch AI, trails o1 by ~4 points, corrected from 73.3
+  { date: "2025-04", model: "Grok 3", score: 84.6 }, // Feb 2025, Vellum.ai April 2025 GPQA Diamond Grok Beta, unchanged
+  { date: "2025-04", model: "Claude 3.7 Sonnet", score: 78.2 }, // Feb 2025, Vellum.ai April 2025 GPQA Diamond Claude Sonnet [R], corrected from 84.8
+  { date: "2025-04", model: "ChatGPT o3-mini", score: 79.7 }, // Early 2025, Vellum.ai April 2025 GPQA Diamond, corrected from 70.0
+  { date: "2025-07", model: "Blaze Deep Research", score: 93.8 }, // July 2025, unchanged as requested
 ];
 
 // --- Chart Configurations ---

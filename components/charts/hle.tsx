@@ -1,44 +1,36 @@
-import React, { useState, useEffect } from 'react';
+"use client";
+
+import React, { useState, useEffect, useMemo } from 'react';
+import { Cpu, TrendingUp } from "lucide-react"; // Using Cpu icon
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-  Area,
-  DotProps
-} from 'recharts';
+    Area,
+    AreaChart,
+    CartesianGrid,
+    XAxis,
+    YAxis,
+    ReferenceLine,
+    DotProps,
+    ResponsiveContainer,
+    Line // Import Line for custom dots
+} from "recharts";
 
-// --- Theme Colors (Ensure these match your globals.css or Tailwind config) ---
-const colors = {
-  background: 'hsl(var(--background))',
-  foreground: 'hsl(var(--foreground))',
-  primary: 'hsl(var(--primary))', // Main accent (e.g., Violet)
-  primaryMuted: 'hsl(var(--primary) / 0.7)', // Slightly muted primary
-  primaryVibrant: 'hsl(var(--primary-vibrant, var(--primary)))', // A potentially brighter variant
-  primaryUltraMuted: 'hsl(var(--primary) / 0.25)', // Very soft for bg stroke/glow
-  mutedForeground: 'hsl(var(--muted-foreground))', // Subtle text/ticks
-  border: 'hsl(var(--border))',             // Subtle borders
-  white: '#FFFFFF',
-  black: '#000000',
-};
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"; // Adjust path if needed
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"; // Adjust path if needed
 
-const getPrimaryWithOpacity = (opacity: number) => `hsl(var(--primary) / ${opacity})`;
-const getVibrantWithOpacity = (opacity: number) => `hsl(var(--primary-vibrant, var(--primary)) / ${opacity})`;
-
-
-const Hle = () => {
-  const [currentScore, setCurrentScore] = useState(33.0);
-  const [isClient, setIsClient] = useState(false);
-
-  useEffect(() => {
-    setIsClient(true);
-  }, []);
-
-  // Sample data (kept the same)
-  const data = [
+// --- Original Data (Unchanged) ---
+const aiPerformanceData = [
     { date: '2024-01-24', model: 'Grok-2', score: 5 },
     { date: '2024-04-24', model: 'ChatGPT-4 Omni', score: 5 },
     { date: '2024-09-24', model: 'OpenAI O1', score: 10 },
@@ -48,213 +40,290 @@ const Hle = () => {
     { date: '2025-04-04', model: 'O3 Mini High', score: 11 },
     { date: '2025-04-25', model: 'OpenAI Deep Research', score: 28 },
     { date: '2025-04-25', model: 'Blaze Deep Research', score: 33 } // Latest
-  ];
+];
+
+// --- Chart Configuration (Corrected) ---
+// ONLY define the actual data series here. Custom dot colors are handled separately.
+const aiChartConfig = {
+  score: {
+    label: "AI Score",
+    color: "hsl(var(--chart-1))", // This links to the CSS variable for the main series
+    icon: Cpu,
+  },
+} satisfies ChartConfig; // Ensure this satisfies the type correctly now
+
+
+// --- Custom Dot Component (Revised Props) ---
+interface AiCustomDotProps extends Omit<DotProps, 'key'> {
+  payload?: any;
+  isClient: boolean;
+  currentScore: number; // Still needed for logic if latest dot depends on live score visually
+  baseColorVar: string; // The CSS variable name (e.g., '--chart-1')
+}
+
+const AiCustomDot: React.FC<AiCustomDotProps> = (props) => {
+    const { cx, cy, payload, isClient, baseColorVar } = props;
+
+    // State to hold the computed background color for stroke knockout
+    const [backgroundColor, setBackgroundColor] = useState('transparent'); // Default transparent
+
+    useEffect(() => {
+        // Get the actual computed background color client-side
+        if (isClient && typeof document !== 'undefined') {
+            try {
+                // Use a fallback if --background isn't set directly on root
+                 const computedBg = getComputedStyle(document.documentElement).getPropertyValue('--background');
+                 // Convert HSL string from CSS variable to a usable color value
+                 // This is a basic parser, might need refinement based on actual HSL format
+                 if (computedBg) {
+                     const match = computedBg.trim().match(/^(\d+)\s+([\d.]+)%\s+([\d.]+)%$/);
+                     if (match) {
+                        setBackgroundColor(`hsl(${match[1]}, ${match[2]}%, ${match[3]}%)`);
+                     } else {
+                        // Fallback if it's not HSL numbers (e.g., it's already a color name or hex)
+                        // Or if --background is not defined, use a sensible default based on theme pref
+                         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                         setBackgroundColor(prefersDark ? '#000000' : '#FFFFFF'); // Simple black/white fallback
+                     }
+                 } else {
+                    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                    setBackgroundColor(prefersDark ? '#000000' : '#FFFFFF');
+                 }
+
+            } catch (error) {
+                 console.error("Error getting background color CSS variable:", error);
+                 // Use fallback on error
+                 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                 setBackgroundColor(prefersDark ? '#000000' : '#FFFFFF');
+            }
+        }
+    }, [isClient]);
+
+
+    if (typeof cx !== 'number' || typeof cy !== 'number' || !isClient || !payload) return null;
+
+    const isLatest = payload?.model === 'Blaze Deep Research';
+    const isHighScore = payload?.score >= 20 && !isLatest;
+
+    // Define dot colors using the passed CSS variable name
+    // Use `var()` syntax directly in inline styles/SVG attributes where supported
+    const dotColor = `hsl(var(${baseColorVar}) / 0.6)`;
+    const highlightColor = `hsl(var(${baseColorVar}))`;
+    const latestColor = `hsl(var(${baseColorVar}))`; // Could use a --chart-1-vibrant if defined
+    const latestGlow = `hsl(var(${baseColorVar}) / 0.15)`;
+
+    if (isLatest) {
+      return (
+        <g>
+          <circle cx={cx} cy={cy} r={10} fill={latestGlow} className="animate-pulse" style={{ animationDuration: '1.8s' }} />
+          <circle cx={cx} cy={cy} r={4.5} fill={latestColor} stroke={backgroundColor} strokeWidth={1.5} />
+        </g>
+      );
+    }
+    if (isHighScore) {
+      return <circle cx={cx} cy={cy} r={4} fill={highlightColor} stroke={backgroundColor} strokeWidth={1.5} />;
+    }
+    return <circle cx={cx} cy={cy} r={2.5} fill={dotColor} />;
+};
+
+
+// --- Main Component ---
+export function Hle() {
+  const [currentScore, setCurrentScore] = useState(33.0);
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  const data = useMemo(() => aiPerformanceData, []);
+
+  useEffect(() => {
+    if (!isClient) return;
     const interval = setInterval(() => {
       setCurrentScore(prev => {
         const newScore = prev + 0.1;
         return newScore > 36 ? 31 : parseFloat(newScore.toFixed(1));
       });
-    }, 100);
+    }, 150);
     return () => clearInterval(interval);
-  }, []);
+  }, [isClient]);
 
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  };
-
-  // --- Custom Tooltip (Keep refined style) ---
-  interface CustomTooltipProps {
-    active?: boolean; payload?: any[]; label?: string;
-  }
-  const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
-     if (active && payload && payload.length) {
-      // Ensure we read from the *correct* payload entry if multiple lines exist
-      const dataPayload = payload.find(p => p.dataKey === 'score'); // Find payload for the main line
-      if (!dataPayload) return null; // Should not happen if configured correctly
-
-      const dataPoint = dataPayload.payload;
-      const isLatest = dataPoint.model === 'Blaze Deep Research';
-      const score = isLatest ? currentScore : dataPoint.score;
-
-      return (
-        <div className="bg-white/70 dark:bg-black/70 shadow-xl backdrop-blur-md p-3 border dark:border-white/10 border-black/10 rounded-lg overflow-hidden font-serif text-sm">
-          <div className="flex justify-between items-center gap-2 mb-1.5">
-            <span className="font-semibold text-gray-900 dark:text-gray-50">{dataPoint.model}</span>
-            {isLatest && (
-              <span className="bg-primary/10 dark:bg-primary/20 px-2 py-0.5 rounded-full font-medium text-[10px] text-primary dark:text-primary">Latest</span>
-            )}
-          </div>
-          <p className="mb-2 text-muted-foreground text-xs">{formatDate(dataPoint.date)}</p>
-          <div className="flex items-baseline gap-1">
-             <span className="bg-clip-text bg-gradient-to-r from-primary via-primary-vibrant to-primary-muted font-bold text-transparent text-2xl">
-               {score.toFixed(1)}
-             </span>
-             <span className="text-muted-foreground text-xs">% Score</span>
-          </div>
-        </div>
-      );
+    try {
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+    } catch (e) {
+        return dateStr;
     }
-    return null;
   };
+  const formatScore = (value: number) => `${value}%`;
 
-  // --- Custom Dot (Keep enhanced style) ---
-  interface CustomDotProps extends Omit<DotProps, 'key'> {
-    payload?: any;
-  }
+  const latestDataPoint = data[data.length - 1];
 
-  const CustomDot: React.FC<CustomDotProps> = (props) => {
-    const { cx, cy, payload } = props;
-    if (typeof cx !== 'number' || typeof cy !== 'number' || !isClient) return null;
-
-    const isLatest = payload?.model === 'Blaze Deep Research';
-    const isHighScore = payload?.score >= 20 && !isLatest;
-    const primaryColor = colors.primary;
-    const vibrantColor = colors.primaryVibrant;
-    const backgroundColor = colors.background;
-
-    if (isLatest) {
-      return (
-        <g filter="url(#dotGlow)">
-          <circle cx={cx} cy={cy} r={10} fill={getVibrantWithOpacity(0.1)} className="animate-ping" style={{ animationDuration: '1.8s' }} />
-          <circle cx={cx} cy={cy} r={7} fill={getVibrantWithOpacity(0.15)} />
-          <circle cx={cx} cy={cy} r={4.5} fill={vibrantColor} stroke={backgroundColor} strokeWidth={1.5} />
-        </g>
-      );
-    }
-    if (isHighScore) {
-      return <circle cx={cx} cy={cy} r={4} fill={primaryColor} stroke={backgroundColor} strokeWidth={1.5} />;
-    }
-    return <circle cx={cx} cy={cy} r={2.5} fill={getPrimaryWithOpacity(0.6)} />;
-  };
-
-
-  // --- Main Component Render ---
   return (
-    <div className="bg-gradient-to-br from-white dark:from-gray-900 via-white dark:via-gray-900 to-gray-50/50 dark:to-black shadow-lg p-4 border dark:border-white/5 border-black/5 rounded-xl w-full font-serif">
-      {/* Header Section - More compact and modern */}
-      <div className="flex flex-row justify-between items-center mb-4">
-        <div>
-          <h2 className="font-bold text-gray-900 dark:text-white text-lg tracking-tight">AI Performance Metrics</h2>
-          <p className="mt-0.5 text-muted-foreground text-xs">Intelligence Score Evolution</p>
-        </div>
-        <div className="flex items-center gap-2 bg-primary/5 dark:bg-primary/10 px-3 py-1 border border-primary/10 dark:border-primary/20 rounded-full">
-           <span className="relative flex w-2 h-2"><span className="inline-flex absolute bg-primary/70 opacity-75 rounded-full w-full h-full animate-ping"></span><span className={`relative inline-flex rounded-full h-2 w-2 bg-primary`}></span></span>
-           <span className="font-medium text-primary/90 dark:text-primary/90 text-xs">Live:</span>
-           <span className="bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500 font-bold text-transparent text-base">{currentScore.toFixed(1)}%</span>
-        </div>
-      </div>
+    <Card className="shadow-sm hover:shadow-md mx-auto border-border/60 w-full max-w-3xl transition-shadow duration-300">
+     <CardHeader className="flex flex-row justify-between items-center space-y-0 pb-4">
+   <div className="gap-1 grid">
+      <CardTitle className="font-semibold text-foreground text-lg sm:text-xl tracking-tight">
+         Humanity&apos;s Last Exam
+      </CardTitle>
+      <CardDescription className="text-muted-foreground text-xs sm:text-sm">
+         Final Benchmark Challenges For AI Models
+      </CardDescription>
+   </div>
 
-      {/* Chart Container - Reduced height */}
-      <div className="h-56">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 10, right: 10, left: -10, bottom: 10 }}>
-            <defs>
-              {/* Gradient for the sharp foreground line */}
-              <linearGradient id="modernLineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor={colors.primaryVibrant} />
-                <stop offset="50%" stopColor={colors.primary} />
-                <stop offset="100%" stopColor={colors.primaryVibrant} />
-              </linearGradient>
-
-              {/* Enhanced Gradient for the underlying background stroke */}
-              <linearGradient id="backgroundStrokeGradient" x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.15} />
-                  <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.2} />
-                  <stop offset="100%" stopColor="#6366f1" stopOpacity={0.15} />
-              </linearGradient>
-
-              {/* Enhanced Area Fill Gradient */}
-              <linearGradient id="modernAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4f46e5" stopOpacity={0.3} />
-                <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.1} />
-                <stop offset="100%" stopColor="#6366f1" stopOpacity={0.05} />
-              </linearGradient>
-
-              {/* SVG Filter for Dot Glow (Keep) */}
-              <filter id="dotGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-              </filter>
-
-              {/* SVG Filter for Background Stroke Blur (Optional) */}
-              <filter id="lineBlur" x="-50%" y="-50%" width="200%" height="200%">
-                 <feGaussianBlur stdDeviation="3" result="blurredLine" /> {/* Adjust stdDeviation for more/less blur */}
-              </filter>
-
-            </defs>
-
-            {/* Axes and Reference Line (Keep minimal) */}
-            <XAxis dataKey="date" tickFormatter={formatDate} axisLine={false} tickLine={false} tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }} dy={10} interval="preserveStartEnd" />
-            <YAxis tickFormatter={(value) => `${value}%`} axisLine={false} tickLine={false} tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }} domain={[0, 'dataMax + 5']} width={40} />
-            <ReferenceLine y={20} stroke={colors.border} strokeDasharray="2 2" label={{ value: 'Advanced', position: 'insideTopRight', fill: colors.mutedForeground, fontSize: 10, fontFamily: 'inherit', dy: -5, dx: -10 }} />
-
-            {/* Tooltip (Adjusted payload logic in component) */}
-            <Tooltip content={<CustomTooltip />} cursor={{ stroke: colors.border, strokeDasharray: '4 4' }} />
-
-            {/* Area Fill (Subtle) */}
-            <Area type="monotone" dataKey="score" stroke="none" fill="url(#modernAreaGradient)" />
-
-             {/* =============================================== */}
-            {/* == ENHANCED BACKGROUND STROKE LINE (Rendered FIRST) == */}
-            {/* =============================================== */}
-            <Line
-              type="monotone"
-              dataKey="score" // SAME dataKey as the main line
-              stroke="url(#backgroundStrokeGradient)" // Use the enhanced gradient
-              strokeWidth={12} // THICKER stroke for more dramatic effect
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              dot={false} // NO dots on the background line
-              activeDot={false} // NO active dot effect
-              filter="url(#lineBlur)" // Apply blur filter for glow effect
-              animationDuration={1500} // Slower animation for more dramatic effect
-              />
-
-            {/* =============================================== */}
-            {/* === ENHANCED FOREGROUND DATA LINE (Rendered SECOND) === */}
-            {/* =============================================== */}
-            <Line
-              type="monotone"
-              dataKey="score" // SAME dataKey
-              stroke="url(#modernLineGradient)" // Sharp, vibrant gradient
-              strokeWidth={3} // Slightly thicker for better visibility
-              strokeLinecap="round"
-              dot={(props) => {
-                const { key, ...restProps } = props;
-                return <CustomDot key={key} {...restProps} />;
-              }} // Custom dots
-              activeDot={(props: any) => { // Enhanced active dot with glow
-                const { key, ...restProps } = props;
-                return (
-                  <g key={key} filter="url(#dotGlow)">
-                    <circle {...restProps} r={8} fill="#6366f1" stroke={colors.background} strokeWidth={2.5} />
-                  </g>
-                );
-              }}
-              animationDuration={1200} // Slightly faster than background for effect
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Modern Bottom Section */}
-       <div className="mt-4 pt-3 dark:border-white/5 border-t border-black/5">
-         <h3 className="mb-2 font-medium text-muted-foreground text-xs">Recent Milestones</h3>
-         <div className="gap-2 grid grid-cols-3">
-           {[...data].reverse().slice(0, 3).map((item) => (
-             <div key={item.model} className="bg-gradient-to-br from-white dark:from-gray-900 to-gray-50/80 dark:to-black/80 hover:shadow-md p-2 border dark:border-white/5 dark:hover:border-indigo-900/30 border-black/5 rounded-lg transition-all">
-               <p className="font-medium text-gray-800 dark:text-gray-200 text-xs truncate">{item.model}</p>
-               <p className="bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500 mt-0.5 font-bold text-transparent text-base">{item.score}%</p>
-               <p className="mt-0.5 text-[9px] text-muted-foreground">{formatDate(item.date)}</p>
-             </div>
-           ))}
+         {/* Live Score Indicator - Uses CSS variable --chart-1 for color */}
+         <div className="flex items-center gap-2 bg-background/50 shadow-background/10 shadow-inner px-3 py-1 border border-border rounded-full">
+           <span className="relative flex w-2 h-2">
+              {/* Apply color using inline style referencing the CSS variable */}
+             <span
+                className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75`}
+                style={{ backgroundColor: `hsl(var(--chart-1))` }}
+             ></span>
+             <span
+                className={`relative inline-flex h-2 w-2 rounded-full`}
+                style={{ backgroundColor: `hsl(var(--chart-1))` }}
+             ></span>
+           </span>
+           <span className="mr-1 font-medium text-muted-foreground text-xs">Live:</span>
+           {/* Apply color using inline style referencing the CSS variable */}
+           <span
+             className="font-semibold text-sm"
+             style={{ color: `hsl(var(--chart-1))` }}
+           >
+             {isClient ? currentScore.toFixed(1) : latestDataPoint.score.toFixed(1)}%
+           </span>
          </div>
-       </div>
-    </div>
-  );
-};
+      </CardHeader>
 
-export default Hle;
+      <CardContent className="px-2 sm:px-4 pt-0 pb-6">
+        <div className="w-full h-64">
+          {/* Use ChartContainer with the *corrected* config */}
+          <ChartContainer config={aiChartConfig} className="w-full h-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                accessibilityLayer
+                data={data}
+                margin={{ top: 5, right: 10, left: -15, bottom: 0 }}
+              >
+                <CartesianGrid
+                    vertical={false}
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.5}
+                 />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatDate}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={10}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  dataKey="score"
+                  tickFormatter={formatScore}
+                  tickLine={false}
+                  axisLine={false}
+                  width={45}
+                  tickMargin={5}
+                  domain={[0, 'dataMax + 8']}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  allowDecimals={false}
+                />
+                <ReferenceLine
+                    y={20}
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.7}
+                    label={{ value: 'Advanced', position: 'insideTopRight', fill: 'hsl(var(--muted-foreground))', fontSize: 9, dy: -4, dx: -10 }}
+                 />
+                <ChartTooltip
+                  cursor={{ stroke: "hsl(var(--chart-1))", strokeWidth: 1, strokeOpacity: 0.3 }}
+                  content={
+                    <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={(value) => formatDate(value)}
+                        formatter={(value, name, item) => {
+                            const dataPoint = item.payload;
+                            const isLatest = dataPoint.model === 'Blaze Deep Research';
+                            const displayScore = isLatest ? currentScore : dataPoint.score;
+                            return (
+                                <div className="flex flex-col gap-0.5">
+                                   <span className="font-medium text-foreground">{dataPoint.model}</span>
+                                   {/* Apply color using inline style */}
+                                   <span className="text-muted-foreground">Score:
+                                      <span className="font-semibold" style={{ color: 'hsl(var(--chart-1))' }}> {displayScore.toFixed(1)}%</span>
+                                   </span>
+                                </div>
+                            );
+                        }}
+                    />
+                    }
+                />
+                <Area
+                  dataKey="score"
+                  type="monotone"
+                  fill="var(--color-score)" // Injected variable from config
+                  fillOpacity={0.25}
+                  stroke="var(--color-score)" // Injected variable from config
+                  strokeWidth={2.5}
+                   activeDot={{
+                     r: 6,
+                     fill: "hsl(var(--background))",
+                     stroke: "var(--color-score)", // Use injected variable
+                     strokeWidth: 2,
+                   }}
+                   dot={false} // Hide default area dots
+                />
+
+                {/* Invisible Line for custom dots */}
+                {isClient && (
+                   <Line
+                     dataKey="score"
+                     stroke="transparent"
+                     fill="transparent"
+                     isAnimationActive={false}
+                     dot={(props) => (
+                       <AiCustomDot
+                         {...props}
+                         isClient={isClient}
+                         currentScore={currentScore}
+                         // Pass the correct CSS variable name directly
+                         baseColorVar="--chart-1"
+                       />
+                     )}
+                     activeDot={false}
+                   />
+                )}
+
+              </AreaChart>
+            </ResponsiveContainer>
+          </ChartContainer>
+        </div>
+      </CardContent>
+
+      <CardFooter className="pt-4 border-t border-border/60">
+        <div className="w-full">
+             <h3 className="mb-2 font-medium text-muted-foreground text-xs">Recent Models</h3>
+             <div className="gap-2 sm:gap-3 grid grid-cols-3">
+               {[...data].reverse().slice(0, 3).map((item) => (
+                 <div key={item.model} className="bg-background/30 shadow-sm px-2 py-1.5 border border-border/70 rounded-md text-center">
+                   <p className="font-medium text-[10px] text-foreground sm:text-xs truncate">{item.model}</p>
+                   {/* Apply color using inline style */}
+                   <p
+                     className="mt-0.5 font-semibold text-sm"
+                     style={{ color: 'hsl(var(--chart-1))' }}
+                    >
+                       {item.score}%
+                   </p>
+                 </div>
+               ))}
+             </div>
+           </div>
+      </CardFooter>
+    </Card>
+  );
+}

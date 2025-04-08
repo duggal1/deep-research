@@ -1,5 +1,5 @@
 "use client"
-import Hle from '@/components/charts/hle';
+import {Hle} from '@/components/charts/hle';
 import { MarkdownChat } from '@/components/Feature-section/markdown-chat';
 import { Globe } from '@/components/magicui/globe';
 import InteractiveRipple from '@/components/ripple/ripple';
@@ -117,13 +117,10 @@ export default function FeaturesGrid() {
                             Tracking the evolution of AI capabilities over time.
                             <span className="text-zinc-600 dark:text-zinc-400"> Blaze Deep Research leads with a score of 33% in the latest benchmark.</span>
                         </p>
+                        <div>
                         <InteractiveRipple/>
-                        <div className="inline-flex items-center font-medium text-indigo-600 dark:text-indigo-400 text-sm cursor-pointer">
-                            <span>View benchmark details</span>
-                            <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
                         </div>
+                       
                     </div>
                 </div>
 

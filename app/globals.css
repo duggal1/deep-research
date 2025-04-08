@@ -42,6 +42,7 @@
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
+    --chart-6: 270 70% 60%;
     --radius: 0.5rem;
   }
   .dark {
@@ -221,6 +222,9 @@
     opacity: 0.6;
   }
 }
+
+
+
 
 /* Custom Utilities (Add if not already in Tailwind config) */
 @layer utilities {
