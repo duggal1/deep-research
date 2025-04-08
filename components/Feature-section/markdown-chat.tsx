@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { useReducedMotion } from 'framer-motion'
-import { User, Bot } from 'lucide-react'; // Keep icons
+
 
 // Define types for our components
 interface Message {
@@ -139,15 +139,14 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
 - [Dark Energy - Wikipedia](https://en.wikipedia.org/wiki/Dark_energy)`,
             time: '2:02 PM'
         }
-    // Only include the first two messages (one user, one AI) for this example
-    ].slice(0, 2), []);
+    ], []);
 
-    // State for visible messages - initialize with empty array to control the flow
+    // State for visible messages and animation control
     const [visibleMessages, setVisibleMessages] = useState<Message[]>([])
     const [isTyping, setIsTyping] = useState(false)
     const [currentMessageIndex, setCurrentMessageIndex] = useState(0)
     const [typingText, setTypingText] = useState('')
-    const [animationComplete, setAnimationComplete] = useState(false) // Track if animation is complete
+    const [animationComplete, setAnimationComplete] = useState(false)
     const chatContainerRef = useRef<HTMLDivElement>(null)
     const prefersReducedMotion = useReducedMotion()
 
@@ -162,113 +161,69 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
         }
     }
 
-    // Effect to handle message display and typing animation
+    // Effect to handle message display and typing animation with looping
     useEffect(() => {
-        // If animation is already complete, don't do anything
-        if (animationComplete) {
-            return;
-        }
-
         // If user prefers reduced motion, just show all messages immediately
         if (prefersReducedMotion) {
-            setVisibleMessages(allMessages.slice(0, 2)); // Show the messages immediately
-            setCurrentMessageIndex(2); // Set index past available messages
-            setAnimationComplete(true); // Mark as complete
+            setVisibleMessages(allMessages);
             return;
         }
 
-        // Show first message immediately
-        if (visibleMessages.length === 0 && allMessages.length > 0) {
-            setVisibleMessages([allMessages[0]])
-            setCurrentMessageIndex(1)
-            return
-        }
+        const startAnimation = () => {
+            // Reset states for new loop
+            setVisibleMessages([]);
+            setCurrentMessageIndex(0);
+            setTypingText('');
+            setIsTyping(false);
+            setAnimationComplete(false);
 
-        // If we've shown all messages, mark as complete
-        if (currentMessageIndex >= allMessages.length) {
-            setAnimationComplete(true); // Mark as complete to prevent further updates
-            return;
-        }
+            // Show first message (user question)
+            setTimeout(() => {
+                setVisibleMessages([allMessages[0]]);
+                setCurrentMessageIndex(1);
+                setIsTyping(true);
 
-        // Start typing animation for next message
-        const startTypingAnimation = () => {
-            const nextMessage = allMessages[currentMessageIndex]
-            if (!nextMessage) return; // Guard against undefined message
-
-            setIsTyping(true)
-
-            // For incoming messages, type character by character (though we only have one incoming)
-            if (nextMessage.type === 'incoming') {
-                let charIndex = 0
-                const text = nextMessage.text
-                const typingInterval = setInterval(() => {
-                    if (charIndex <= text.length) {
-                        setTypingText(text.substring(0, charIndex))
-                        charIndex++
-                        scrollToBottom()
-                    } else {
-                        clearInterval(typingInterval)
-                        setIsTyping(false)
-                        setTypingText('')
-                        setVisibleMessages(prev => [...prev, nextMessage])
-                        setCurrentMessageIndex(prev => prev + 1)
-                    }
-                }, 10); // Much faster user typing
-
-                return () => clearInterval(typingInterval)
-            } 
-            // For outgoing messages (Deep Research response), simulate thinking then show chunks
-            else {
-                // Faster AI thinking time
-                // Significantly reduced thinking time for faster response
-                const thinkingTime = Math.min(600, nextMessage.text.length * 0.05);
-                
+                // Start AI response after a short delay
                 setTimeout(() => {
-                    // Then start showing chunks of text, split by paragraphs
-                    const chunks = nextMessage.text.split('\n\n');
+                    let accumulatedText = '';
+                    const chunks = allMessages[1].text.split('\n\n');
                     let chunkIndex = 0;
-                    let accumulatedText = ''; // Store text as it's revealed
-                    
+
                     const showChunks = () => {
                         if (chunkIndex < chunks.length) {
                             accumulatedText += (accumulatedText ? '\n\n' : '') + chunks[chunkIndex];
-                            setTypingText(accumulatedText); // Update with accumulated text
+                            setTypingText(accumulatedText);
                             chunkIndex++;
                             scrollToBottom();
 
-                            // Much faster delay for rapid text display
-                            const delay = chunkIndex > 0 && chunkIndex <= chunks.length
-                                ? Math.max(50, Math.min(150, chunks[chunkIndex - 1].length * 0.2))
-                                : 50;
-
-                            setTimeout(showChunks, delay);
+                            setTimeout(showChunks, Math.max(50, Math.min(150, chunks[chunkIndex - 1]?.length * 0.2) || 50));
                         } else {
-                            // Done showing all chunks
-                            setTimeout(() => {
-                                setIsTyping(false);
-                                // Keep the final text displayed while typing indicator disappears
-                                // setTypingText(''); // Don't clear typing text here
-                                setVisibleMessages(prev => [...prev, { ...nextMessage, text: accumulatedText }]); // Add final message
-                                setCurrentMessageIndex(prev => prev + 1);
-                                // Mark animation as complete since this is the last message
-                                setAnimationComplete(true);
-                            }, 400);
+                            // Finished showing AI response
+                            setIsTyping(false);
+                            setVisibleMessages([allMessages[0], { ...allMessages[1], text: accumulatedText }]);
+                            
+                            // Wait 2.5 seconds before restarting
+                            setTimeout(startAnimation, 2500);
                         }
                     };
 
                     showChunks();
-                }, thinkingTime);
-            }
-        }
+                }, 600);
+            }, 400);
+        };
 
-        // Start typing the next message with minimal delay
-        const timer = setTimeout(() => {
-            startTypingAnimation()
-        }, 400) // Much shorter initial delay
+        // Start the initial animation
+        startAnimation();
 
-        return () => clearTimeout(timer)
-    // Ensure all dependencies are included
-    }, [visibleMessages, currentMessageIndex, prefersReducedMotion, allMessages, animationComplete])
+        // Cleanup function
+        return () => {
+            setVisibleMessages([]);
+            setCurrentMessageIndex(0);
+            setTypingText('');
+            setIsTyping(false);
+            setAnimationComplete(false);
+        };
+    }, [allMessages, prefersReducedMotion]);
 
     // Effect to scroll to bottom when messages change or typing occurs
     useEffect(() => {
@@ -455,8 +410,8 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
                 >
                     {/* User Avatar */}
                     {message.type === 'incoming' && (
-                        <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
-                            <img src="https://images.unsplash.com/photo-1601288496920-b6154fe3626a?q=80&w=1826&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8MHx8fHw%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
+                        <div className="flex-shrink-0 rounded-full w-12 h-12 overflow-hidden">
+                            <img src="https://images.unsplash.com/photo-1462804993656-fac4ff489837?q=80&w=2940&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D" alt="User Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
 
@@ -478,8 +433,8 @@ In conclusion, the evidence leans toward a dynamical dark energy, with recent ob
 
                      {/* AI Avatar */}
                     {message.type === 'outgoing' && (
-                        <div className="flex-shrink-0 rounded-full w-7 h-7 overflow-hidden">
-                            <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/blaze.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
+                        <div className="flex-shrink-0 rounded-full w-10 h-10 overflow-hidden">
+                            <img src="https://raw.githubusercontent.com/duggal1/deep-research/refs/heads/main/public/logo.png" alt="Deep Research Engine Avatar" className="w-full h-full object-cover" />
                         </div>
                     )}
                 </div>
