@@ -5,10 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/**
- * Generates a title from a query string
- * Capitalizes first letter of each word and improves readability
- */
+
 export function generateTitle(query: string): string {
   // Remove any trailing punctuation
   const cleanQuery = query.trim().replace(/[?.!,;:]$/, '');
