@@ -77,6 +77,26 @@ async function pollJobStatus(jobId: string, endpoint: 'deep-research', timeoutMs
   throw new Error(`${endpoint} job timed out`);
 }
 
+// Add this helper function for delayed processing
+async function processUrlWithDelay(url: string, index: number, total: number): Promise<any> {
+  try {
+    // Wait 1 second per URL to avoid rate limiting
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    console.log(`[JINA PROGRESS] Processing URL ${index + 1}/${total}: ${url}`);
+    const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
+      headers: { 'Accept': 'text/markdown' },
+      timeout: 10000 // Add 10s timeout for each request
+    });
+    console.log(`[JINA SUCCESS]✅ Fetched ${url}`);
+    return { url, data: [{ content: jinaRes.data }] };
+  } catch (error) {
+    console.error(`[JINA ERROR]❌ Failed for ${url}: ${(error as Error).message}`);
+    return { url, data: [] };
+  }
+}
+
+
 // POST Handler with Jina Reader integration
 export async function POST(req: Request) {
   console.log('[REQUEST START] Incoming POST request');
@@ -161,26 +181,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'No sources found for deep research' }, { status: 404 });
     }
 
-    // Step 2.5: Fetch URLs from Deep Research and Use Jina Reader (Limit to 30 URLs)
     console.log('[JINA READER START]🔥 Fetching content with Jina Reader');
-    // CHANGE MADE HERE: Limit to 30 URLs (adjust this number here to increase/decrease later)
-    const sourceUrls = research.data.sources.slice(0, 200).map(source => source.url); // Take first 30 URLs
-    const jinaPromises = sourceUrls.map(async (url) => {
-      try {
-        const jinaRes = await axios.get(`${JINA_READER_URL}${encodeURIComponent(url)}`, {
-          headers: { 'Accept': 'text/markdown' },
-        });
-        console.log(`[JINA SUCCESS]✅ Fetched ${url}`);
-        return { url, data: [{ content: jinaRes.data }] }; // Mimic Firecrawl structure
-      } catch (error) {
-        console.error(`[JINA ERROR]❌ Failed for ${url}: ${(error as Error).message}`);
-        return { url, data: [] };
+    const sourceUrls = research.data.sources.slice(0, 200).map(source => source.url);
+    
+    // Process URLs in batches of 10
+    const batchSize = 10;
+    const jinaResults: any[] = [];
+    
+    for (let i = 0; i < sourceUrls.length; i += batchSize) {
+      const batch = sourceUrls.slice(i, i + batchSize);
+      console.log(`[JINA BATCH] Processing batch ${(i/batchSize) + 1}/${Math.ceil(sourceUrls.length/batchSize)}`);
+      
+      const batchResults = await Promise.all(
+        batch.map((url, index) => 
+          processUrlWithDelay(url, i + index, sourceUrls.length)
+        )
+      );
+      
+      jinaResults.push(...batchResults);
+      
+      // Add delay between batches
+      if (i + batchSize < sourceUrls.length) {
+        console.log('[JINA BATCH] Waiting between batches...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
-    });
+    }
 
-    const jinaResults = await Promise.all(jinaPromises);
     console.log(`[JINA READER COMPLETE]✅ 🔥 Processed ${jinaResults.length} URLs`);
-
+// ...existing code...
     // Enhance sources with Jina Reader data
     const enhancedSources = research.data.sources.map(source => {
       const jinaResult = jinaResults.find(result => result.url === source.url);
