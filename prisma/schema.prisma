@@ -12,107 +12,45 @@ datasource db {
 
 model User {
   id        String   @id @default(cuid()) // Or @default(uuid())
-  clerkId   String   @unique // Keep Clerk's ID unique
+  clerkId   String?  @unique // Make Clerk ID optional
+  custom_id String   @unique @default(uuid()) // Add custom UUID identifier
   email     String   @unique
   name      String
   avatar    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  // Relations (keep as they are)
-  projects      Project[]
-  researches    Research[]
-  collections   Collection[]
   searchHistory SearchHistory[]
 }
 
-// Project model for user projects
-model Project {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  userId      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  researches  Research[]
-  collections Collection[]
-
-  @@index([userId])
-}
-
-// Research model for storing research data
-model Research {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?  @db.Text
-  userId    String
-  projectId String?
-  status    String   @default("pending") // pending, completed, failed
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project     Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  collections Collection[]
-  sources     Source[]
-
-  @@index([userId])
-  @@index([projectId])
-}
-
-// Source model for research sources
-model Source {
-  id         String   @id @default(cuid())
-  url        String
-  title      String?
-  content    String?  @db.Text
-  researchId String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // Relations
-  research Research @relation(fields: [researchId], references: [id], onDelete: Cascade)
-
-  @@index([researchId])
-}
-
-// Collection model for organizing researches
-model Collection {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  userId      String
-  projectId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project       Project?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  researches    Research[]
-  searchHistory SearchHistory[]
-
-  @@index([userId])
-  @@index([projectId])
-}
-
-// New model for Search History
 model SearchHistory {
   id        String   @id @default(cuid())
   query     String
   userId    String
   createdAt DateTime @default(now())
-  collectionId String?
-  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  
+  // Remove the Collection references since it's not defined
+  // collectionId String?
+  // collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
-  @@index([collectionId])
+  // @@index([collectionId])
   @@index([userId, createdAt])
 }
+
+// Uncomment and complete if you need a Collection model
+// model Collection {
+//   id        String   @id @default(cuid())
+//   name      String
+//   userId    String
+//   createdAt DateTime @default(now())
+//   updatedAt DateTime @updatedAt
+//   
+//   // Relations
+//   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+//   searchHistory SearchHistory[]
+//   
+//   @@index([userId])
+// }

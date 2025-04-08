@@ -88,5 +88,9 @@ batchCrawlUrls(sourceUrls)
       console.log(result.data[0].content); // Print full content
       console.log('---');
     });
+
   })
   .catch(error => console.error('Batch crawl failed unexpectedly:', error));
+
+
+
