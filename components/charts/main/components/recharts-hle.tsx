@@ -1,330 +1,286 @@
-
 "use client";
-import React, { useState, useEffect } from 'react';
+
+import React from 'react';
+import { Activity, BrainCircuit, TrendingUp, Target } from "lucide-react"; // Added BrainCircuit, Target
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis, ReferenceLine } from "recharts";
+
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  ReferenceLine,
-  Area,
-  DotProps // Keep DotProps for type safety
-} from 'recharts';
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"; // Assuming path is correct
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart"; // Assuming path is correct
 
-// --- Modernized Theme Colors ---
-// Using CSS variables defined in your global styles (tailwind config or globals.css)
-// Assumes variables like --background, --foreground, --primary, --muted-foreground, --border exist.
-// We'll add a vibrant variant assumption.
-const colors = {
-  background: 'hsl(var(--background))',
-  foreground: 'hsl(var(--foreground))',
-  primary: 'hsl(var(--primary))', // e.g., A strong Violet/Indigo
-  primaryVibrant: 'hsl(var(--primary-vibrant, var(--primary)))', // A brighter shade for highlights/gradients
-  primaryMuted: 'hsl(var(--primary) / 0.5)', // Softer primary for less emphasis
-  primaryUltraMuted: 'hsl(var(--primary) / 0.1)', // Very soft for glows/backgrounds
-  mutedForeground: 'hsl(var(--muted-foreground))', // For subtle text, ticks
-  border: 'hsl(var(--border))', // Subtle borders, dividers
-  borderHover: 'hsl(var(--primary) / 0.2)', // Border color on hover for interactive elements
-  card: 'hsl(var(--card))', // Card background
-  cardForeground: 'hsl(var(--card-foreground))', // Card text
-};
+// --- Data Definitions ---
 
-// --- Main Component: Hle ---
-const RechartsHle = () => {
-  const [currentScore, setCurrentScore] = useState(33.0);
-  const [isClient, setIsClient] = useState(false);
+// Illustrative HumanEval Progression Data
+const humanEvalData = [
+  { date: "2024-01", model: 'Legacy v2', score: 65.2 },
+  { date: "2024-04", model: 'Cognitive Core', score: 71.8 },
+  { date: "2024-07", model: 'Reasoning Engine', score: 78.5 },
+  { date: "2024-10", model: 'Contextual AI v4', score: 84.1 },
+  { date: "2025-01", model: 'Unified Intelligence', score: 90.3 },
+  { date: "2025-04", model: 'Pre-Parity Candidate', score: 95.5 },
+  // Final Blaze Data Point
+  { date: "2025-07", model: 'Blaze Deep Research Engine', score: 98.1 },
+];
 
-  useEffect(() => {
-    setIsClient(true); // Mount check for reliable rendering of SVG elements
-  }, []);
+// Illustrative GPQA (Science Q&A) Progression Data
+const gpqaData = [
+  { date: "2024-01", model: 'Legacy v2', score: 45.1 },
+  { date: "2024-04", model: 'Cognitive Core', score: 52.9 },
+  { date: "2024-07", model: 'Reasoning Engine', score: 61.0 },
+  { date: "2024-10", model: 'Contextual AI v4', score: 70.5 },
+  { date: "2025-01", model: 'Unified Intelligence', score: 79.8 },
+  { date: "2025-04", model: 'Pre-Parity Candidate', score: 88.2 },
+  // Final Blaze Data Point
+  { date: "2025-07", model: 'Blaze Deep Research Engine', score: 93.8 },
+];
 
-  // Sample data (unchanged)
-  const data = [
-    { date: '2024-01-24', model: 'Grok-2', score: 5 },
-    { date: '2024-04-24', model: 'ChatGPT-4 Omni', score: 5 },
-    { date: '2024-09-24', model: 'OpenAI O1', score: 10 },
-    { date: '2024-12-24', model: 'Gemini Thinking', score: 6 },
-    { date: '2025-02-25', model: 'DeepSeek', score: 8 },
-    { date: '2025-03-25', model: 'OpenAI O3 Mini', score: 9 },
-    { date: '2025-04-04', model: 'O3 Mini High', score: 11 },
-    { date: '2025-04-25', model: 'OpenAI Deep Research', score: 28 },
-    { date: '2025-04-25', model: 'Blaze Deep Research', score: 33 } // Latest
-  ];
+// --- Chart Configurations ---
 
-  // Live score update effect (unchanged)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentScore(prev => {
-        const newScore = prev + 0.1;
-        // Simple loop back for demo purposes
-        return newScore > 36 ? 31 : parseFloat(newScore.toFixed(1));
-      });
-    }, 150); // Slightly slower for smoother visual
-    return () => clearInterval(interval);
-  }, []);
+const humanEvalChartConfig = {
+  score: {
+    label: "HumanEval Score",
+    color: "hsl(var(--chart-1))", // Use theme color 1
+    icon: Activity,
+  },
+  // Optional: Add a config for the reference line if needed by tooltip/legend
+  humanLevel: {
+      label: "Human Level",
+      color: "hsl(var(--muted-foreground))",
+      icon: Target,
+  }
+} satisfies ChartConfig;
 
-  // Date formatting (unchanged)
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+const gpqaChartConfig = {
+  score: {
+    label: "GPQA Score",
+    color: "hsl(var(--chart-2))", // Use theme color 2
+    icon: BrainCircuit, // More relevant icon for science/knowledge
+  },
+} satisfies ChartConfig;
+
+// --- Helper Functions ---
+
+// Formatter for X-axis (e.g., 'Jan 24')
+const formatAxisDate = (dateStr: string) => {
+    const [year, month] = dateStr.split('-');
+    const date = new Date(parseInt(year), parseInt(month) - 1);
     return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-  };
-
-  // --- Modernized Custom Tooltip ---
-  interface CustomTooltipProps {
-    active?: boolean; payload?: any[]; label?: string;
-  }
-  const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
-     if (active && payload && payload.length) {
-      const dataPayload = payload.find(p => p.dataKey === 'score');
-      if (!dataPayload) return null;
-
-      const dataPoint = dataPayload.payload;
-      const isLatest = dataPoint.model === 'Blaze Deep Research';
-      const score = isLatest ? currentScore : dataPoint.score;
-
-      return (
-        <div className="bg-white/70 dark:bg-black/70 shadow-xl backdrop-blur-lg border border-white/10 dark:border-black/20 rounded-xl overflow-hidden">
-           <div className="p-4">
-              <div className="flex justify-between items-center gap-3 mb-2">
-                <span className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{dataPoint.model}</span>
-                {isLatest && (
-                   <span className="inline-flex items-center bg-primary/10 dark:bg-primary/20 px-2.5 py-0.5 rounded-full font-semibold text-[10px] text-primary dark:text-primary leading-none">
-                      Live
-                    </span>
-                )}
-              </div>
-              <p className="mb-3 text-muted-foreground text-xs">{formatDate(dataPoint.date)}</p>
-              <div className="flex items-baseline gap-1.5">
-                 <span className="bg-clip-text bg-gradient-to-r from-primary via-primaryVibrant to-primary font-bold text-transparent text-3xl tracking-tight">
-                   {score.toFixed(1)}
-                 </span>
-                 <span className="text-muted-foreground text-xs">% Score</span>
-              </div>
-           </div>
-           {/* Optional: Add a subtle gradient bar at the bottom */}
-           <div className="bg-gradient-to-r from-primary/30 via-primaryVibrant/40 to-primary/30 h-1"></div>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // --- Modernized Custom Dot ---
-  interface CustomDotProps extends Omit<DotProps, 'key'> {
-    payload?: any;
-  }
-  const CustomDot: React.FC<CustomDotProps> = (props) => {
-    const { cx, cy, payload } = props;
-
-    // Important: Render null server-side or before client mount to avoid hydration errors
-    if (typeof cx !== 'number' || typeof cy !== 'number' || !isClient) return null;
-
-    const isLatest = payload?.model === 'Blaze Deep Research';
-    const isMajorMilestone = payload?.score >= 20 && !isLatest; // Example: Highlight significant points
-
-    // Base dot style
-    let dot = <circle cx={cx} cy={cy} r={3} fill={colors.primaryMuted} opacity={0.6} />;
-
-    if (isMajorMilestone) {
-      dot = <circle cx={cx} cy={cy} r={4} fill={colors.primary} stroke={colors.background} strokeWidth={1.5} />;
-    }
-
-    if (isLatest) {
-      // Use SVG filter for a pronounced glow effect
-      return (
-        <g filter="url(#modernDotGlow)">
-          {/* Pulsing outer ring */}
-          <circle cx={cx} cy={cy} r={10} fill={colors.primaryVibrant} opacity={0.15} className="animate-pulse" style={{ animationDuration: '1.5s' }} />
-          {/* Inner solid dot */}
-          <circle cx={cx} cy={cy} r={5} fill={colors.primaryVibrant} stroke={colors.background} strokeWidth={2} />
-        </g>
-      );
-    }
-
-    return dot;
-  };
-
-
-  // --- Main Component Render ---
-  return (
-    // --- Modernized Container ---
-    <div className="bg-background dark:bg-gradient-to-br dark:from-gray-950 dark:via-black dark:to-black/90 shadow-slate-200/50 shadow-xl dark:shadow-black/30 mx-auto p-6 md:p-8 border dark:border-white/5 border-black/5 rounded-2xl w-full max-w-4xl font-sans text-foreground">
-
-      {/* --- Modernized Header --- */}
-      <div className="flex sm:flex-row flex-col justify-between items-start sm:items-center gap-4 mb-6 md:mb-8">
-        <div>
-          <h2 className="font-semibold text-foreground text-xl tracking-tight">AI Performance</h2>
-          <p className="mt-1 text-muted-foreground text-sm">Model Intelligence Score Over Time</p>
-        </div>
-        {/* --- Modernized Live Score Indicator --- */}
-        <div className="flex items-center gap-2 bg-primaryUltraMuted dark:bg-primary/10 px-4 py-2 border border-primary/10 dark:border-primary/20 rounded-full">
-           {/* Simple animated dot */}
-           <span className="relative flex w-2.5 h-2.5">
-             <span className="inline-flex absolute bg-primary/70 opacity-75 rounded-full w-full h-full animate-ping"></span>
-             <span className="inline-flex relative bg-primary rounded-full w-2.5 h-2.5"></span>
-           </span>
-           <span className="mr-1 font-medium text-primary/90 dark:text-primary/90 text-xs">Live Score:</span>
-           <span className="bg-clip-text bg-gradient-to-r from-primary via-primaryVibrant to-primary font-bold text-transparent text-base">
-             {currentScore.toFixed(1)}%
-            </span>
-        </div>
-      </div>
-
-      {/* --- Chart Container --- */}
-      <div className="w-full h-64 md:h-72">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 5, right: 15, left: 0, bottom: 5 }}>
-            <defs>
-              {/* 1. Gradient for the main, sharp foreground line */}
-              <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor={colors.primaryVibrant} />
-                <stop offset="50%" stopColor={colors.primary} />
-                <stop offset="100%" stopColor={colors.primaryVibrant} />
-              </linearGradient>
-
-              {/* 2. Gradient for the underlying, soft background stroke/glow */}
-              <linearGradient id="backgroundStrokeGradient" x1="0" y1="0" x2="0" y2="1">
-                  {/* Adjusted for a vertical fade, often looks softer */}
-                  <stop offset="0%" stopColor={colors.primary} stopOpacity={0.25} />
-                  <stop offset="100%" stopColor={colors.primary} stopOpacity={0.05} />
-              </linearGradient>
-
-              {/* 3. Gradient for the subtle area fill */}
-              <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={colors.primary} stopOpacity={0.15} />
-                <stop offset="80%" stopColor={colors.primary} stopOpacity={0.0} />
-              </linearGradient>
-
-              {/* 4. SVG Filter for Background Line Blur (Glow Effect) */}
-              <filter id="lineBlur" x="-50%" y="-50%" width="200%" height="200%">
-                 <feGaussianBlur stdDeviation="5" result="blurredLine" />
-              </filter>
-
-              {/* 5. SVG Filter for the Live Dot Glow */}
-              <filter id="modernDotGlow" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
-                 <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                 </feMerge>
-              </filter>
-
-            </defs>
-
-            {/* --- Axes Configuration (Minimalist) --- */}
-            <XAxis
-              dataKey="date"
-              tickFormatter={formatDate}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }}
-              dy={10} // Push ticks down slightly
-              interval="preserveStartEnd" // Ensure start/end labels
-              padding={{ left: 10, right: 10 }} // Add padding to prevent clipping
-             />
-            <YAxis
-              tickFormatter={(value) => `${value}%`}
-              axisLine={false}
-              tickLine={false}
-              tick={{ fill: colors.mutedForeground, fontSize: 11, fontFamily: 'inherit' }}
-              domain={[0, 'dataMax + 8']} // Add some headroom
-              width={35} // Allocate space for labels
-              dx={-5} // Push ticks left slightly
-            />
-
-            {/* --- Reference Line (Subtle) --- */}
-            <ReferenceLine
-              y={20}
-              stroke={colors.border}
-              strokeDasharray="3 3"
-              strokeOpacity={0.6}
-              label={{ value: 'Advanced Tier', position: 'insideTopRight', fill: colors.mutedForeground, fontSize: 9, fontFamily: 'inherit', dy: -6, dx: -10 }}
-             />
-
-            {/* --- Tooltip --- */}
-            <Tooltip
-                content={<CustomTooltip />}
-                cursor={{ stroke: colors.border, strokeDasharray: '4 4', strokeOpacity: 0.5 }}
-                animationDuration={200} // Faster tooltip animation
-                />
-
-            {/* --- Area Fill (Subtle) --- */}
-            <Area
-              type="monotone"
-              dataKey="score"
-              stroke="none" // No border for the area itself
-              fill="url(#areaGradient)"
-              isAnimationActive={true}
-              animationDuration={1500}
-             />
-
-             {/* === BACKGROUND STROKE LINE (Rendered FIRST for layering) === */}
-            <Line
-              type="monotone"
-              dataKey="score" // Use the same data
-              stroke="url(#backgroundStrokeGradient)" // Use the dedicated soft gradient
-              strokeWidth={18} // Significantly thicker
-              strokeLinecap="round" // Rounded ends look softer
-              strokeLinejoin="round"
-              filter="url(#lineBlur)" // Apply the blur filter for the glow
-              dot={false} // No dots on the background line
-              activeDot={false} // No interaction needed
-              isAnimationActive={true}
-              animationDuration={1800} // Slightly slower animation for effect
-              />
-
-            {/* === FOREGROUND DATA LINE (Rendered SECOND, on top) === */}
-            <Line
-              type="monotone"
-              dataKey="score"
-              stroke="url(#lineGradient)" // Use the sharp, vibrant gradient
-              strokeWidth={3} // Crisp and clear, but not too thick
-              strokeLinecap="round"
-              dot={(props) => {
-                // Need to strip 'key' before passing to CustomDot if it causes issues
-                const { key, ...restProps } = props;
-                return <CustomDot key={JSON.stringify(restProps.payload)} {...restProps} />; // Use a more stable key
-              }}
-              activeDot={(props: any) => { // Style the dot shown on hover
-                const { cx, cy } = props;
-                if (typeof cx !== 'number' || typeof cy !== 'number') return null;
-                return (
-                  <g>
-                    <circle cx={cx} cy={cy} r={8} stroke={colors.primaryVibrant} strokeWidth={2} fill={colors.background} />
-                    <circle cx={cx} cy={cy} r={4} fill={colors.primaryVibrant} />
-                  </g>
-                );
-              }}
-              isAnimationActive={true}
-              animationDuration={1200} // Standard animation speed
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* --- Modernized Footer / Milestones Section --- */}
-       <div className="mt-8 pt-6 dark:border-white/5 border-t border-black/5">
-         <h3 className="mb-4 font-medium text-muted-foreground text-sm">Recent Milestones</h3>
-         <div className="gap-3 md:gap-4 grid grid-cols-2 md:grid-cols-3">
-           {/* Map last 3 data points */}
-           {[...data].reverse().slice(0, 3).map((item) => (
-             <div
-               key={item.model}
-               className="group bg-white hover:bg-gray-50/80 dark:bg-gray-950/50 dark:hover:bg-gray-900/70 shadow-sm hover:shadow-md p-4 border hover:border-primary/20 dark:border-white/10 dark:hover:border-primary/30 border-black/5 rounded-xl transition-all duration-200 cursor-default"
-              >
-               <p className="mb-1 font-semibold text-foreground group-hover:text-primary text-xs truncate transition-colors">{item.model}</p>
-               <p className="bg-clip-text bg-gradient-to-r from-primary via-primaryVibrant to-primary mb-1.5 font-bold text-transparent text-xl">
-                 {item.score}%
-               </p>
-               <p className="text-[10px] text-muted-foreground">{formatDate(item.date)}</p>
-             </div>
-           ))}
-         </div>
-       </div>
-    </div>
-  );
 };
 
-export default RechartsHle;
+// Formatter for Y-axis (e.g., '80%')
+const formatAxisScore = (score: number) => `${score}%`;
+
+// --- Main Component ---
+
+export function BlazePerformanceCharts() {
+  const latestHumanEval = humanEvalData[humanEvalData.length - 1];
+  const latestGPQA = gpqaData[gpqaData.length - 1];
+
+  return (
+    // Use a standard Card, styling controlled by shadcn/ui theme
+    <Card className="shadow-sm hover:shadow-md mx-auto border-border/60 w-full max-w-6xl transition-shadow duration-300">
+      <CardHeader className="pb-4">
+        {/* Main Title - More prominent */}
+        <CardTitle className="font-semibold text-foreground text-xl sm:text-2xl tracking-tight">
+          Blaze Deep Research Engine - Benchmark Performance
+        </CardTitle>
+        <CardDescription className="text-muted-foreground text-sm">
+          Performance progression on key AI benchmarks (HumanEval & GPQA).
+        </CardDescription>
+      </CardHeader>
+
+      {/* Use Grid for responsive layout of the two charts */}
+      <CardContent className="gap-6 md:gap-8 grid grid-cols-1 md:grid-cols-2 px-4 sm:px-6 pt-2 pb-6">
+
+        {/* --- HumanEval Chart Card --- */}
+        <div className="flex flex-col bg-card shadow-background/5 shadow-inner p-4 sm:p-6 border border-border/50 rounded-lg">
+           <div className="mb-4">
+              <h3 className="font-medium text-foreground text-base sm:text-lg">HumanEval Benchmark</h3>
+              <p className="text-muted-foreground text-xs sm:text-sm">Code generation capability assessment.</p>
+           </div>
+          <div className="flex-grow h-64 sm:h-72"> {/* Ensure chart container has height */}
+            <ChartContainer config={humanEvalChartConfig} className="w-full h-full">
+              <AreaChart
+                accessibilityLayer
+                data={humanEvalData}
+                margin={{ top: 5, right: 10, left: -15, bottom: 0 }} // Adjust margins for clean look
+              >
+                <CartesianGrid
+                    vertical={false}
+                    stroke="hsl(var(--border))" // Use border color for grid
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.5} // Make grid subtle
+                 />
+                <XAxis
+                  dataKey="date"
+                  tickFormatter={formatAxisDate}
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={10} // Increase space below ticks
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  interval="preserveStartEnd" // Ensure first/last labels show
+                />
+                <YAxis
+                  dataKey="score"
+                  tickFormatter={formatAxisScore}
+                  tickLine={false}
+                  axisLine={false}
+                  width={45} // Allocate space for labels like "100%"
+                  tickMargin={5}
+                  domain={[0, 105]} // Set domain for context (slightly above 100)
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                  allowDecimals={false}
+                />
+                 <ReferenceLine
+                    y={100}
+                    stroke="hsl(var(--muted-foreground))"
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.7}
+                 >
+                    {/* Optional: Subtle label directly on chart */}
+                    {/* <Label value="Human Level" position="insideTopRight" fill="hsl(var(--muted-foreground))" fontSize={9} dy={-4} dx={-4}/> */}
+                 </ReferenceLine>
+                <ChartTooltip
+                  cursor={{ stroke: "hsl(var(--primary))", strokeWidth: 1, strokeOpacity: 0.5, strokeDasharray: "3 3" }}
+                  content={
+                    <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={formatAxisDate} // Use consistent date format in tooltip
+                        formatter={(value, name, item) => (
+                            <>
+                                <span className="font-medium">{item.payload.model}</span>: {value?.toFixed(1)}%
+                            </>
+                        )}
+                        // hideLabel // Hides the default date label if formatter used above
+                     />
+                     }
+                />
+                <Area
+                  dataKey="score"
+                  type="monotone" // Smooth curve
+                  fill="var(--color-score)" // Uses color from config
+                  fillOpacity={0.2} // Subtle fill
+                  stroke="var(--color-score)" // Uses color from config
+                  strokeWidth={2}
+                  dot={false} // Cleaner look without dots on line
+                   activeDot={{ // Style the dot shown on hover
+                     r: 5,
+                     fill: "hsl(var(--background))",
+                     stroke: "var(--color-score)",
+                     strokeWidth: 2,
+                   }}
+                />
+              </AreaChart>
+            </ChartContainer>
+          </div>
+           {/* Info specific to this chart */}
+           <div className="mt-4 pt-3 border-t border-border/50 text-muted-foreground text-xs">
+                Latest Score ({formatAxisDate(latestHumanEval.date)}): <span className="font-semibold text-chart-1">{latestHumanEval.score}%</span>
+           </div>
+        </div>
+
+        {/* --- GPQA Chart Card --- */}
+        <div className="flex flex-col bg-card shadow-background/5 shadow-inner p-4 sm:p-6 border border-border/50 rounded-lg">
+           <div className="mb-4">
+              <h3 className="font-medium text-foreground text-base sm:text-lg">GPQA Benchmark</h3>
+              <p className="text-muted-foreground text-xs sm:text-sm">Graduate-level science question answering.</p>
+           </div>
+           <div className="flex-grow h-64 sm:h-72"> {/* Ensure chart container has height */}
+             <ChartContainer config={gpqaChartConfig} className="w-full h-full">
+               <AreaChart
+                 accessibilityLayer
+                 data={gpqaData}
+                 margin={{ top: 5, right: 10, left: -15, bottom: 0 }} // Consistent margins
+               >
+                 <CartesianGrid
+                    vertical={false}
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="3 3"
+                    strokeOpacity={0.5}
+                  />
+                 <XAxis
+                   dataKey="date"
+                   tickFormatter={formatAxisDate}
+                   tickLine={false}
+                   axisLine={false}
+                   tickMargin={10}
+                   tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                   interval="preserveStartEnd"
+                 />
+                 <YAxis
+                   dataKey="score"
+                   tickFormatter={formatAxisScore}
+                   tickLine={false}
+                   axisLine={false}
+                   width={45}
+                   tickMargin={5}
+                   domain={[0, 105]} // Consistent domain
+                   tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                   allowDecimals={false}
+                 />
+                  {/* No reference line needed here unless there's a specific target */}
+                 <ChartTooltip
+                   cursor={{ stroke: "hsl(var(--primary))", strokeWidth: 1, strokeOpacity: 0.5, strokeDasharray: "3 3" }}
+                   content={
+                     <ChartTooltipContent
+                        indicator="dot"
+                        labelFormatter={formatAxisDate}
+                        formatter={(value, name, item) => (
+                           <>
+                               <span className="font-medium">{item.payload.model}</span>: {value?.toFixed(1)}%
+                           </>
+                        )}
+                       // hideLabel
+                     />
+                   }
+                 />
+                 <Area
+                   dataKey="score"
+                   type="monotone"
+                   fill="var(--color-score)" // Uses color from config (chart-2)
+                   fillOpacity={0.2}
+                   stroke="var(--color-score)" // Uses color from config (chart-2)
+                   strokeWidth={2}
+                   dot={false}
+                   activeDot={{
+                     r: 5,
+                     fill: "hsl(var(--background))",
+                     stroke: "var(--color-score)",
+                     strokeWidth: 2,
+                   }}
+                 />
+               </AreaChart>
+             </ChartContainer>
+           </div>
+            {/* Info specific to this chart */}
+           <div className="mt-4 pt-3 border-t border-border/50 text-muted-foreground text-xs">
+                Latest Score ({formatAxisDate(latestGPQA.date)}): <span className="font-semibold text-chart-2">{latestGPQA.score}%</span>
+           </div>
+        </div>
+
+      </CardContent>
+
+      {/* Optional Footer for overall context */}
+      <CardFooter className="px-4 sm:px-6 pt-4 border-t border-border/60">
+        <div className="flex items-center gap-2 text-muted-foreground text-xs">
+          <TrendingUp className="w-3.5 h-3.5" />
+          <span>Performance data illustrative, updated periodically. Scores represent benchmark percentages.</span>
+        </div>
+      </CardFooter>
+    </Card>
+  );
+}
+
+// Optional: Export as default or named
+// export default BlazePerformanceCharts;
