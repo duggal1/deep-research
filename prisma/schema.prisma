@@ -10,17 +10,16 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// User model based on the auth callback implementation
 model User {
-  id        String   @id
-  clerkId   String   @unique
+  id        String   @id @default(cuid()) // Or @default(uuid())
+  clerkId   String   @unique // Keep Clerk's ID unique
   email     String   @unique
   name      String
   avatar    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
+  // Relations (keep as they are)
   projects      Project[]
   researches    Research[]
   collections   Collection[]

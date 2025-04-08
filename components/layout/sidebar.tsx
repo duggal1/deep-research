@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
  'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -23,7 +24,7 @@ import {
   Trash2,
   Loader2Icon,
 } from 'lucide-react';
-import { useUser } from '@clerk/nextjs'; // To show user info
+import { useUser } from '@clerk/nextjs'; 
 
 // Define the structure for search history items from API
 interface SearchHistoryItem {
@@ -111,16 +112,16 @@ export default function Sidebar() {
             {/* TODO: Make these clickable to re-run the query */}
           <Button
             variant="ghost"
-            className="w-full justify-start text-left h-auto py-2 px-3 text-sm font-normal text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            className="justify-start hover:bg-gray-200 dark:hover:bg-gray-700 px-3 py-2 w-full h-auto font-normal text-gray-700 dark:text-gray-300 text-sm text-left"
             // onClick={() => { /* TODO: Add function to set query on main page */ }}
           >
-            <MessageSquareText className="w-4 h-4 mr-2 flex-shrink-0" />
-            <span className="truncate flex-1">{item.query}</span>
+            <MessageSquareText className="flex-shrink-0 mr-2 w-4 h-4" />
+            <span className="flex-1 truncate">{item.query}</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="right" sideOffset={5}>
             <p>{item.query}</p>
-            <p className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</p>
+            <p className="text-muted-foreground text-xs">{formatDate(item.createdAt)}</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -138,14 +139,14 @@ export default function Sidebar() {
           ${isExpanded ? 'w-64' : 'w-20'}
         `}
       >
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700/80 flex-shrink-0">
+        <div className="flex flex-shrink-0 justify-between items-center px-4 border-gray-200 dark:border-gray-700/80 border-b h-16">
           {isExpanded && (
-            <Link href="/main" className="font-bold text-lg text-blue-600 dark:text-blue-400">
+            <Link href="/main" className="font-bold text-blue-600 dark:text-blue-400 text-lg">
               Deep Research
             </Link>
           )}
           <Button variant="ghost" size="icon" onClick={toggleSidebar} className="ml-auto">
-            {isExpanded ? <PanelLeftOpen className="h-5 w-5" /> : <PanelRightOpen className="h-5 w-5" />}
+            {isExpanded ? <PanelLeftOpen className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
           </Button>
         </div>
 
@@ -168,18 +169,18 @@ export default function Sidebar() {
                 {/* History Section */}
                 <Separator className="my-4" />
                 <div className={`flex items-center ${isExpanded ? 'justify-between px-2' : 'justify-center'}`}>
-                    {isExpanded && <h3 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">History</h3>}
+                    {isExpanded && <h3 className="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase">History</h3>}
                      {!isExpanded && (
                         <Tooltip>
-                            <TooltipTrigger asChild><History className="h-5 w-5 text-gray-500 dark:text-gray-400"/></TooltipTrigger>
+                            <TooltipTrigger asChild><History className="w-5 h-5 text-gray-500 dark:text-gray-400"/></TooltipTrigger>
                             <TooltipContent side="right" sideOffset={5}>History</TooltipContent>
                         </Tooltip>
                      )}
                      {isExpanded && history.length > 0 && (
                          <Tooltip>
                              <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" onClick={clearHistory} disabled={isDeletingHistory} className="h-7 w-7">
-                                    {isDeletingHistory ? <Loader2Icon className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-gray-500 hover:text-red-500"/>}
+                                <Button variant="ghost" size="icon" onClick={clearHistory} disabled={isDeletingHistory} className="w-7 h-7">
+                                    {isDeletingHistory ? <Loader2Icon className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-500"/>}
                                 </Button>
                              </TooltipTrigger>
                             <TooltipContent side="right" sideOffset={5}>Clear History</TooltipContent>
@@ -189,7 +190,7 @@ export default function Sidebar() {
 
                 {isLoadingHistory ? (
                     <div className={`flex justify-center items-center py-4 ${isExpanded ? '' : 'h-10'}`}>
-                        <Loader2Icon className="h-5 w-5 animate-spin text-gray-400"/>
+                        <Loader2Icon className="w-5 h-5 text-gray-400 animate-spin"/>
                     </div>
                 ) : history.length === 0 ? (
                     <p className={`px-2 text-xs text-center text-gray-500 dark:text-gray-400 ${isExpanded ? 'py-2' : 'hidden'}`}>No history yet.</p>
@@ -201,8 +202,8 @@ export default function Sidebar() {
                                 <Tooltip key={item.id}>
                                     <TooltipTrigger asChild>
                                         {/* TODO: Make icons clickable */}
-                                        <Button variant="ghost" size="icon" className="w-full justify-center">
-                                            <MessageSquareText className="h-5 w-5" />
+                                        <Button variant="ghost" size="icon" className="justify-center w-full">
+                                            <MessageSquareText className="w-5 h-5" />
                                         </Button>
                                     </TooltipTrigger>
                                     <TooltipContent side="right" sideOffset={5}>{item.query}</TooltipContent>
@@ -217,7 +218,7 @@ export default function Sidebar() {
         </ScrollArea>
 
         {/* Footer Section - Settings & User */}
-        <div className="mt-auto p-3 border-t border-gray-200 dark:border-gray-700/80 flex-shrink-0">
+        <div className="flex-shrink-0 mt-auto p-3 border-gray-200 dark:border-gray-700/80 border-t">
             <TooltipProvider delayDuration={100}>
                 {/* Settings Link */}
                 <Tooltip>
@@ -233,8 +234,8 @@ export default function Sidebar() {
                 </Tooltip>
                  {/* User Info (Optional) */}
                 {user && isExpanded && (
-                    <div className="flex items-center gap-2 mt-3 px-2 text-sm text-gray-600 dark:text-gray-400">
-                        <img src={user.imageUrl} alt={user.fullName || 'User'} className="w-6 h-6 rounded-full" />
+                    <div className="flex items-center gap-2 mt-3 px-2 text-gray-600 dark:text-gray-400 text-sm">
+                        <img src={user.imageUrl} alt={user.fullName || 'User'} className="rounded-full w-6 h-6" />
                         <span className="truncate">{user.fullName || user.primaryEmailAddress?.emailAddress}</span>
                     </div>
                  )}
@@ -243,42 +244,42 @@ export default function Sidebar() {
       </aside>
 
       {/* Mobile Sidebar Trigger (Optional but recommended) */}
-      <div className="md:hidden absolute top-4 left-4 z-50">
+      <div className="md:hidden top-4 left-4 z-50 absolute">
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon">
-              <PanelRightOpen className="h-5 w-5" />
+              <PanelRightOpen className="w-5 h-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-64 p-0 flex flex-col bg-background">
+          <SheetContent side="left" className="flex flex-col bg-background p-0 w-64">
             {/* Reuse sidebar content structure for mobile */}
-            <div className="flex items-center justify-between h-16 px-4 border-b flex-shrink-0">
+            <div className="flex flex-shrink-0 justify-between items-center px-4 border-b h-16">
               <Link href="/main" className="font-bold text-lg">
                 Deep Research
               </Link>
                <SheetClose asChild>
-                  <Button variant="ghost" size="icon"><PanelLeftOpen className="h-5 w-5" /></Button>
+                  <Button variant="ghost" size="icon"><PanelLeftOpen className="w-5 h-5" /></Button>
               </SheetClose>
             </div>
              <ScrollArea className="flex-1 px-2 py-4">
                 <nav className="space-y-2">
                     <SheetClose asChild>
                         <Link href="/main">
-                            <Button variant={pathname === '/main' ? "secondary" : "ghost"} className="w-full justify-start">
-                                <PlusCircle className="h-5 w-5 mr-2" /> New Research
+                            <Button variant={pathname === '/main' ? "secondary" : "ghost"} className="justify-start w-full">
+                                <PlusCircle className="mr-2 w-5 h-5" /> New Research
                             </Button>
                         </Link>
                     </SheetClose>
 
                      <Separator className="my-4" />
-                     <div className="flex items-center justify-between px-2">
-                         <h3 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">History</h3>
+                     <div className="flex justify-between items-center px-2">
+                         <h3 className="font-semibold text-gray-500 dark:text-gray-400 text-xs uppercase">History</h3>
                           {history.length > 0 && (
                              <TooltipProvider delayDuration={100}>
                                 <Tooltip>
                                     <TooltipTrigger asChild>
-                                       <Button variant="ghost" size="icon" onClick={clearHistory} disabled={isDeletingHistory} className="h-7 w-7">
-                                           {isDeletingHistory ? <Loader2Icon className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4 text-gray-500 hover:text-red-500"/>}
+                                       <Button variant="ghost" size="icon" onClick={clearHistory} disabled={isDeletingHistory} className="w-7 h-7">
+                                           {isDeletingHistory ? <Loader2Icon className="w-4 h-4 animate-spin"/> : <Trash2 className="w-4 h-4 text-gray-500 hover:text-red-500"/>}
                                        </Button>
                                     </TooltipTrigger>
                                    <TooltipContent side="right" sideOffset={5}>Clear History</TooltipContent>
@@ -287,9 +288,9 @@ export default function Sidebar() {
                          )}
                      </div>
                      {isLoadingHistory ? (
-                         <div className="flex justify-center items-center py-4"><Loader2Icon className="h-5 w-5 animate-spin"/></div>
+                         <div className="flex justify-center items-center py-4"><Loader2Icon className="w-5 h-5 animate-spin"/></div>
                      ) : history.length === 0 ? (
-                         <p className="px-2 text-xs text-center text-gray-500 py-2">No history yet.</p>
+                         <p className="px-2 py-2 text-gray-500 text-xs text-center">No history yet.</p>
                      ) : (
                          <div className="space-y-1 mt-2">
                              {history.map(item => (
@@ -302,18 +303,18 @@ export default function Sidebar() {
 
                 </nav>
              </ScrollArea>
-             <div className="mt-auto p-3 border-t flex-shrink-0">
+             <div className="flex-shrink-0 mt-auto p-3 border-t">
                  <SheetClose asChild>
                     <Link href="/settings">
-                        <Button variant={pathname === '/settings' ? "secondary" : "ghost"} className="w-full justify-start">
-                            <Settings className="h-5 w-5 mr-2" /> Settings
+                        <Button variant={pathname === '/settings' ? "secondary" : "ghost"} className="justify-start w-full">
+                            <Settings className="mr-2 w-5 h-5" /> Settings
                         </Button>
                     </Link>
                  </SheetClose>
                  {/* User Info (Optional) */}
                 {user && (
-                    <div className="flex items-center gap-2 mt-3 px-2 text-sm text-gray-600 dark:text-gray-400">
-                        <img src={user.imageUrl} alt={user.fullName || 'User'} className="w-6 h-6 rounded-full" />
+                    <div className="flex items-center gap-2 mt-3 px-2 text-gray-600 dark:text-gray-400 text-sm">
+                        <img src={user.imageUrl} alt={user.fullName || 'User'} className="rounded-full w-6 h-6" />
                         <span className="truncate">{user.fullName || user.primaryEmailAddress?.emailAddress}</span>
                     </div>
                  )}

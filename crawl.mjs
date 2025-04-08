@@ -70,7 +70,7 @@ async function batchCrawlUrls(urls) {
 
 const sourceUrls = [
   'https://writingmate.ai/blog/openai-o3-mini-high-vs-o1-pro',
-  'https://techcrunch.com/2025/04/04/chatgpt-everything-to-know-about-the-ai-chatbot/',
+
   'https://www.ultralytics.com/blog/2025-ai-trends-the-innovations-to-look-out-for-this-year',
   'https://research.aimultiple.com/self-supervised-learning/',
   'https://medium.com/data-science-in-your-pocket/deepseek-native-sparse-attention-advanced-attention-mechanism-for-llms-6ac68fc014ff',
