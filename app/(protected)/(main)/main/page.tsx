@@ -142,14 +142,14 @@ export default function RechartsHle() {
   // --- Warning message for high values ---
   const getDepthWarning = () => {
     if (researchControls.jinaDepth > 35) {
-      return "Increasing depth improves utility but significantly increases processing time";
+      return "Significantly improves quality but consumes more tokens and time";
     }
     return null;
   };
   
   const getUrlWarning = () => {
     if (researchControls.maxUrls > 30) {
-      return "Increasing URLs increases time but gives model better context for more accurate responses";
+      return "Boosts context and model response quality but increases processing time significantly";
     }
     return null;
   };
@@ -810,7 +810,7 @@ export default function RechartsHle() {
                 disabled={loading || !query.trim()}
                 title="Use Gemini Pro for Deeper Reasoning"
                 className={cn(
-                  "rounded-full transition-all flex items-center gap-1.5 px-2 py-1 border h-9 font-serif", // Adjusted padding/height slightly, Added font-serif
+                  "rounded-full transition-all flex items-center gap-1.5 px-2 py-1 border h-9 font-serif",
                   loading || !query.trim()
                     ? "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed"
                     : "bg-purple-50 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-800/50 hover:border-purple-400 dark:hover:border-purple-600"
@@ -880,8 +880,48 @@ export default function RechartsHle() {
               >
                 <h3 className="mb-5 font-serif font-semibold text-gray-800 dark:text-gray-200 text-lg">Research Settings</h3>
                 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* URL Limit Control */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Jina Reader Depth Control - Renamed to just "Depth" */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="jinaDepth" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
+                        Depth
+                      </label>
+                      <span className="inline-flex items-center justify-center bg-purple-100 dark:bg-purple-900/50 px-2 py-0.5 rounded font-serif font-medium text-purple-700 dark:text-purple-300 text-xs">
+                        {researchControls.jinaDepth}
+                      </span>
+                    </div>
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-purple-400 via-fuchsia-500 to-purple-600 dark:from-purple-700 dark:via-fuchsia-600 dark:to-purple-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.jinaDepth - 10) / (95 - 10) * 100}%` }}
+                      ></div>
+                      <input
+                        id="jinaDepth"
+                        type="range"
+                        min="10"
+                        max="95"
+                        step="5"
+                        value={researchControls.jinaDepth}
+                        onChange={(e) => setResearchControls({...researchControls, jinaDepth: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-purple-600 dark:accent-purple-400 z-10"
+                        style={{margin: 0}}
+                      />
+                    </div>
+                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
+                      Content extraction depth (10-95)
+                    </p>
+                    {getDepthWarning() && (
+                      <div className="mt-1 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-md">
+                        <AlertCircleIcon className="flex-shrink-0 w-4 h-4 mt-0.5 text-amber-500" />
+                        <p className="font-serif text-amber-700 dark:text-amber-300 text-xs">
+                          {getDepthWarning()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* URL Limit Control - With Gradient */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label htmlFor="maxUrls" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
@@ -891,16 +931,23 @@ export default function RechartsHle() {
                         {researchControls.maxUrls}
                       </span>
                     </div>
-                    <input
-                      id="maxUrls"
-                      type="range"
-                      min="15"
-                      max="120"
-                      step="5"
-                      value={researchControls.maxUrls}
-                      onChange={(e) => setResearchControls({...researchControls, maxUrls: parseInt(e.target.value)})}
-                      className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400"
-                    />
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-blue-400 via-cyan-500 to-blue-600 dark:from-blue-700 dark:via-cyan-600 dark:to-blue-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.maxUrls - 15) / (120 - 15) * 100}%` }}
+                      ></div>
+                      <input
+                        id="maxUrls"
+                        type="range"
+                        min="15"
+                        max="120"
+                        step="5"
+                        value={researchControls.maxUrls}
+                        onChange={(e) => setResearchControls({...researchControls, maxUrls: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400 z-10"
+                        style={{margin: 0}}
+                      />
+                    </div>
                     <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
                       Number of URLs to fetch (15-120)
                     </p>
@@ -914,7 +961,7 @@ export default function RechartsHle() {
                     )}
                   </div>
                   
-                  {/* Time Limit Control */}
+                  {/* Time Limit Control - With Gradient */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label htmlFor="timeLimit" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
@@ -924,69 +971,25 @@ export default function RechartsHle() {
                         {researchControls.timeLimit}
                       </span>
                     </div>
-                    <input
-                      id="timeLimit"
-                      type="range"
-                      min="150"
-                      max="600"
-                      step="30"
-                      value={researchControls.timeLimit}
-                      onChange={(e) => setResearchControls({...researchControls, timeLimit: parseInt(e.target.value)})}
-                      className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-green-600 dark:accent-green-400"
-                    />
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 dark:from-green-700 dark:via-emerald-600 dark:to-teal-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.timeLimit - 150) / (600 - 150) * 100}%` }}
+                      ></div>
+                      <input
+                        id="timeLimit"
+                        type="range"
+                        min="150"
+                        max="600"
+                        step="30"
+                        value={researchControls.timeLimit}
+                        onChange={(e) => setResearchControls({...researchControls, timeLimit: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-green-600 dark:accent-green-400 z-10"
+                        style={{margin: 0}}
+                      />
+                    </div>
                     <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
                       Maximum time for research (150-600 seconds)
-                    </p>
-                  </div>
-                  
-                  {/* Jina Reader Depth Control */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <label htmlFor="jinaDepth" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
-                        Jina Reader Depth
-                      </label>
-                      <span className="inline-flex items-center justify-center bg-purple-100 dark:bg-purple-900/50 px-2 py-0.5 rounded font-serif font-medium text-purple-700 dark:text-purple-300 text-xs">
-                        {researchControls.jinaDepth}
-                      </span>
-                    </div>
-                    <input
-                      id="jinaDepth"
-                      type="range"
-                      min="10"
-                      max="95"
-                      step="5"
-                      value={researchControls.jinaDepth}
-                      onChange={(e) => setResearchControls({...researchControls, jinaDepth: parseInt(e.target.value)})}
-                      className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-600 dark:accent-purple-400"
-                    />
-                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
-                      Content extraction depth (10-95)
-                    </p>
-                    {getDepthWarning() && (
-                      <div className="mt-1 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-md">
-                        <AlertCircleIcon className="flex-shrink-0 w-4 h-4 mt-0.5 text-amber-500" />
-                        <p className="font-serif text-amber-700 dark:text-amber-300 text-xs">
-                          {getDepthWarning()}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* FireCrawl Depth (Fixed) */}
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-center">
-                      <label className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
-                        FireCrawl Depth
-                      </label>
-                      <span className="inline-flex items-center justify-center bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded font-serif font-medium text-indigo-700 dark:text-indigo-300 text-xs">
-                        5 (Fixed)
-                      </span>
-                    </div>
-                    <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden relative">
-                      <div className="absolute top-0 left-0 h-full w-[50%] bg-indigo-500 dark:bg-indigo-600 rounded-lg"></div>
-                    </div>
-                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
-                      Search depth is fixed at 5 for optimal performance
                     </p>
                   </div>
                 </div>
@@ -1054,8 +1057,8 @@ export default function RechartsHle() {
                >
                  <div className="flex items-center gap-2">
                    <BrainIcon className="flex-shrink-0 w-5 h-5 text-purple-600 dark:text-purple-400" />
-                   <p className="font-serif font-medium text-sm"> {/* Added font-serif */}
-                     Engaging Gemini Pro for deeper analysis... this may take 1-3 minutes.
+                   <p className="font-serif font-medium text-sm">
+                     Using Gemini Pro for deeper analysis... this may take 1-3 minutes.
                    </p>
                  </div>
                </motion.div>

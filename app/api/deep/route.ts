@@ -133,7 +133,12 @@ export async function POST(req: Request) {
     const rawBody = await req.text();
     console.log(`[RAW BODY] ${rawBody}`);
     const body = JSON.parse(rawBody) as RequestBody;
-    ({ query, params, mode = 'think' } = body);
+    
+    // Extract query and params, explicitly set mode default to 'non-think' if not provided
+    query = body.query;
+    params = body.params;
+    mode = body.mode || 'non-think'; // Default to 'non-think' if mode is not provided
+    
     console.log(`[REQUEST DATA] 🔥 Query: ${query}, Params: ${JSON.stringify(params)}, Mode: ${mode}`);
   } catch (error) {
     console.error(`[JSON PARSE ERROR] ❌ Invalid JSON: ${(error as Error).message}`);
@@ -264,9 +269,11 @@ export async function POST(req: Request) {
       };
     });
 
-    // Step 4: Gemini Synthesis (unchanged)
+    // Step 4: Gemini Synthesis
     console.log('[GEMINI START] 🌟 Initializing Gemini synthesis');
     const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
+    
+    // Choose model based on mode - think uses Gemini Pro, non-think uses Gemini Flash
     const selectedModel = mode === 'non-think' ? 'gemini-2.0-flash' : 'gemini-2.0-pro-exp-02-05';
     console.log(`[MODEL SELECTED]🚀 Using ${selectedModel} based on mode: ${mode}`);
 
