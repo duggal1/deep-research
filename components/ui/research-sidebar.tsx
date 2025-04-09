@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client';
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   LinkIcon,
   GlobeIcon,
@@ -22,18 +22,19 @@ import {
   XIcon,
   PanelRight,
   SearchCheck,
-  VenetianMask,
   BrainCog,
-  Bot,
   LayoutList,
   BookText,
   Microscope,
   ScanSearch,
   FileCog,
-  RefreshCw
+  WifiOffIcon,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+
+// Cache for favicons to prevent unnecessary reloads
+const faviconCache = new Map<string, string>();
 
 // Helper function to extract domain from URL
 const extractDomain = (url: string): string => {
@@ -54,7 +55,7 @@ const extractDomain = (url: string): string => {
   }
 };
 
-// Helper function to get favicon URL
+// Helper function to get favicon URL with caching
 const getFaviconUrl = (domain: string): string => {
   if (!domain || typeof domain !== 'string') {
     return '';
@@ -63,11 +64,19 @@ const getFaviconUrl = (domain: string): string => {
   const cleanDomain = domain.trim().toLowerCase();
   if (!cleanDomain) return '';
   
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=128`;
+  // Check cache first
+  if (faviconCache.has(cleanDomain)) {
+    return faviconCache.get(cleanDomain) || '';
+  }
+  
+  const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(cleanDomain)}&sz=128`;
+  faviconCache.set(cleanDomain, faviconUrl);
+  return faviconUrl;
 };
 
 // Activity types
-type ActivityType = 'search' | 'plan' | 'crawl' | 'fetch' | 'analyze' | 'synthesize' | 'complete';
+type ActivityType = 'search' | 'plan' | 'crawl' | 'fetch' | 'analyze' | 'synthesize' | 'complete' | 'log' | 'error';
+type ActivityStatus = 'pending' | 'active' | 'completed' | 'failed';
 
 // Activity interface
 interface ResearchActivity {
@@ -75,7 +84,7 @@ interface ResearchActivity {
   type: ActivityType;
   message: string;
   timestamp: number;
-  status: 'pending' | 'active' | 'completed';
+  status: ActivityStatus;
   url?: string;
 }
 
@@ -96,121 +105,84 @@ interface ResearchLog {
   message: string;
   url?: string;
   type?: string;
+  level?: 'info' | 'warn' | 'error';
 }
 
 // Socket messages interface
 interface SocketMessage {
-  type: 'activity' | 'source' | 'log';
-  data: ResearchActivity | Source | ResearchLog;
+  type: 'activity' | 'source' | 'log' | 'complete' | 'error';
+  data: ResearchActivity | Source | ResearchLog | { message: string, timestamp: number };
 }
 
-// Predefined activities based on sources
-const generateActivities = (query: string, sources: Source[] = []): ResearchActivity[] => {
-  const now = Date.now();
-  
-  // Create a base set of activities that will happen in all research
-  const activities: ResearchActivity[] = [
-    {
-      id: 'search',
-      type: 'search',
-      message: `Searching for information about "${query}"`,
-      timestamp: now,
-      status: 'active',
-    },
-    {
-      id: 'plan',
-      type: 'plan',
-      message: 'Planning research strategy and determining key areas to explore',
-      timestamp: now + 5000, // 5 seconds later
-      status: 'pending',
-    },
-    {
-      id: 'crawl',
-      type: 'crawl',
-      message: 'Crawling websites to gather relevant information',
-      timestamp: now + 10000, // 10 seconds later
-      status: 'pending',
-    },
-  ];
-  
-  // Add activities for each source (up to 3)
-  const sourcesToUse = sources.slice(0, 3);
-  sourcesToUse.forEach((source, i) => {
-    activities.push({
-      id: `fetch-${source.id || i}`,
-      type: 'fetch',
-      message: `Fetching content from ${extractDomain(source.url)}`,
-      timestamp: now + 15000 + (i * 5000), // staggered times
-      status: 'pending',
-      url: source.url,
-    });
-  });
-  
-  // Add final activities
-  activities.push(
-    {
-      id: 'analyze',
-      type: 'analyze',
-      message: 'Analyzing gathered information and extracting key insights',
-      timestamp: now + 30000, // 30 seconds later
-      status: 'pending',
-    },
-    {
-      id: 'synthesize',
-      type: 'synthesize',
-      message: 'Synthesizing research into comprehensive response',
-      timestamp: now + 40000, // 40 seconds later
-      status: 'pending',
-    },
-    {
-      id: 'complete',
-      type: 'complete',
-      message: 'Research complete',
-      timestamp: now + 50000, // 50 seconds later
-      status: 'pending',
-    }
-  );
-  
-  return activities;
-};
-
 // Custom hook for SSE (Server-Sent Events) connection
-function useEventSource(url: string | null, onMessage: (data: any) => void) {
+function useEventSource(url: string | null, onMessage: (data: SocketMessage) => void, onError: () => void, onOpen: () => void) {
   const [connected, setConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   
   useEffect(() => {
-    if (!url) return;
-    
+    if (!url) {
+      setConnected(false);
+      if (eventSourceRef.current) {
+        console.log('Closing existing SSE connection due to URL change/removal.');
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+      return;
+    }
+
+    if (eventSourceRef.current) {
+       console.log('Closing previous SSE connection before opening new one.');
+       eventSourceRef.current.close();
+    }
+
+    console.log('Attempting to open SSE connection:', url);
     const eventSource = new EventSource(url);
     eventSourceRef.current = eventSource;
-    
+
     eventSource.onopen = () => {
       console.log('SSE connection opened:', url);
       setConnected(true);
+      onOpen();
     };
-    
+
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        onMessage(data);
+        if (data && data.type && data.data) {
+          onMessage(data as SocketMessage);
+        } else {
+           console.warn('Received malformed SSE message:', event.data);
+        }
       } catch (err) {
-        console.error('Error parsing SSE message:', err);
+        console.error('Error parsing SSE message:', err, 'Raw data:', event.data);
+        onMessage({
+          type: 'error',
+          data: { message: `Failed to parse message: ${event.data.substring(0, 100)}...`, timestamp: Date.now() }
+        });
       }
     };
-    
+
     eventSource.onerror = (err) => {
       console.error('SSE connection error:', err);
       setConnected(false);
+      onError();
+      if (eventSource.readyState === EventSource.CLOSED) {
+          console.log("SSE connection closed by server or error.");
+          eventSourceRef.current = null;
+      } else if (eventSource.readyState === EventSource.CONNECTING) {
+          console.log("SSE connection attempting to reconnect...");
+      }
     };
-    
+
     return () => {
-      console.log('Closing SSE connection');
-      eventSource.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current) {
+        console.log('Closing SSE connection on cleanup');
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
       setConnected(false);
     };
-  }, [url, onMessage]);
+  }, [url, onMessage, onError, onOpen]);
   
   return connected;
 }
@@ -220,7 +192,6 @@ interface ResearchSidebarProps {
   jobId?: string;
   query: string;
   mode?: 'think' | 'non-think';
-  sources: Source[];
   onClose: () => void;
 }
 
@@ -229,253 +200,269 @@ export function ResearchSidebar({
   jobId, 
   query, 
   mode = 'non-think',
-  sources,
   onClose 
 }: ResearchSidebarProps) {
+  // Local state, reset when jobId/open changes
   const [activities, setActivities] = useState<ResearchActivity[]>([]);
-  const [visibleActivities, setVisibleActivities] = useState<ResearchActivity[]>([]);
-  const [logs, setLogs] = useState<ResearchLog[]>([]);
   const [activeSources, setActiveSources] = useState<Source[]>([]);
   const [activeTab, setActiveTab] = useState<'activities' | 'sources'>('activities');
+  const [isConnected, setIsConnected] = useState(false);
+  const [initialConnectionMade, setInitialConnectionMade] = useState(false);
+
   const activityContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Simulation timer for updating activities status
-  const simulationRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Initialize predefined activities based on query
-  useEffect(() => {
-    if (query && open) {
-      const initialActivities = generateActivities(query, sources);
-      setActivities(initialActivities);
-      
-      // Initialize with just the first visible activity
-      setVisibleActivities([initialActivities[0]]);
-      
-      // Initialize with provided sources
-      if (sources.length > 0) {
-        setActiveSources(sources.map(source => ({
-          ...source,
-          id: source.id || `source-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-          found: source.found || Date.now()
-        })));
+  const currentJobIdRef = useRef<string | undefined>(jobId);
+
+  // Memoize domain extraction for sources (recalculates when activeSources changes)
+  const domainMap = useMemo(() => {
+    const map = new Map<string, string>();
+    activeSources.forEach(source => {
+      if (source.url) {
+        map.set(source.url, extractDomain(source.url));
       }
-    }
-  }, [query, open, sources]);
-  
-  // Simulate real-time activity updates
+    });
+    return map;
+  }, [activeSources]);
+
+  // Reset state when sidebar opens with a new job ID or closes
   useEffect(() => {
-    if (!open || !activities.length) return;
-    
-    // Clear any existing simulation
-    if (simulationRef.current) {
-      clearInterval(simulationRef.current);
+    if (open && jobId && jobId !== currentJobIdRef.current) {
+      console.log(`Sidebar opened for new job: ${jobId}. Resetting state.`);
+      setActivities([]);
+      setActiveSources([]);
+      setActiveTab('activities');
+      setIsConnected(false);
+      setInitialConnectionMade(false);
+      currentJobIdRef.current = jobId;
+    } else if (!open) {
+       // Optionally reset state on close, or keep it if you want persistence while closed
+       // Resetting ensures a clean slate when reopened.
+       // console.log("Sidebar closed. Resetting state.");
+       // setActivities([]);
+       // setActiveSources([]);
+       // setIsConnected(false);
+       // setInitialConnectionMade(false);
+       // currentJobIdRef.current = undefined;
     }
-    
-    const now = Date.now();
-    
-    // Simulation interval for updating activities
-    simulationRef.current = setInterval(() => {
-      const currentTime = Date.now();
-      
-      // Update activities based on their scheduled time
-      setActivities(prev => 
-        prev.map(activity => {
-          // If it's time to activate this activity
-          if (activity.status === 'pending' && currentTime >= activity.timestamp) {
-            return { ...activity, status: 'active' };
-          }
-          
-          // If it's active and has been active for a while, complete it
-          if (activity.status === 'active' && currentTime >= activity.timestamp + 5000) {
-            return { ...activity, status: 'completed' };
-          }
-          
-          return activity;
-        })
-      );
-      
-      // Update visible activities based on scheduled time
-      setVisibleActivities(prev => {
-        const nextActivity = activities.find(a => 
-          !prev.some(p => p.id === a.id) && 
-          currentTime >= a.timestamp
-        );
-        
-        if (nextActivity) {
-          return [...prev, nextActivity];
-        }
-        
-        return prev;
-      });
-      
-    }, 1000);
-    
-    return () => {
-      if (simulationRef.current) {
-        clearInterval(simulationRef.current);
-        simulationRef.current = null;
-      }
-    };
-  }, [open, activities]);
-  
-  // Connect to the SSE API for real-time updates
-  const sseUrl = jobId ? `/api/research-stream?jobId=${jobId}` : null;
-  const connected = useEventSource(sseUrl, (data) => {
+  }, [open, jobId]);
+
+  // Handler for incoming SSE messages
+  const handleSSEMessage = useCallback((data: SocketMessage) => {
     console.log('Received SSE message:', data);
-    
+
     if (data.type === 'activity') {
-      // Update or add new activity
       const newActivity = data.data as ResearchActivity;
+      const validStatus: ActivityStatus = ['pending', 'active', 'completed', 'failed'].includes(newActivity.status) ? newActivity.status : 'pending';
+
       setActivities(prev => {
-        // Check if this activity already exists
-        const exists = prev.some(a => a.id === newActivity.id);
-        
-        if (exists) {
-          // Update the existing activity
-          return prev.map(a => a.id === newActivity.id ? newActivity : a);
+        const existsIndex = prev.findIndex(a => a.id === newActivity.id);
+        if (existsIndex > -1) {
+          const updated = [...prev];
+          updated[existsIndex] = { ...newActivity, status: validStatus };
+          return updated.sort((a, b) => a.timestamp - b.timestamp);
         } else {
-          // Add the new activity
-          return [...prev, newActivity];
+          return [...prev, { ...newActivity, status: validStatus }].sort((a, b) => a.timestamp - b.timestamp);
         }
       });
-      
-      // Add to visible activities if not already there
-      setVisibleActivities(prev => {
-        if (!prev.some(a => a.id === newActivity.id)) {
-          return [...prev, newActivity];
-        }
-        return prev;
-      });
-    }
-    
-    if (data.type === 'source') {
-      // Add new source
+    } else if (data.type === 'source') {
       const newSource = data.data as Source;
       setActiveSources(prev => {
-        // Check if this source already exists
         const exists = prev.some(s => s.url === newSource.url);
-        
         if (!exists) {
-          return [...prev, newSource];
+          return [...prev, {
+            ...newSource,
+            id: newSource.id || `source-${Date.now()}-${Math.random().toString(16).substring(2, 8)}`,
+            found: newSource.found || Date.now()
+          }];
         }
         return prev;
       });
+    } else if (data.type === 'log' || data.type === 'error') {
+        const logData = data.data as ResearchLog | { message: string, timestamp: number };
+        const isError = data.type === 'error' || (logData as ResearchLog).level === 'error';
+        const activity: ResearchActivity = {
+            id: `log-${logData.timestamp}-${Math.random().toString(16).substring(2, 8)}`,
+            type: isError ? 'error' : 'log',
+            message: logData.message,
+            timestamp: logData.timestamp,
+            status: isError ? 'failed' : 'completed',
+            url: (logData as ResearchLog).url,
+        };
+        setActivities(prev => [...prev, activity].sort((a, b) => a.timestamp - b.timestamp));
+
+    } else if (data.type === 'complete') {
+        const completeData = data.data as { message: string, timestamp: number };
+        const finalActivity: ResearchActivity = {
+             id: 'complete-final',
+             type: 'complete',
+             message: completeData.message || 'Research process completed.',
+             timestamp: completeData.timestamp || Date.now(),
+             status: 'completed',
+         };
+         setActivities(prev => {
+             const filtered = prev.filter(a => a.type !== 'complete');
+             return [...filtered, finalActivity].sort((a, b) => a.timestamp - b.timestamp);
+         });
+         setIsConnected(false);
     }
-    
-    if (data.type === 'log') {
-      // Add new log
-      const newLog = data.data as ResearchLog;
-      setLogs(prev => [...prev, newLog]);
-    }
-  });
-  
+  }, []);
+
+  const handleSSEError = useCallback(() => {
+      console.log("SSE connection error occurred.");
+      setIsConnected(false);
+      setActivities(prev => {
+           const errorActivity: ResearchActivity = {
+               id: `error-${Date.now()}`,
+               type: 'error',
+               message: 'Connection to research stream lost. Attempting to reconnect...',
+               timestamp: Date.now(),
+               status: 'failed',
+           };
+           if (!prev.some(a => a.id.startsWith('error-'))) {
+               return [...prev, errorActivity].sort((a,b) => a.timestamp - b.timestamp);
+           }
+           return prev;
+       });
+  }, []);
+
+  const handleSSEOpen = useCallback(() => {
+      console.log("SSE connection successfully opened.");
+      setIsConnected(true);
+      setInitialConnectionMade(true);
+       setActivities(prev => prev.filter(a => !a.id.startsWith('error-')));
+  }, []);
+
+  // Connect to the SSE API for real-time updates
+  const sseUrl = (open && jobId) ? `/api/research-stream?jobId=${jobId}` : null;
+  useEventSource(sseUrl, handleSSEMessage, handleSSEError, handleSSEOpen);
+
   // Icons for activity types
-  const activityIcons: Record<ActivityType, React.ReactNode> = {
+  const activityIcons: Record<ActivityType, React.ReactNode> = useMemo(() => ({
     search: <SearchIcon className="h-4 w-4" />,
     plan: <LayoutList className="h-4 w-4" />,
     crawl: <ScanSearch className="h-4 w-4" />,
     fetch: <BookText className="h-4 w-4" />,
     analyze: <Microscope className="h-4 w-4" />,
     synthesize: <FileCog className="h-4 w-4" />,
-    complete: <CircleCheck className="h-4 w-4" />
-  };
-  
+    complete: <CircleCheck className="h-4 w-4 text-green-500" />,
+    log: <FileTextIcon className="h-4 w-4 text-gray-500" />,
+    error: <XIcon className="h-4 w-4 text-red-500" />
+  }), []);
+
   // Status icons
-  const statusIcons = {
+  const statusIcons: Record<ActivityStatus, React.ReactNode> = useMemo(() => ({
     pending: <CircleDashed className="h-4 w-4 text-gray-400" />,
     active: <Loader2Icon className="h-4 w-4 text-blue-500 animate-spin" />,
-    completed: <CircleCheck className="h-4 w-4 text-green-500" />
-  };
-  
-  // Activity item component
-  const ActivityItem = ({ activity }: { activity: ResearchActivity }) => (
+    completed: <CircleCheck className="h-4 w-4 text-green-500" />,
+    failed: <XIcon className="h-4 w-4 text-red-500" />
+  }), []);
+
+  // Scroll to bottom when new activities are added
+  useEffect(() => {
+    if (activityContainerRef.current) {
+      activityContainerRef.current.scrollTop = activityContainerRef.current.scrollHeight;
+    }
+  }, [activities]);
+
+  // Activity item component with memoed rendering
+  const ActivityItem = React.memo(({ activity }: { activity: ResearchActivity }) => (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
       className={cn(
-        "flex items-start gap-3 p-4 border-b border-gray-100 dark:border-gray-800/60 transition-all",
-        activity.status === 'active' && "bg-blue-50/70 dark:bg-blue-950/30 backdrop-blur-sm"
+        "flex items-start gap-3 p-4 border-b border-gray-100 dark:border-gray-800/60 transition-colors",
+        activity.status === 'active' && "bg-blue-50/50 dark:bg-blue-950/20",
+        activity.status === 'failed' && "bg-red-50/50 dark:bg-red-950/20",
+        activity.type === 'log' && "opacity-80",
       )}
     >
-      <div className="flex-shrink-0 mt-1.5">
-        {activity.status === 'pending' ? statusIcons.pending :
-         activity.status === 'active' ? statusIcons.active :
-         statusIcons.completed}
+      <div className="flex-shrink-0 mt-1">
+        {statusIcons[activity.status]}
       </div>
       <div className="flex-grow min-w-0 font-serif">
-        <div className="flex items-center gap-2 mb-1.5">
-          <span className="inline-flex items-center gap-1.5 text-xs bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300 px-2.5 py-0.5 rounded-full backdrop-blur-sm">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-1">
+          <span className={cn(
+             "inline-flex items-center gap-1.5 text-xs px-2 py-0.5 rounded-full",
+             activity.status === 'failed' ? "bg-red-100/80 dark:bg-red-800/80 text-red-700 dark:text-red-300"
+               : activity.type === 'log' ? "bg-gray-100/80 dark:bg-gray-800/80 text-gray-600 dark:text-gray-400"
+               : "bg-gray-100/80 dark:bg-gray-800/80 text-gray-700 dark:text-gray-300"
+          )}>
             {activityIcons[activity.type]}
             <span className="font-medium">{activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}</span>
           </span>
-          <span className="text-xs text-gray-500 flex items-center gap-1">
+          <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
             <ClockIcon className="h-3 w-3" />
-            {new Date(activity.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            {new Date(activity.timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })}
           </span>
         </div>
-        <p className="text-sm text-gray-700 dark:text-gray-300 tracking-tight leading-relaxed">
+        <p className={cn(
+          "text-sm leading-relaxed tracking-tight",
+          activity.status === 'failed' ? "text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-300"
+        )}>
           {activity.message}
         </p>
-        {activity.url && (
+        {activity.url && activity.type !== 'log' && activity.type !== 'error' && (
           <a
             href={activity.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-1.5 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline transition-colors group"
+            className="mt-1 inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline transition-colors group"
           >
-            <div className="bg-white dark:bg-gray-800 rounded-full p-0.5 shadow-sm overflow-hidden">
-              <img 
-                src={getFaviconUrl(activity.url)} 
-                alt="" 
-                className="h-4 w-4 transition-transform group-hover:scale-110" 
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  if (target.nextElementSibling) {
-                    (target.nextElementSibling as HTMLElement).style.display = 'flex';
-                  }
-                }}
-              />
+            <div className="relative flex-shrink-0 h-5 w-5">
+                <img
+                    src={getFaviconUrl(domainMap.get(activity.url) || extractDomain(activity.url))}
+                    alt=""
+                    className="h-4 w-4 rounded-sm transition-transform group-hover:scale-110 block"
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallback = target.nextElementSibling as HTMLElement | null;
+                        if(fallback) fallback.style.display = 'flex';
+                    }}
+                />
+                <div
+                    className="absolute inset-0 hidden items-center justify-center rounded-sm bg-gray-100 dark:bg-gray-800"
+                >
+                    <GlobeIcon className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+                </div>
             </div>
-            <span className="truncate max-w-[200px]">{extractDomain(activity.url)}</span>
-            <ExternalLinkIcon className="h-3 w-3 opacity-70 group-hover:opacity-100" />
+            <span className="truncate max-w-[200px]">{domainMap.get(activity.url) || extractDomain(activity.url)}</span>
+            <ExternalLinkIcon className="h-3 w-3 opacity-70 group-hover:opacity-100 flex-shrink-0" />
           </a>
         )}
       </div>
     </motion.div>
-  );
-  
-  // Source item component
-  const SourceItem = ({ source }: { source: Source }) => (
+  ));
+
+  ActivityItem.displayName = 'ActivityItem';
+
+  // Source item component with memoed rendering
+  const SourceItem = React.memo(({ source }: { source: Source }) => (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className="flex items-start gap-3 p-4 border-b border-gray-100 dark:border-gray-800/60 hover:bg-gray-50/80 dark:hover:bg-gray-900/40 transition-all backdrop-blur-sm group"
+      className="flex items-start gap-3 p-4 border-b border-gray-100 dark:border-gray-800/60 hover:bg-gray-50/70 dark:hover:bg-gray-900/30 transition-colors group"
     >
       <div className="flex-shrink-0 mt-1">
-        <div className="relative">
-          <div className="h-8 w-8 rounded-md shadow-sm bg-white dark:bg-gray-800 p-1 overflow-hidden transition-transform group-hover:scale-105">
-            <img 
-              src={getFaviconUrl(source.url)} 
-              alt=""
-              className="h-full w-full object-contain" 
-              onError={(e) => {
-                const target = e.target as HTMLImageElement;
-                target.style.display = 'none';
-                if (target.nextElementSibling) {
-                  (target.nextElementSibling as HTMLElement).style.display = 'flex';
-                }
-              }}
-            />
-            <div 
-              className="absolute inset-0 hidden items-center justify-center bg-gray-100 dark:bg-gray-800 rounded-md"
-            >
-              <GlobeIcon className="h-4 w-4 text-gray-600 dark:text-gray-400" />
-            </div>
+        <div className="relative h-8 w-8">
+          <img
+            src={getFaviconUrl(domainMap.get(source.url) || extractDomain(source.url))}
+            alt=""
+            className="h-full w-full object-contain rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-0.5 shadow-sm group-hover:scale-105 transition-transform block"
+            onError={(e) => {
+                 const target = e.target as HTMLImageElement;
+                 target.style.display = 'none';
+                 const fallback = target.nextElementSibling as HTMLElement | null;
+                 if(fallback) fallback.style.display = 'flex';
+            }}
+          />
+          <div
+            className="absolute inset-0 hidden items-center justify-center bg-gray-100 dark:bg-gray-800 rounded"
+          >
+            <GlobeIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
           </div>
         </div>
       </div>
@@ -484,100 +471,95 @@ export function ResearchSidebar({
           href={source.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="block mb-1.5 text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 tracking-tight transition-colors"
+          className="block mb-1 text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 line-clamp-2 tracking-tight transition-colors"
         >
           {source.title || extractDomain(source.url)}
           <ExternalLinkIcon className="ml-1 inline h-3 w-3 align-text-top opacity-70" />
         </a>
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate mb-2">{source.url}</p>
         {source.description && (
-          <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-2 mb-2 leading-relaxed">{source.description}</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1.5 leading-relaxed">{source.description}</p>
         )}
-        <div className="flex items-center gap-4 mt-1">
-          <span className="text-xs text-gray-500 flex items-center gap-1.5">
-            <span className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-400 rounded-full p-0.5">
-              <SearchCheck className="h-3 w-3" />
-            </span>
-            Found: {new Date(source.found || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </span>
-          {source.accessed && (
-            <span className="text-xs text-gray-500 flex items-center gap-1.5">
-              <span className="bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-400 rounded-full p-0.5">
-                <DatabaseIcon className="h-3 w-3" />
+        <div className="flex items-center gap-3 mt-1 flex-wrap">
+          {source.found && (
+              <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+                <SearchCheck className="h-3 w-3 text-green-600 dark:text-green-400" />
+                Found: {new Date(source.found).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
               </span>
-              Accessed: {new Date(source.accessed).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          )}
+          {source.accessed && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <DatabaseIcon className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              Accessed: {new Date(source.accessed).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
             </span>
           )}
         </div>
       </div>
     </motion.div>
-  );
-  
+  ));
+
+  SourceItem.displayName = 'SourceItem';
+
   return (
     <AnimatePresence>
       {open && (
         <>
-          {/* Backdrop on small screens */}
           <motion.div
             initial={{ opacity: 0 }}
-            animate={{ opacity: 0.65 }}
+            animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden"
             onClick={onClose}
           />
-          
-          {/* Sidebar */}
+
           <motion.div
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-sm z-50 bg-white/95 dark:bg-gray-950/95 backdrop-blur-md shadow-xl border-l border-gray-200/80 dark:border-gray-800/50 flex flex-col font-serif"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-md z-50 bg-white/90 dark:bg-gray-950/90 backdrop-blur-sm shadow-xl border-l border-gray-200/70 dark:border-gray-800/40 flex flex-col font-serif"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200/80 dark:border-gray-800/50">
-              <div className="flex items-center gap-2.5">
-                <PanelRight className="h-5 w-5 text-gray-700 dark:text-gray-300" />
-                <h3 className="font-medium text-gray-900 dark:text-gray-100 tracking-tight">Research Activity</h3>
-                {mode === 'think' && (
-                  <span className="bg-purple-100/80 dark:bg-purple-900/30 text-purple-800 dark:text-purple-300 text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
-                    <BrainCog className="h-3 w-3" />
-                    <span className="font-medium">Deep</span>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/70 dark:border-gray-800/40 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-gray-800 dark:text-gray-200 tracking-tight text-lg">Research Activity</h3>
+                {mode && (
+                  <span className={cn(
+                     "text-xs px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-sm",
+                     mode === 'think'
+                      ? "bg-purple-100/70 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300"
+                      : "bg-blue-100/70 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
+                  )}>
+                    {mode === 'think' ? <BrainCog className="h-3 w-3" /> : <RefreshCwIcon className="h-3 w-3" />}
+                    <span className="font-medium">{mode === 'think' ? 'Deep' : 'Fast'}</span>
                   </span>
-                )}
-                {mode === 'non-think' && (
-                  <span className="bg-blue-100/80 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1.5 backdrop-blur-sm">
-                    <RefreshCwIcon className="h-3 w-3" />
-                    <span className="font-medium">Fast</span>
-                  </span>
-                )}
+                 )}
               </div>
               <button
                 onClick={onClose}
-                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 rounded-full p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                className="text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-100 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                aria-label="Close sidebar"
               >
-                <XIcon className="h-4 w-4" />
+                <XIcon className="h-5 w-5" />
               </button>
             </div>
-            
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200/80 dark:border-gray-800/50">
+
+            <div className="flex border-b border-gray-200/70 dark:border-gray-800/40 flex-shrink-0">
               <button
                 onClick={() => setActiveTab('activities')}
                 className={cn(
-                  "flex-1 py-3.5 text-sm font-medium transition-all",
-                  activeTab === 'activities' 
-                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400" 
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                  "flex-1 py-3 text-sm font-medium transition-colors duration-150",
+                  activeTab === 'activities'
+                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50/30 dark:bg-blue-900/10"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-800/20"
                 )}
+                aria-selected={activeTab === 'activities'}
               >
                 <div className="flex items-center justify-center gap-1.5">
                   <Component className="h-4 w-4" />
                   <span>Activities</span>
-                  {visibleActivities.length > 0 && (
-                    <span className="bg-blue-100/80 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 text-xs px-1.5 py-0.5 rounded-full backdrop-blur-sm">
-                      {visibleActivities.length}
+                  {activities.length > 0 && (
+                    <span className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-[10px] font-mono px-1.5 py-0.5 rounded-full">
+                      {activities.length}
                     </span>
                   )}
                 </div>
@@ -585,73 +567,73 @@ export function ResearchSidebar({
               <button
                 onClick={() => setActiveTab('sources')}
                 className={cn(
-                  "flex-1 py-3.5 text-sm font-medium transition-all",
-                  activeTab === 'sources' 
-                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400" 
-                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
+                  "flex-1 py-3 text-sm font-medium transition-colors duration-150",
+                  activeTab === 'sources'
+                    ? "text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400 bg-blue-50/30 dark:bg-blue-900/10"
+                    : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-100 hover:bg-gray-50/50 dark:hover:bg-gray-800/20"
                 )}
+                 aria-selected={activeTab === 'sources'}
               >
                 <div className="flex items-center justify-center gap-1.5">
                   <ListIcon className="h-4 w-4" />
                   <span>Sources</span>
                   {activeSources.length > 0 && (
-                    <span className="bg-green-100/80 dark:bg-green-900/30 text-green-800 dark:text-green-300 text-xs px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                    <span className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-[10px] font-mono px-1.5 py-0.5 rounded-full">
                       {activeSources.length}
                     </span>
                   )}
                 </div>
               </button>
             </div>
-            
-            {/* Content */}
-            <div className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
+
+            <div ref={activityContainerRef} className="flex-grow overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-700 scrollbar-track-transparent">
               {activeTab === 'activities' && (
-                <div className="divide-y divide-gray-100/80 dark:divide-gray-800/50">
-                  {visibleActivities.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full p-6 text-center text-gray-500">
-                      <div className="bg-gray-100/80 dark:bg-gray-800/60 p-4 rounded-full mb-3 backdrop-blur-sm">
-                        <SearchIcon className="h-8 w-8 text-gray-400 dark:text-gray-500" />
-                      </div>
-                      <p className="text-sm font-medium">Waiting for research activities...</p>
-                    </div>
-                  ) : (
-                    visibleActivities.map(activity => (
-                      <ActivityItem key={activity.id} activity={activity} />
-                    ))
-                  )}
-                </div>
+                 <AnimatePresence initial={false}>
+                   {activities.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-48 p-6 text-center text-gray-500 dark:text-gray-400 font-serif">
+                       <p className="text-sm">Connecting to research stream...</p>
+                     </div>
+                   ) : (
+                     activities.map(activity => (
+                       <ActivityItem key={activity.id} activity={activity} />
+                     ))
+                   )}
+                 </AnimatePresence>
               )}
-              
+
               {activeTab === 'sources' && (
-                <div className="divide-y divide-gray-100/80 dark:divide-gray-800/50">
-                  {activeSources.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full p-6 text-center text-gray-500">
-                      <div className="bg-gray-100/80 dark:bg-gray-800/60 p-4 rounded-full mb-3 backdrop-blur-sm">
-                        <GlobeIcon className="h-8 w-8 text-gray-400 dark:text-gray-500" />
-                      </div>
-                      <p className="text-sm font-medium">No sources discovered yet...</p>
-                    </div>
-                  ) : (
-                    activeSources.map(source => (
-                      <SourceItem key={source.id || source.url} source={source} />
-                    ))
-                  )}
-                </div>
+                 <AnimatePresence initial={false}>
+                   {activeSources.length === 0 ? (
+                     <div className="flex flex-col items-center justify-center h-48 p-6 text-center text-gray-500 dark:text-gray-400 font-serif">
+                       <p className="text-sm">Waiting for sources...</p>
+                     </div>
+                   ) : (
+                     activeSources.map(source => (
+                       <SourceItem key={source.id || source.url} source={source} />
+                     ))
+                   )}
+                 </AnimatePresence>
               )}
             </div>
-            
-            {/* Footer */}
-            <div className="border-t border-gray-200/80 dark:border-gray-800/50 p-4 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/30 backdrop-blur-sm">
-              {connected ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse"></span>
-                  <span className="font-medium">Connected to research stream</span>
-                </div>
+
+            <div className="flex-shrink-0 border-t border-gray-200/70 dark:border-gray-800/40 px-4 py-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50/50 dark:bg-gray-900/30">
+              {initialConnectionMade ? (
+                  isConnected ? (
+                      <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
+                          <span className="flex h-2 w-2 rounded-full bg-current"></span>
+                          <span className="font-medium">Connected</span>
+                      </div>
+                  ) : (
+                      <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
+                          <WifiOffIcon className="h-3 w-3" />
+                          <span className="font-medium">Connection lost. Retrying...</span>
+                      </div>
+                  )
               ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="flex h-2 w-2 rounded-full bg-gray-300 dark:bg-gray-700"></span>
-                  <span className="font-medium">Using simulated research data</span>
-                </div>
+                  <div className="flex items-center gap-1.5 text-gray-500">
+                      <Loader2Icon className="h-3 w-3 animate-spin" />
+                      <span className="font-medium">Connecting...</span>
+                  </div>
               )}
             </div>
           </motion.div>

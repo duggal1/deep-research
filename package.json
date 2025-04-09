@@ -73,6 +73,7 @@
     "framer-motion": "^12.6.3",
     "i": "^0.3.7",
     "input-otp": "^1.2.4",
+    "install": "^0.13.0",
     "lucide-react": "^0.446.0",
     "motion": "^12.6.3",
     "next": "15.2.4",
@@ -100,7 +101,8 @@
     "typescript": "5.2.2",
     "uuid": "^11.1.0",
     "vaul": "^0.9.9",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
     "@types/react-syntax-highlighter": "^15.5.13",
