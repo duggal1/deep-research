@@ -130,9 +130,8 @@ export async function POST(req: Request) {
   let mode: 'non-think' | 'think' = 'non-think';
 
   try {
-    const rawBody = await req.text();
-    console.log(`[RAW BODY] ${rawBody}`);
-    const body = JSON.parse(rawBody) as RequestBody;
+    // Replace the problematic text() + JSON.parse approach with req.json()
+    const body = await req.json() as RequestBody;
     
     // Extract query and params, explicitly set mode default to 'non-think' if not provided
     query = body.query;
