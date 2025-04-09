@@ -33,11 +33,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ResearchError } from '@/lib/types';
 import React from 'react';
 import { cn } from '@/lib/utils';
-import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
 import { ModernProgress } from '@/components/ui/modern-progress';
-import { LiveLogs } from '@/components/ui/live-logs';
 import { AuroraText } from '@/components/magicui/aurora-text';
-import { TextShimmer } from '@/components/ui/text-shimmer';
+import { ResearchSidebar } from '@/components/ui/research-sidebar';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -139,6 +137,10 @@ export default function RechartsHle() {
     jinaDepth: 10    // Initial value: 10, Max: 95
   });
 
+  // Add sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
+  const [discoveredSources, setDiscoveredSources] = useState<Source[]>([]);
+
   // --- Warning message for high values ---
   const getDepthWarning = () => {
     if (researchControls.jinaDepth > 35) {
@@ -177,6 +179,8 @@ export default function RechartsHle() {
     // Generate a new job ID for this research session
     const newJobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
     setCurrentJobId(newJobId);
+    setSidebarOpen(true); // Open the sidebar when research starts
+    setDiscoveredSources([]); // Reset discovered sources
 
     setLoading(true);
     setLoadingMode(mode); // Set which mode is loading
@@ -253,7 +257,10 @@ export default function RechartsHle() {
           const errorMessage = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : 'API returned success: false without specific error.';
           // Set partial data if available before throwing
           if (data.report) setReport(data.report);
-          if (data.sources) setSources(data.sources);
+          if (data.sources) {
+            setSources(data.sources);
+            setDiscoveredSources(data.sources); // Also update discovered sources
+          }
           if (data.modelUsed) setFinalModelUsed(data.modelUsed);
           if (data.sourceCount) setFinalSourceCount(data.sourceCount);
           throw { code: 'API_APP_ERROR', message: errorMessage } as ResearchError;
@@ -265,6 +272,7 @@ export default function RechartsHle() {
       // --- Success Case ---
       setReport(data.report);
       setSources(data.sources || []); // Ensure sources is always an array
+      setDiscoveredSources(data.sources || []); // Update discovered sources
       setFinalModelUsed(data.modelUsed || 'Unknown');
       setFinalSourceCount(data.sourceCount || data.sources?.length || 0);
 
@@ -1076,19 +1084,32 @@ export default function RechartsHle() {
                )}
              />
 
-             {/* Simplified message */}
-              <div className="font-serif text-gray-600 dark:text-gray-400 text-center">
-                Gathering and synthesizing information from the web...
+             {/* Show research sidebar open button */}
+             <div className="font-serif text-gray-600 dark:text-gray-400 text-center">
+               <div className="flex flex-col items-center gap-2">
+                 <p>Gathering and synthesizing information from the web...</p>
+                 <button
+                   onClick={() => setSidebarOpen(!sidebarOpen)}
+                   className="flex items-center gap-1.5 mt-2 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60 px-3 py-1.5 rounded-lg font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
+                 >
+                   {sidebarOpen ? 'Hide' : 'Show'} Research Activity
+                   <svg 
+                     xmlns="http://www.w3.org/2000/svg" 
+                     width="16" 
+                     height="16" 
+                     viewBox="0 0 24 24" 
+                     fill="none" 
+                     stroke="currentColor" 
+                     strokeWidth="2" 
+                     strokeLinecap="round" 
+                     strokeLinejoin="round"
+                   >
+                     <path d="M4 4v16h16"></path>
+                     <path d="M4 20l16-16"></path>
+                   </svg>
+                 </button>
+               </div>
              </div>
-
-            {/* Live Logs Display */}
-            <LiveLogs
-              jobId={currentJobId || undefined}
-              mode={loadingMode}
-              query={query}
-              className="mt-4"
-            />
-
           </motion.div>
         )}
       </AnimatePresence>
@@ -1226,6 +1247,16 @@ export default function RechartsHle() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Research Sidebar */}
+      <ResearchSidebar
+        open={sidebarOpen}
+        jobId={currentJobId || undefined}
+        query={query}
+        mode={loadingMode || undefined}
+        sources={discoveredSources}
+        onClose={() => setSidebarOpen(false)}
+      />
     </div>
   );
 }
