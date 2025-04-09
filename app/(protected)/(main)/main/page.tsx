@@ -116,6 +116,9 @@ interface ResearchControls {
 }
 
 export default function RechartsHle() {
+  // Timer constant - moved inside component to fix linter error
+  const RESEARCH_MAX_TIME = 300; // 5 minutes in seconds
+  
   const [query, setQuery] = useState('');
   const [report, setReport] = useState<string | null>(null);
   const [sources, setSources] = useState<Source[]>([]);
@@ -152,6 +155,27 @@ export default function RechartsHle() {
       return "Boosts context and model response quality but increases processing time significantly";
     }
     return null;
+  };
+
+  // --- Calculate progress percentage based on remaining time ---
+  const getProgressPercentage = () => {
+    if (!startTimeRef.current) return 0;
+    const elapsed = elapsedTime / 1000;
+    const remaining = Math.max(RESEARCH_MAX_TIME - elapsed, 0);
+    return 100 - (remaining / RESEARCH_MAX_TIME * 100); // Invert for progress bar
+  };
+
+  // Format time as MM:SS countdown
+  const formatCountdownTime = () => {
+    if (!startTimeRef.current) return "5:00";
+    
+    const elapsed = elapsedTime / 1000;
+    const remaining = Math.max(RESEARCH_MAX_TIME - elapsed, 0);
+    
+    const minutes = Math.floor(remaining / 60);
+    const seconds = Math.floor(remaining % 60);
+    
+    return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
   };
 
   const addHistoryEntry = async (queryToAdd: string) => {
@@ -191,7 +215,13 @@ export default function RechartsHle() {
     // Simple timer update interval while loading
     const timerInterval = setInterval(() => {
       if (startTimeRef.current) {
-        setElapsedTime(Date.now() - startTimeRef.current);
+        const currentElapsed = Date.now() - startTimeRef.current;
+        setElapsedTime(currentElapsed);
+        
+        // Auto-stop if we reach 5 minutes (300 seconds) and still loading
+        if (currentElapsed >= RESEARCH_MAX_TIME * 1000) {
+          clearInterval(timerInterval);
+        }
       }
     }, 100); // Update every 100ms for smoother display
 
@@ -1040,9 +1070,9 @@ export default function RechartsHle() {
    
                </div>
                {/* Elapsed time */}
-                <div className="bg-gradient-to-r from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">
+                <div className="bg-gradient-to-r from-green-100 dark:from-green-900/50 to-teal-100 dark:to-teal-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-green-700 dark:text-green-300 text-sm whitespace-nowrap">
                    <ClockIcon className="inline-block mr-1.5 w-4 h-4 align-text-bottom" />
-                   {`${(elapsedTime / 1000).toFixed(1)}s`}
+                   {formatCountdownTime()}
                  </div>
              </div>
 
@@ -1066,7 +1096,8 @@ export default function RechartsHle() {
 
              {/* Modern Progress Bar with Gradient Effect */}
              <ModernProgress
-               indeterminate={true}
+               indeterminate={false}
+               value={getProgressPercentage()}
                className="dark:bg-black/40 shadow-inner backdrop-blur-md rounded-full h-3"
                indicatorClassName={cn(
                  "rounded-full bg-gradient-to-r",
