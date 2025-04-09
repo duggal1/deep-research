@@ -21,11 +21,7 @@ import {
   ServerCrashIcon,
   TerminalIcon,
   LinkIcon, // Added for sources
-  ClockIcon, // Added for elapsed time
-  SettingsIcon, // Using a standard settings icon
-  BrainCog,
-  Settings,
-  X,
+  ClockIcon // Added for elapsed time
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -37,9 +33,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ResearchError } from '@/lib/types';
 import React from 'react';
 import { cn } from '@/lib/utils';
+import { TextShimmerWave } from '@/components/ui/text-shimmer-wave';
 import { ModernProgress } from '@/components/ui/modern-progress';
+import { LiveLogs } from '@/components/ui/live-logs';
 import { AuroraText } from '@/components/magicui/aurora-text';
-import { ResearchSidebar } from '@/components/ui/research-sidebar';
+import { TextShimmer } from '@/components/ui/text-shimmer';
 
 // Function to extract domain from URL
 const extractDomain = (url: string) => {
@@ -84,17 +82,13 @@ interface DeepResearchData {
   depthAchieved?: number | string;
   sourceCount: number;
   modelUsed: string;
-  jobId?: string; // Expect jobId in response now
 }
 
 // Define the structure for a source
 interface Source {
-  id?: string; // Added ID from sidebar
   url: string;
-  title?: string; // Made title optional to match sidebar
-  description?: string;
-  found?: number; // Added from sidebar
-  accessed?: number; // Added from sidebar
+  title: string;
+  description?: string; // Description might not always be present
 }
 
 // Helper function to format currency values
@@ -124,6 +118,7 @@ interface ResearchControls {
 export default function RechartsHle() {
   const [query, setQuery] = useState('');
   const [report, setReport] = useState<string | null>(null);
+  const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMode, setLoadingMode] = useState<'think' | 'non-think' | null>(null); // Track which button triggered loading
   const [error, setError] = useState<ResearchError | null>(null);
@@ -143,10 +138,6 @@ export default function RechartsHle() {
     timeLimit: 150,  // Initial value: 150, Max: 600
     jinaDepth: 10    // Initial value: 10, Max: 95
   });
-
-  // Sidebar state
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
-  const [displayedSources, setDisplayedSources] = useState<Source[]>([]); // Keep track of sources displayed *below* the report
 
   // --- Warning message for high values ---
   const getDepthWarning = () => {
@@ -183,26 +174,26 @@ export default function RechartsHle() {
   const handleDeepResearch = async (mode: 'think' | 'non-think') => {
     if (!query.trim() || loading) return;
 
-    // Reset previous state
+    // Generate a new job ID for this research session
+    const newJobId = `job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    setCurrentJobId(newJobId);
+
     setLoading(true);
-    setLoadingMode(mode);
+    setLoadingMode(mode); // Set which mode is loading
     setError(null);
     setReport(null);
-    setDisplayedSources([]); // Clear sources displayed below report
-    setElapsedTime(0);
+    setSources([]); // Clear previous sources
+    setElapsedTime(0); // Reset timer
     setFinalModelUsed(null);
     setFinalSourceCount(null);
-    setCurrentJobId(null); // Clear previous job ID initially
-    setSidebarOpen(true); // Open sidebar immediately
+    startTimeRef.current = Date.now(); // Record start time
 
-    startTimeRef.current = Date.now();
-
-    // Timer interval (keep)
+    // Simple timer update interval while loading
     const timerInterval = setInterval(() => {
       if (startTimeRef.current) {
         setElapsedTime(Date.now() - startTimeRef.current);
       }
-    }, 100);
+    }, 100); // Update every 100ms for smoother display
 
     try {
       console.log(`[DEEP RESEARCH START] Query: "${query}", Mode: ${mode}, Controls:`, researchControls);
@@ -211,30 +202,32 @@ export default function RechartsHle() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query,
-          mode,
+          mode, // Pass the selected mode
           params: {
             maxUrls: researchControls.maxUrls,
-            maxDepth: researchControls.maxDepth, // Still send, even if fixed server-side
+            maxDepth: researchControls.maxDepth,
             timeLimit: researchControls.timeLimit,
             jinaDepth: researchControls.jinaDepth
           }
         }),
       });
 
-      clearInterval(timerInterval);
+      clearInterval(timerInterval); // Stop the timer interval
       if (startTimeRef.current) {
+         // Set final elapsed time
          setElapsedTime(Date.now() - startTimeRef.current);
          startTimeRef.current = null;
       }
 
-      // Error handling (mostly keep, adjust for potential lack of sources in error)
+
+      // Check response status FIRST
       if (!res.ok) {
           let errorData: ResearchError = { code: 'FETCH_FAILED', message: `Request failed with status ${res.status} - ${res.statusText}` };
           let errorJson: any = null;
           try {
-              errorJson = await res.json();
+              errorJson = await res.json(); // Try parsing error response
               console.error("[API ERROR RESPONSE]", errorJson);
-              if (errorJson?.jobId) setCurrentJobId(errorJson.jobId); // Capture Job ID even on error for sidebar
+              // Use detailed error from API if available
               if (errorJson?.error) {
                   errorData.message = typeof errorJson.error === 'string' ? errorJson.error : JSON.stringify(errorJson.error);
                   if(errorJson.details) errorData.message += ` | Details: ${errorJson.details}`;
@@ -242,30 +235,25 @@ export default function RechartsHle() {
                   errorData.message = errorJson.message;
               }
           } catch (parseError) {
-              const textResponse = await res.text();
+              const textResponse = await res.text(); // Get raw text if JSON fails
               console.warn("Could not parse error response JSON. Raw response:", textResponse);
-              errorData.message += ` | Response: ${textResponse.substring(0, 200)}...`;
+              errorData.message += ` | Response: ${textResponse.substring(0, 200)}...`; // Include part of raw response
           }
-          // Do not set report/sources from error response
-          throw errorData;
+          // If report/sources exist in error response, maybe set them (less likely for deep)
+          // if (errorJson?.report) setReport(errorJson.report);
+          // if (errorJson?.sources) setSources(errorJson.sources);
+          throw errorData; // Throw the extracted/created error object
       }
 
-      const data: DeepResearchData & { success?: boolean; error?: any } = await res.json();
+      const data: DeepResearchData & { success?: boolean; error?: any } = await res.json(); // Type assertion for expected success structure
       console.log("[DEEP RESEARCH SUCCESS]", data);
 
-      // Set Job ID from successful response
-      if (data.jobId) {
-          setCurrentJobId(data.jobId);
-      } else {
-          console.warn("No Job ID received in successful response.");
-          // Handle case where Job ID might be missing?
-      }
-
-      // Application-level error check (keep)
+      // Check for application-level error *within* the successful response (e.g., success: false)
       if (data.success === false || data.error) {
           const errorMessage = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : 'API returned success: false without specific error.';
+          // Set partial data if available before throwing
           if (data.report) setReport(data.report);
-          // Don't set sources here directly, sidebar handles it
+          if (data.sources) setSources(data.sources);
           if (data.modelUsed) setFinalModelUsed(data.modelUsed);
           if (data.sourceCount) setFinalSourceCount(data.sourceCount);
           throw { code: 'API_APP_ERROR', message: errorMessage } as ResearchError;
@@ -276,23 +264,23 @@ export default function RechartsHle() {
 
       // --- Success Case ---
       setReport(data.report);
-      // Set the sources *to be displayed below the report* from the final API response
-      setDisplayedSources(data.sources || []);
+      setSources(data.sources || []); // Ensure sources is always an array
       setFinalModelUsed(data.modelUsed || 'Unknown');
       setFinalSourceCount(data.sourceCount || data.sources?.length || 0);
 
-      // Add query to history (keep)
+      // Add query to history via API
       await addHistoryEntry(query);
 
     } catch (err) {
       console.error("Deep Research handling error:", err);
-      clearInterval(timerInterval);
+      clearInterval(timerInterval); // Ensure timer stops on error
       if (startTimeRef.current) {
+         // Set final elapsed time on error too
          setElapsedTime(Date.now() - startTimeRef.current);
          startTimeRef.current = null;
       }
 
-      // Set error state (keep, adjust structure if needed)
+      // Set error state using the caught error object
       if (typeof err === 'object' && err !== null && 'message' in err) {
           const researchErr = err as ResearchError;
           setError({
@@ -302,12 +290,10 @@ export default function RechartsHle() {
       } else {
           setError({ code: 'UNKNOWN_CLIENT_ERROR', message: 'An unexpected client-side error occurred.' });
       }
-      // Don't keep partial report/sources on error, rely on sidebar for activity log
-      setReport(null);
-      setDisplayedSources([]);
+      // Keep partial report/sources if they were set before the error was thrown
     } finally {
       setLoading(false);
-      setLoadingMode(null);
+      setLoadingMode(null); // Reset loading mode
     }
   };
 
@@ -356,7 +342,7 @@ export default function RechartsHle() {
               <button
                 onClick={() => handleCopyCode(codeString)}
                  // Simple button style
-                 className="flex items-center gap-1 bg-gray-200/70 hover:bg-gray-300/70 dark:bg-gray-700/70 dark:hover:bg-gray-600/70 px-2 py-0.5 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono font-medium text-gray-700 dark:text-gray-300 text-xs transition-colors duration-150"
+                 className="flex items-center gap-1 bg-gray-200/70 hover:bg-gray-300/70 dark:bg-gray-700/70 dark:hover:bg-gray-600/70 px-2 py-0.5 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium text-gray-700 dark:text-gray-300 text-xs transition-colors duration-150"
                 aria-label="Copy code"
               >
                 {copiedCode === codeString ? (
@@ -415,13 +401,13 @@ export default function RechartsHle() {
       // Simple container, subtle border, focus on content
       <div className="shadow-sm my-6 border border-gray-200 dark:border-gray-700/80 rounded-lg overflow-hidden">
         <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-transparent">
-          <table className="w-full text-sm border-collapse font-serif" {...props} />
+          <table className="w-full text-sm border-collapse" {...props} />
         </div>
       </div>
     ),
     tableHead: ({ node, ...props }: any) => (
       // Clean header, simple background, bottom border
-      <thead className="bg-gray-50 dark:bg-gray-800/50 border-gray-300 dark:border-gray-600 border-b font-serif" {...props} />
+      <thead className="bg-gray-50 dark:bg-gray-800/50 border-gray-300 dark:border-gray-600 border-b" {...props} />
     ),
     tr: ({ node, isHeader, ...props }: any) => (
       // Simple row separation, subtle hover
@@ -496,8 +482,8 @@ export default function RechartsHle() {
 
       // Render the cell with props.children as content
       return isHeader
-        ? <th scope="col" className={cellProps}>{displayContent}</th>
-        : <td className={cellProps}>{displayContent}</td>;
+        ? <th scope="col" {...cellProps}>{displayContent}</th>
+        : <td {...cellProps}>{displayContent}</td>;
     },
 
     // --- Heading Renderers - Clean, Serif, Clear Hierarchy ---
@@ -513,8 +499,8 @@ export default function RechartsHle() {
          // Keep existing relevant icons
          'Executive Summary': BookOpenIcon,
          'Key Findings': CheckIcon,
-         'Detailed Analysis': FileTextIcon,
-         'Technical Details': TerminalIcon,
+         'Detailed Analysis': SearchIcon,
+         'Technical Details': FileTextIcon,
          'Code Examples': TerminalIcon,
          'Visual References': ImageIcon,
          'Key Insights': AlertCircleIcon,
@@ -623,6 +609,7 @@ export default function RechartsHle() {
           href={url}
           target={isExternal ? '_blank' : undefined}
           rel={isExternal ? 'noopener noreferrer' : undefined}
+          // Simple, clean underline style
           className="inline-flex items-center gap-1 font-medium text-blue-600 hover:text-blue-700 dark:hover:text-blue-300 dark:text-blue-400 decoration-blue-600/30 hover:decoration-blue-600/70 dark:decoration-blue-400/30 dark:hover:decoration-blue-400/70 underline underline-offset-2 break-words transition-colors duration-150"
           {...props}
         >
@@ -630,8 +617,8 @@ export default function RechartsHle() {
           {isExternal && faviconUrl && (
             <img
               src={faviconUrl}
-              alt=""
-              className="inline-block flex-shrink-0 mr-0.5 rounded-sm w-4 h-4 object-contain align-text-bottom"
+              alt="" // Decorative
+              className="inline-block flex-shrink-0 mr-0.5 rounded-sm w-4 h-4 object-contain align-text-bottom" // Added object-contain
               loading="lazy"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
@@ -652,11 +639,11 @@ export default function RechartsHle() {
     // in the main report or will be handled by the separate sources list.
     li: ({ node, children, ordered, ...props }: any) => {
        return (
-         <li className="flex items-start my-1.5 font-serif" {...props}> {/* Increased spacing slightly */}
+         <li className="flex items-start my-1 font-serif" {...props}> {/* Added font-serif */}
             {/* Simple marker */}
-           <span className={`flex-shrink-0 mr-2.5 pt-1 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right font-sans' : 'text-blue-500 dark:text-blue-400'}`}> {/* Sans for numbers */}
+           <span className={`flex-shrink-0 mr-2.5 pt-1 ${ordered ? 'text-gray-500 dark:text-gray-400 text-sm font-medium w-5 text-right' : 'text-blue-500 dark:text-blue-400'}`}>
             {ordered ? `${(props.index ?? 0) + 1}.` : (
-              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="mt-1"><circle cx="3" cy="3" r="3" /></svg> // Adjusted vertical alignment */}
+              <svg width="6" height="6" viewBox="0 0 6 6" fill="currentColor" className="mt-0.5"><circle cx="3" cy="3" r="3" /></svg>
             )}
           </span>
             {/* Serif font for content */}
@@ -668,10 +655,10 @@ export default function RechartsHle() {
     // --- List Wrappers - Remove specific class logic ---
     ul: ({ node, children, className, ...props }: any) => {
        // Default list styling - standard bullets
-       return <ul className="space-y-1 mb-5 pl-6 font-serif list-disc" {...props}>{children}</ul>; {/* Added pl-6 for better indent */}
+       return <ul className="space-y-1 mb-5 pl-5 font-serif list-disc" {...props}>{children}</ul>; {/* Added font-serif */}
     },
     ol: ({ node, children, className, ...props }: any) => (
-       <ol className="space-y-1 mb-5 pl-6 font-serif list-decimal" {...props}>{children}</ol> // Standard ordered list, Added pl-6 */}
+       <ol className="space-y-1 mb-5 pl-5 font-serif list-decimal" {...props}>{children}</ol> // Standard ordered list, Added font-serif
     ),
 
     // --- Paragraph Renderer - Use Serif ---
@@ -713,51 +700,49 @@ export default function RechartsHle() {
         href={source.url}
         target="_blank"
         rel="noopener noreferrer"
-        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-black/90 dark:hover:bg-gray-900/60 shadow-sm hover:shadow-md dark:shadow-blue-500/5 p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700 rounded-lg w-full transition-all duration-150 font-serif" // Base font-serif
+        className="group flex items-start gap-3 bg-white hover:bg-gray-50 dark:bg-black/90 dark:hover:bg-gray-900/60 shadow-sm hover:shadow-md dark:shadow-blue-500/5 p-3 border border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700 rounded-lg w-full transition-all duration-150"
       >
-        {/* Favicon */}
-        <div className="relative flex-shrink-0 mt-0.5 w-6 h-6"> {/* Smaller icon container */}
-          <img
+        {/* Subtle Favicon container */}
+        <div className="flex flex-shrink-0 justify-center items-center bg-gray-100 dark:bg-gray-700 mt-0.5 border border-gray-200 dark:border-gray-600 rounded w-8 h-8">
+          {faviconUrl ? (
+            <img
               src={faviconUrl}
               alt=""
-              className="w-full h-full object-contain rounded-sm border border-gray-200 dark:border-gray-600 bg-white p-px" // Added border/bg
+              className="w-5 h-5 object-contain" // Use object-contain
               loading="lazy"
               onError={(e) => {
                  const target = e.target as HTMLImageElement;
-                 target.style.display = 'none';
-                 const fallback = target.nextElementSibling as HTMLElement | null;
-                 if(fallback) fallback.style.display = 'flex';
+                 target.onerror = null; // Prevent infinite loop
+                 target.style.display = 'none'; // Hide broken image icon
+                 // Optionally display a fallback icon container
+                 target.parentElement?.classList.add('favicon-error'); // Add class for potential styling
               }}
             />
-          <div className="absolute inset-0 hidden items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-sm">
-            <LinkIcon className="w-3 h-3 text-gray-500" /> {/* Smaller fallback */}
-          </div>
+          ) : (
+            <LinkIcon className="w-4 h-4 text-gray-500" />
+          )}
         </div>
-        {/* Content */}
-        <div className="flex-grow min-w-0">
-          <h4 className="font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 line-clamp-1 transition-colors duration-150 text-sm"> {/* Smaller title */}
-            {source.title || domain || source.url}
+        {/* Main content area */}
+        <div className="flex-grow min-w-0 font-serif"> {/* Added font-serif */}
+          <h4 className="font-medium text-gray-800 dark:group-hover:text-blue-300 dark:text-gray-100 group-hover:text-blue-700 line-clamp-1 transition-colors duration-150"> {/* Removed font-serif */}
+            {source.title || domain || source.url} {/* Show title, fallback to domain/url */}
           </h4>
-          <p className="text-gray-500 dark:text-gray-400 text-xs line-clamp-2 mt-0.5"> {/* Smaller description/URL */}
-             {source.description || source.url}
+          <p className="text-gray-500 dark:text-gray-400 text-sm line-clamp-2"> {/* Removed font-serif */}
+             {source.description || source.url} {/* Show description or URL */}
           </p>
-           {/* Domain info - keep small */}
-           <div className="flex items-center gap-1 mt-1 text-gray-400 dark:text-gray-500 text-xs truncate">
+          {/* Domain info */}
+           <div className="flex items-center gap-1.5 mt-1 text-gray-400 dark:text-gray-500 text-xs truncate">
              <GlobeIcon className="flex-shrink-0 w-3 h-3" />
-             <span className="truncate">{domain}</span>
-             {/* Optionally indicate found/accessed time if available */}
-             {source.found && (
-                <span className="ml-2 text-gray-400 dark:text-gray-500">(Found: {new Date(source.found).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit'})})</span>
-             )}
+             <span className="truncate">{domain}{isSecure ? ' 🔒' : ''}</span>
            </div>
         </div>
-        <ExternalLinkIcon className="flex-shrink-0 self-center ml-2 w-3.5 h-3.5 text-gray-400 group-hover:text-blue-500 transition-colors" /> {/* Smaller icon */}
+        <ExternalLinkIcon className="flex-shrink-0 self-center ml-2 w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" />
       </a>
     );
   };
 
   return (
-    <div className="dark:bg-black sm:px-6 lg:px-8 py-12 min-h-screen px-4"> 
+    <div className="dark:bg-black sm:px-6 lg:px-8 py-12 min-h-screen dapx-4"> 
       {/* Title and Description */}
       <div className="space-y-8 mx-auto mb-12 max-w-3xl">
         <motion.div
@@ -770,7 +755,7 @@ export default function RechartsHle() {
              <AuroraText> Deep Research Engine </AuroraText>
           </h1>
            <p className="mx-auto max-w-2xl font-serif text-gray-600 dark:text-gray-400 text-lg">
-             Enter a query to initiate AI-powered research. Choose &lsquo;Deep&apos; analysis (Gemini Pro) or &apos;Fast&apos; results (Gemini Flash).
+             Enter a query to initiate AI-powered deep research. Choose &apos;Think&apos; for deeper analysis (Gemini Pro) or &apos;Research&apos; for faster results (Gemini Flash).
           </p>
         </motion.div>
 
@@ -781,6 +766,7 @@ export default function RechartsHle() {
           transition={{ duration: 0.5, delay: 0.2 }}
           className="space-y-4"
         >
+          {/* Input Field */}
           <div className="group relative"> {/* Added group for focus-within styling */}
             <div className="left-0 absolute inset-y-0 flex items-center pl-4 text-gray-600 dark:text-gray-50 group-focus-within:text-blue-700 transition-colors pointer-events-none">
               <SearchIcon className="w-5 h-5" />
@@ -789,44 +775,47 @@ export default function RechartsHle() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="e.g., Latest advancements in quantum machine learning"
-              className="block bg-white dark:bg-black/90 shadow-md hover:shadow-lg focus:shadow-xl py-3.5 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-800 focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 w-full font-serif text-gray-900 dark:text-gray-100 text-base transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
+              placeholder="e.g., Explain quantum entanglement with code examples"
+              className="block bg-white dark:bg-black/90 shadow-md hover:shadow-lg focus:shadow-xl py-4 pr-[12rem] sm:pr-[14rem] pl-12 border border-gray-300 dark:border-gray-800 focus:border-blue-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400/50 w-full font-serif text-gray-900 dark:text-gray-100 text-lg transition-all duration-200 placeholder-gray-400 dark:placeholder-gray-500"
               onKeyDown={(e) => e.key === 'Enter' && !loading && handleDeepResearch('non-think')} // Default Enter triggers 'non-think'
               disabled={loading}
             />
 
-            {/* Button Container */}
-            <div className="top-1/2 right-2.5 absolute flex items-center gap-1.5 h-[75%] -translate-y-1/2"> {/* Reduced gap, right offset */}
+            {/* --- Button Container --- */}
+            <div className="top-1/2 right-3 absolute flex items-center gap-2 h-[75%] -translate-y-1/2">
               {/* Settings button */}
               <button
                 onClick={() => setShowControls(!showControls)}
                 disabled={loading}
                 title="Research Settings"
                 className={cn(
-                  "rounded-lg transition-all flex items-center justify-center w-9 h-9 border",
-                  loading
+                  "rounded-full transition-all flex items-center justify-center w-9 h-9 border font-serif",
+                  loading 
                     ? "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed"
-                    : showControls // Highlight when controls are shown
+                    : showControls
                       ? "bg-blue-100 dark:bg-blue-900/50 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300"
                       : "bg-gray-100 dark:bg-gray-800/70 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                 )}
                 aria-label="Research Settings"
               >
-                 <Settings className="w-5 h-5" /> {/* Use Lucide Settings */}
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                  <circle cx="12" cy="12" r="3"></circle>
+                </svg>
               </button>
 
-              {/* Think Button (Gemini Pro) */}
+              {/* --- Think Button (Gemini Pro) --- */}
               <button
                 onClick={() => handleDeepResearch('think')}
                 disabled={loading || !query.trim()}
-                title="Deep Analysis (Gemini Pro)"
+                title="Use Gemini Pro for Deeper Reasoning"
                 className={cn(
-                  "rounded-lg transition-all flex items-center gap-1.5 px-2.5 py-1 border h-9 font-sans text-sm",
+                  "rounded-full transition-all flex items-center gap-1.5 px-2 py-1 border h-9 font-serif",
                   loading || !query.trim()
                     ? "bg-gray-100 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 opacity-60 cursor-not-allowed"
                     : "bg-purple-50 dark:bg-purple-900/30 border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-800/50 hover:border-purple-400 dark:hover:border-purple-600"
                 )}
-                aria-label="Deep Analysis with Gemini Pro"
+                aria-label="Think with Gemini Pro"
               >
                 <div className="flex flex-shrink-0 justify-center items-center w-5 h-5">
                   <motion.div
@@ -840,34 +829,43 @@ export default function RechartsHle() {
                     {loading && loadingMode === 'think' ? (
                       <Loader2Icon className="w-5 h-5 text-purple-500 dark:text-purple-400 animate-spin" />
                     ) : (
-                      <BrainCog className="w-5 h-5" /> /* Consistent icon */
+                      <BrainIcon className="w-5 h-5" />
                     )}
                   </motion.div>
                 </div>
-                <span className="font-medium whitespace-nowrap">Deep</span>
+                <AnimatePresence>
+                  {!(loading || !query.trim()) && (
+                    <motion.span
+                      initial={{ width: 0, opacity: 0 }}
+                      animate={{ width: "auto", opacity: 1 }}
+                      exit={{ width: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="flex-shrink-0 overflow-hidden font-medium text-sm whitespace-nowrap"
+                    >
+                      Think
+                    </motion.span>
+                  )}
+                </AnimatePresence>
               </button>
 
-              {/* Research Button (Non-Think / Default) */}
+              {/* --- Research Button (Non-Think / Default) --- */}
               <button
                 onClick={() => handleDeepResearch('non-think')}
                 disabled={loading || !query.trim()}
-                title="Fast Research (Gemini Flash)"
-                className={cn(
-                  "flex justify-center items-center bg-gradient-to-r from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-500 hover:to-blue-600 disabled:to-gray-600 disabled:opacity-60 shadow-md hover:shadow-lg disabled:shadow-none px-3.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950 h-9 font-sans font-medium text-white text-sm transition-all duration-150 disabled:cursor-not-allowed"
-                )}
-                aria-label="Fast Research with Gemini Flash"
+                className="flex justify-center items-center bg-gradient-to-br from-blue-600 hover:from-blue-700 disabled:from-gray-500 to-blue-700 hover:to-blue-800 disabled:to-gray-600 disabled:opacity-50 shadow-lg hover:shadow-blue-500/30 dark:hover:shadow-blue-400/30 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 h-full font-serif font-semibold text-white text-base transition-all duration-200 disabled:cursor-not-allowed"
+                aria-label="Start Standard Research"
               >
-                {loading && loadingMode === 'non-think' ? (
+                {loading && loadingMode === 'non-think' ? ( // Show loader only if this button caused loading
                   <Loader2Icon className="w-5 h-5 animate-spin" />
                 ) : (
                   <>
-                    {/* Use Icon only on small screens, Text on larger */}
-                    <span className="hidden sm:inline">Fast</span>
-                    <ArrowRightIcon className="sm:hidden w-4 h-4" /> {/* Use different icon maybe? */}
+                    <span className="hidden sm:inline">Research</span>
+                    <SearchIcon className="sm:hidden w-5 h-5" />
                   </>
                 )}
               </button>
             </div>
+            {/* --- End Button Container --- */}
           </div>
 
           {/* Research Controls Panel */}
@@ -878,265 +876,356 @@ export default function RechartsHle() {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.3 }}
-                className="bg-white dark:bg-black/90 shadow-lg p-5 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden"
+                className="bg-white dark:bg-black/90 shadow-lg backdrop-blur-sm p-6 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden"
               >
                 <h3 className="mb-5 font-serif font-semibold text-gray-800 dark:text-gray-200 text-lg">Research Settings</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5"> {/* Reduced gap */}
-                  {/* Jina Reader Depth */}
-                  <div className="space-y-1.5"> {/* Reduced spacing */}
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Jina Reader Depth Control - Renamed to just "Depth" */}
+                  <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label htmlFor="jinaDepth" className="block font-serif font-medium text-gray-700 dark:text-gray-300 text-sm"> {/* Serif */}
+                      <label htmlFor="jinaDepth" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
                         Depth
                       </label>
-                      <span className="inline-flex items-center justify-center bg-purple-100 dark:bg-purple-900/50 px-2 py-0.5 rounded font-sans font-medium text-purple-700 dark:text-purple-300 text-xs"> {/* Sans for badge */}
+                      <span className="inline-flex items-center justify-center bg-purple-100 dark:bg-purple-900/50 px-2 py-0.5 rounded font-serif font-medium text-purple-700 dark:text-purple-300 text-xs">
                         {researchControls.jinaDepth}
                       </span>
                     </div>
-                    <div className="relative h-2 flex items-center"> {/* Gradient Slider */}
-                      {/* ... keep slider input and gradient div ... */}
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-purple-400 via-fuchsia-500 to-purple-600 dark:from-purple-700 dark:via-fuchsia-600 dark:to-purple-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.jinaDepth - 10) / (95 - 10) * 100}%` }}
+                      ></div>
+                      <input
+                        id="jinaDepth"
+                        type="range"
+                        min="10"
+                        max="95"
+                        step="5"
+                        value={researchControls.jinaDepth}
+                        onChange={(e) => setResearchControls({...researchControls, jinaDepth: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-purple-600 dark:accent-purple-400 z-10"
+                        style={{margin: 0}}
+                      />
                     </div>
-                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic"> {/* Serif */}
+                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
                       Content extraction depth (10-95)
                     </p>
-                    {getDepthWarning() && ( /* Warning Style - Serif */
-                       <div className="mt-1 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-md">
-                         <AlertCircleIcon className="flex-shrink-0 w-4 h-4 mt-0.5 text-amber-500" />
-                         <p className="font-serif text-amber-700 dark:text-amber-300 text-xs"> {/* Serif */}
-                           {getDepthWarning()}
-                         </p>
-                       </div>
-                     )}
+                    {getDepthWarning() && (
+                      <div className="mt-1 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-md">
+                        <AlertCircleIcon className="flex-shrink-0 w-4 h-4 mt-0.5 text-amber-500" />
+                        <p className="font-serif text-amber-700 dark:text-amber-300 text-xs">
+                          {getDepthWarning()}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
-                  {/* URL Limit */}
-                  <div className="space-y-1.5"> {/* Serif labels/descriptions */}
-                     {/* ... keep structure, apply font-serif to label/p/warning */}
+                  {/* URL Limit Control - With Gradient */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="maxUrls" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
+                        Max URLs
+                      </label>
+                      <span className="inline-flex items-center justify-center bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded font-serif font-medium text-blue-700 dark:text-blue-300 text-xs">
+                        {researchControls.maxUrls}
+                      </span>
+                    </div>
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-blue-400 via-cyan-500 to-blue-600 dark:from-blue-700 dark:via-cyan-600 dark:to-blue-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.maxUrls - 15) / (120 - 15) * 100}%` }}
+                      ></div>
+                      <input
+                        id="maxUrls"
+                        type="range"
+                        min="15"
+                        max="120"
+                        step="5"
+                        value={researchControls.maxUrls}
+                        onChange={(e) => setResearchControls({...researchControls, maxUrls: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-blue-600 dark:accent-blue-400 z-10"
+                        style={{margin: 0}}
+                      />
+                    </div>
+                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
+                      Number of URLs to fetch (15-120)
+                    </p>
+                    {getUrlWarning() && (
+                      <div className="mt-1 flex items-start gap-2 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-md">
+                        <AlertCircleIcon className="flex-shrink-0 w-4 h-4 mt-0.5 text-amber-500" />
+                        <p className="font-serif text-amber-700 dark:text-amber-300 text-xs">
+                          {getUrlWarning()}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                  {/* Time Limit */}
-                  <div className="space-y-1.5"> {/* Serif labels/descriptions */}
-                     {/* ... keep structure, apply font-serif to label/p */}
+                  
+                  {/* Time Limit Control - With Gradient */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="timeLimit" className="block font-serif font-light text-gray-700 dark:text-gray-300 text-sm">
+                        Time Limit (seconds)
+                      </label>
+                      <span className="inline-flex items-center justify-center bg-green-100 dark:bg-green-900/50 px-2 py-0.5 rounded font-serif font-medium text-green-700 dark:text-green-300 text-xs">
+                        {researchControls.timeLimit}
+                      </span>
+                    </div>
+                    <div className="relative h-2 flex items-center">
+                      <div 
+                        className="absolute inset-0 bg-gradient-to-r from-green-400 via-emerald-500 to-teal-600 dark:from-green-700 dark:via-emerald-600 dark:to-teal-800 rounded-lg opacity-80"
+                        style={{ width: `${(researchControls.timeLimit - 150) / (600 - 150) * 100}%` }}
+                      ></div>
+                      <input
+                        id="timeLimit"
+                        type="range"
+                        min="150"
+                        max="600"
+                        step="30"
+                        value={researchControls.timeLimit}
+                        onChange={(e) => setResearchControls({...researchControls, timeLimit: parseInt(e.target.value)})}
+                        className="absolute inset-0 w-full h-2 bg-transparent appearance-none cursor-pointer accent-green-600 dark:accent-green-400 z-10"
+                        style={{margin: 0}}
+                      />
+                    </div>
+                    <p className="font-serif text-gray-500 dark:text-gray-500 text-xs italic">
+                      Maximum time for research (150-600 seconds)
+                    </p>
                   </div>
                 </div>
                 
-                {/* Reset Button - Sans-serif for button text */}
-                <div className="mt-5 flex justify-end">
+                {/* Reset Controls Button */}
+                <div className="mt-6 flex justify-end">
                   <button
-                    onClick={() => setResearchControls({ maxUrls: 15, maxDepth: 5, timeLimit: 150, jinaDepth: 10 })}
-                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-3 py-1.5 rounded-lg font-sans font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors" // Sans-serif
+                    onClick={() => setResearchControls({
+                      maxUrls: 15,
+                      maxDepth: 5,
+                      timeLimit: 150,
+                      jinaDepth: 10
+                    })}
+                    className="flex items-center gap-1.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-4 py-2 rounded-lg font-serif font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
                   >
                     <RefreshCwIcon className="w-4 h-4" />
-                    Reset
+                    Reset to Defaults
                   </button>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
+      </div>
 
-        {/* Loading State - Remove placeholder text */}
-        <AnimatePresence>
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 30, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: "circOut" }}
-              className="space-y-5 bg-gradient-to-br from-white dark:from-black via-gray-50 dark:via-gray-950 to-gray-100 dark:to-black/95 shadow-xl dark:shadow-blue-500/5 mt-8 p-6 border border-gray-200/80 dark:border-gray-800/80 rounded-xl overflow-hidden"
-            >
-               {/* Header */}
-               <div className="flex sm:flex-row flex-col justify-between items-center gap-4">
-                  <div className="flex items-center gap-3">
-                     <Loader2Icon className="w-6 h-6 text-gray-800 dark:text-gray-200 animate-spin" />
-                     <span className="font-serif font-semibold text-xl text-gray-800 dark:text-gray-200"> {/* Serif */}
-                       Researching...
-                     </span>
-                  </div>
-                  {/* Elapsed time (Sans-serif/Mono better here) */}
-                  <div className="bg-gradient-to-r from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner px-3 py-1 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">
-                     <ClockIcon className="inline-block mr-1.5 w-4 h-4 align-text-bottom" />
-                     {`${(elapsedTime / 1000).toFixed(1)}s`}
-                  </div>
-               </div>
-
-               {/* Mode Notification (Serif) */}
-                {loadingMode === 'think' && (
-                 <motion.div /* ... animation ... */ className="bg-purple-50 dark:bg-purple-950/20 shadow-sm px-4 py-3 border-purple-500 border-l-4 rounded-r-lg text-purple-700 dark:text-purple-300">
-                   <div className="flex items-center gap-2">
-                     <BrainCog className="flex-shrink-0 w-5 h-5 text-purple-600 dark:text-purple-400" /> {/* Consistent icon */}
-                     <p className="font-serif font-medium text-sm"> {/* Serif */}
-                       Using Deep analysis mode... this may take 1-3 minutes.
-                     </p>
-                   </div>
-                 </motion.div>
-                )}
-
-               {/* Progress Bar (Keep) */}
-               <ModernProgress /* ... props ... */ />
-
-               {/* Show research sidebar button (Sans-serif for button) */}
-               <div className="font-serif text-gray-600 dark:text-gray-400 text-center text-sm"> {/* Serif description */}
-                 <div className="flex flex-col items-center gap-2">
-                   <p>Follow the progress in the activity panel.</p> {/* Simpler text */}
-                   <button
-                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                     className="flex items-center gap-1.5 mt-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/50 dark:hover:bg-blue-800/60 px-3 py-1.5 rounded-lg font-sans font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors" // Sans-serif
-                   >
-                     {sidebarOpen ? 'Hide' : 'Show'} Activity
-                      {/* Simple chevron or similar icon */}
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                         <polyline points={sidebarOpen ? "9 18 15 12 9 6" : "15 18 9 12 15 6"}></polyline>
-                      </svg>
-                   </button>
+      {/* Loading State - Simplified */}
+      <AnimatePresence>
+        {loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.4, ease: "circOut" }}
+            className="space-y-6 bg-gradient-to-br from-white dark:from-black via-gray-50 dark:via-gray-950 to-gray-100 dark:to-black/95 shadow-2xl dark:shadow-blue-500/5 backdrop-blur-xl mt-8 p-6 md:p-8 border border-gray-200/80 dark:border-gray-800/80 rounded-2xl overflow-hidden"
+          >
+             {/* Header */}
+             <div className="flex sm:flex-row flex-col justify-between items-center gap-4">
+               <div className="flex items-center gap-3">
+                 <div className="relative flex justify-center items-center w-10 h-10">
+                    {/* Simple Spinner */}
+                    <Loader2Icon className="w-7 h-7 text-gray-800 dark:text-gray-50 animate-spin" />
                  </div>
+<span className='font-serif font-bold text-xl'>
+                 <AuroraText>
+                 Researching...
+                 </AuroraText>
+                 </span>
+   
                </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+               {/* Elapsed time */}
+                <div className="bg-gradient-to-r from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner px-4 py-1.5 rounded-full font-mono font-medium tabular-nums text-blue-700 dark:text-blue-300 text-sm whitespace-nowrap">
+                   <ClockIcon className="inline-block mr-1.5 w-4 h-4 align-text-bottom" />
+                   {`${(elapsedTime / 1000).toFixed(1)}s`}
+                 </div>
+             </div>
 
-        {/* Error Display */}
-        <AnimatePresence>
-          {error && !loading && (
-            <motion.div /* ... animation ... */
-               // Cleaner error box
-              className="flex items-start gap-4 bg-red-50 dark:bg-red-950/20 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-600/30 rounded-xl text-red-700 dark:text-red-300"
-            >
-              <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
-                <AlertCircleIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
+             {/* Optional Mode Notification */}
+              {loadingMode === 'think' && (
+               <motion.div
+                 initial={{ opacity: 0, height: 0 }}
+                 animate={{ opacity: 1, height: 'auto' }}
+                 exit={{ opacity: 0, height: 0 }}
+                 transition={{ duration: 0.3, delay: 0.1 }}
+                 className="bg-purple-50 dark:bg-purple-950/20 shadow-sm px-4 py-3 border-purple-500 border-l-4 rounded-r-lg text-purple-700 dark:text-purple-300"
+               >
+                 <div className="flex items-center gap-2">
+                   <BrainIcon className="flex-shrink-0 w-5 h-5 text-purple-600 dark:text-purple-400" />
+                   <p className="font-serif font-medium text-sm">
+                     Using Gemini Pro for deeper analysis... this may take 1-3 minutes.
+                   </p>
+                 </div>
+               </motion.div>
+              )}
+
+             {/* Modern Progress Bar with Gradient Effect */}
+             <ModernProgress
+               indeterminate={true}
+               className="dark:bg-black/40 shadow-inner backdrop-blur-md rounded-full h-3"
+               indicatorClassName={cn(
+                 "rounded-full bg-gradient-to-r",
+                 loadingMode === 'think'
+                   ? "from-purple-500 via-pink-600 to-blue-500"
+                   : "from-blue-600 via-pink-600 to-blue-500"
+               )}
+             />
+
+             {/* Simplified message */}
+              <div className="font-serif text-gray-600 dark:text-gray-400 text-center">
+                Gathering and synthesizing information from the web...
+             </div>
+
+            {/* Live Logs Display */}
+            <LiveLogs
+              jobId={currentJobId || undefined}
+              mode={loadingMode}
+              query={query}
+              className="mt-4"
+            />
+
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Display (Mostly unchanged, ensure error object structure matches) */}
+      <AnimatePresence>
+        {error && !loading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="flex items-start gap-4 bg-red-50 dark:bg-black/80 shadow-lg mt-8 p-5 border border-red-200 dark:border-red-800/50 rounded-xl text-red-700 dark:text-red-300"
+          >
+            <div className="flex-shrink-0 bg-red-100 dark:bg-red-900/50 mt-0.5 p-2 rounded-full">
+              <ServerCrashIcon className="w-5 h-5 text-red-600 dark:text-red-400" />
+            </div>
+            <div className="flex-grow">
+              <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed ({error.code || 'Error'})</p>
+              <p className="font-serif text-red-700 dark:text-red-300 text-sm break-words">{error.message || 'An unknown error occurred.'}</p>
+              {/* Optionally show partial report/sources if available in error state */}
+              {(report || sources.length > 0) && (
+                 <details className="mt-3 pt-2 border-t border-red-200 dark:border-red-500/30 font-serif text-xs"> {/* Added font-serif */}
+                   <summary className="font-medium text-red-600 dark:text-red-400 cursor-pointer">Show partial data</summary> {/* Removed font-serif (inherits) */}
+                   {report && <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">Report: {report}</div>}
+                   {sources.length > 0 && <div className="bg-red-100/50 dark:bg-red-900/40 mt-2 p-3 rounded max-h-48 overflow-y-auto font-mono text-red-700 dark:text-red-300 scrollbar-thin scrollbar-thumb-red-400 dark:scrollbar-thumb-red-700">Sources: {JSON.stringify(sources, null, 2)}</div>}
+                 </details>
+              )}
+              <button
+                onClick={() => { setError(null); setReport(null); setSources([]); }} // Clear error and data
+                className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-4 py-1.5 rounded-md font-serif font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Report Display & Sources */}
+      <AnimatePresence>
+        {report && !loading && !error && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="bg-gradient-to-b from-white dark:from-black to-gray-50 dark:to-black/95 shadow-xl dark:shadow-blue-500/5 backdrop-blur-xl mt-8 border border-gray-200 dark:border-gray-800/80 rounded-2xl overflow-hidden" // Added overflow-hidden
+          >
+            {/* Wrap content in padding */}
+            <div className="p-6 md:p-10">
+              {/* Report Header - Simplified Metrics */}
+              <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-8 pb-5 border-gray-200 dark:border-gray-700/80 border-b">
+                <h2 className="flex items-center gap-3 font-serif font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight">
+                  <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 shadow-inner p-2.5 rounded-xl">
+                    <BookOpenIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  Research Report
+                </h2>
+                {/* Final Metrics Display - Simplified */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-white/70 dark:bg-gray-800/70 shadow-md p-3 border border-gray-200 dark:border-gray-700 rounded-lg font-serif text-gray-600 dark:text-gray-400 text-xs"> {/* Added font-serif */}
+                  {finalSourceCount !== null && (
+                    <div className="flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded-md" title="Sources Analyzed">
+                      <LinkIcon className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">{finalSourceCount.toLocaleString()}</span> {/* Removed font-serif */}
+                      <span className="text-gray-500 dark:text-gray-500">sources</span>
+                    </div>
+                  )}
+                  {elapsedTime > 0 && (
+                    <div className="flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded-md" title="Execution Time">
+                      <ClockIcon className="w-3.5 h-3.5 text-amber-500" />
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">{(elapsedTime / 1000).toFixed(1)}s</span> {/* Removed font-serif */}
+                    </div>
+                  )}
+                  {finalModelUsed && (
+                     <div className="flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded-md" title="Model Used">
+                       <BrainIcon className="w-3.5 h-3.5 text-purple-500" />
+                       <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize">{finalModelUsed.replace('gemini-2.5-pro-exp-03-25', 'Gemini Pro Exp').replace('gemini-2.0-flash', 'Gemini Flash')}</span> {/* Updated model name display, Removed font-serif */}
+                     </div>
+                   )}
+                </div>
               </div>
-              <div className="flex-grow">
-                <p className="mb-1 font-serif font-semibold text-red-800 dark:text-red-200 text-lg">Research Failed</p>
-                <p className="font-serif text-red-700 dark:text-red-300 text-sm break-words">{error.message || 'An unknown error occurred.'}</p>
+
+              {/* Markdown Report Content */}
+              <div className="blockquotes table tables prose-img:shadow-sm dark:prose-invert prose-td:px-4 prose-th:px-4 prose-td:py-2 prose-th:py-2 border borders prose-img:border dark:prose-hr:border-gray-700 dark:prose-img:border-gray-700 dark:prose-thead:border-gray-600 dark:prose-tr:border-gray-700/60 prose-hr:border-gray-200 prose-img:border-gray-200 prose-thead:border-gray-300 prose-tr:border-gray-200 prose-thead:border-b prose-tr:border-b prose-img:rounded-md max-w-none font-serif prose-blockquote:font-serif prose-headings:font-serif prose-li:font-serif prose-p:font-serif prose-table:font-serif prose-code:font-mono prose-strong:font-semibold prose-th:font-semibold dark:prose-a:text-blue-400 dark:prose-strong:text-gray-200 dark:prose-td:text-gray-300 dark:prose-th:text-gray-200 prose-a:text-blue-600 prose-strong:text-gray-800 prose-table:text-sm prose-th:text-left prose-headings:tracking-tight prose prose-base lg:prose-lg // Base prose styles // Allow content to fill container // Serif for paragraphs & lists // Serif for headings // Default link color (overridden by renderer) // Strong styling // Serif for // Mono for code (overridden by renderer) // Image styling // HR styling // Base font size, Added // Table head // Table header styling // Table cell padding // Table row // Dark mode text">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                  components={renderers} // Use the updated renderers
+                >
+                  {report}
+                </ReactMarkdown>
+              </div>
+
+             {/* Sources Section */}
+             {sources && sources.length > 0 && (
+                <div className="mt-12 pt-8 border-gray-200 dark:border-gray-700/80 border-t">
+                  <h3 className="flex items-center gap-3 mb-6 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl">
+                     <LinkIcon className="w-6 h-6 text-green-600 dark:text-green-400" />
+                     Sources Used ({sources.length})
+                   </h3>
+                   <div className="gap-3 grid grid-cols-1 md:grid-cols-2">
+                     {sources.map((source, index) => (
+                       <SourceItem key={source.url + '-' + index} source={source} />
+                     ))}
+                   </div>
+                 </div>
+              )}
+
+
+              {/* Report Footer */}
+              <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/80 border-t">
                 <button
-                   onClick={() => { setError(null); /* Clear only error */ }}
-                   className="bg-red-100 hover:bg-red-200 dark:bg-red-800/60 dark:hover:bg-red-700/70 mt-4 px-3 py-1.5 rounded-lg font-sans font-medium text-red-700 dark:text-red-200 text-sm transition-colors"
-                 >
-                  Dismiss
+                  onClick={() => {
+                    if (report) {
+                      navigator.clipboard.writeText(report)
+                        .then(() => alert('Report copied to clipboard!')) // Consider a less intrusive notification
+                        .catch(err => console.error('Failed to copy report:', err));
+                    }
+                  }}
+                  className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
+                >
+                  <CopyIcon className="w-4 h-4" />
+                  Copy Full Report
+                </button>
+                <button
+                  onClick={() => { setQuery(''); setReport(null); setSources([]); setError(null); setElapsedTime(0); setFinalModelUsed(null); setFinalSourceCount(null); }}
+                  className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm hover:shadow-md px-4 py-2 rounded-lg font-serif font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
+                >
+                  <SearchIcon className="w-4 h-4" />
+                  New Research
                 </button>
               </div>
-               {/* Button to close sidebar on error if it's open */}
-               {sidebarOpen && (
-                   <button onClick={() => setSidebarOpen(false)} className="absolute top-3 right-3 text-red-400 hover:text-red-600 dark:text-red-600 dark:hover:text-red-400 p-1 rounded-full hover:bg-red-100 dark:hover:bg-red-900/50">
-                       <X className="w-4 h-4" />
-                   </button>
-               )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Report Display & Sources (Apply Serif, use displayedSources) */}
-        <AnimatePresence>
-          {report && !loading && !error && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.5, delay: 0.1 }}
-              className="bg-gradient-to-b from-white dark:from-black to-gray-50 dark:to-black/95 shadow-xl dark:shadow-blue-500/5 mt-8 border border-gray-200 dark:border-gray-800/80 rounded-2xl overflow-hidden"
-            >
-              {/* Padding wrapper */}
-              <div className="p-6 md:p-10">
-                {/* Report Header (Serif title, Sans/Mono for badges) */}
-                <div className="flex md:flex-row flex-col justify-between md:items-center gap-4 mb-6 pb-4 border-gray-200 dark:border-gray-700/60 border-b">
-                  <h2 className="flex items-center gap-3 font-serif font-semibold text-gray-900 dark:text-gray-100 text-2xl md:text-3xl tracking-tight"> {/* Serif */}
-                    <div className="bg-gradient-to-br from-blue-100 dark:from-blue-900/50 to-indigo-100 dark:to-indigo-900/60 p-2 rounded-lg"> {/* Smaller icon bg */}
-                      <BookOpenIcon className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    Research Report
-                  </h2>
-                  {/* Metrics Display (Sans/Mono fonts) */}
-                  <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 bg-gray-50 dark:bg-gray-800/50 shadow-inner p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-gray-600 dark:text-gray-400 text-xs font-sans"> {/* Base Sans */}
-                    {finalSourceCount !== null && (
-                      <div className="flex items-center gap-1 bg-blue-50 dark:bg-blue-900/30 px-2 py-1 rounded" title="Sources Analyzed">
-                        <LinkIcon className="w-3 h-3 text-blue-500" />
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">{finalSourceCount.toLocaleString()}</span>
-                        <span className="text-gray-500 dark:text-gray-500">sources</span>
-                      </div>
-                    )}
-                    {elapsedTime > 0 && (
-                      <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-900/30 px-2 py-1 rounded font-mono" title="Execution Time"> {/* Mono for time */}
-                        <ClockIcon className="w-3 h-3 text-amber-500" />
-                        <span className="font-semibold text-gray-700 dark:text-gray-300">{(elapsedTime / 1000).toFixed(1)}s</span>
-                      </div>
-                    )}
-                    {finalModelUsed && (
-                       <div className="flex items-center gap-1 bg-purple-50 dark:bg-purple-900/30 px-2 py-1 rounded" title="Model Used">
-                         <BrainCog className="w-3 h-3 text-purple-500" /> {/* Consistent icon */}
-                          {/* Updated Model Name Logic */}
-                         <span className="font-semibold text-gray-700 dark:text-gray-300 capitalize">
-                           { finalModelUsed.includes('pro') ? 'Gemini Pro' :
-                             finalModelUsed.includes('flash') ? 'Gemini Flash' :
-                             finalModelUsed /* Fallback to raw name */
-                           }
-                         </span>
-                       </div>
-                     )}
-                  </div>
-                </div>
-
-                {/* Markdown Report Content (Ensure renderers apply serif) */}
-                <div className="prose prose-base lg:prose-lg prose-serif dark:prose-invert prose-img:rounded-md prose-img:shadow-sm prose-img:border dark:prose-hr:border-gray-700 dark:prose-img:border-gray-700 dark:prose-thead:border-gray-600 dark:prose-tr:border-gray-700/60 max-w-none">
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    rehypePlugins={[rehypeRaw]}
-                    components={renderers}
-                  >
-                    {report}
-                  </ReactMarkdown>
-                </div>
-
-               {/* Sources Section (Displayed below report, use displayedSources state) */}
-               {displayedSources && displayedSources.length > 0 && (
-                  <div className="mt-10 pt-6 border-gray-200 dark:border-gray-700/60 border-t">
-                    <h3 className="flex items-center gap-2.5 mb-5 font-serif font-semibold text-gray-800 dark:text-gray-200 text-xl md:text-2xl"> {/* Serif */}
-                       <LinkIcon className="w-5 h-5 text-green-600 dark:text-green-400" />
-                       Sources Referenced ({displayedSources.length})
-                     </h3>
-                     <div className="gap-3 grid grid-cols-1 md:grid-cols-2">
-                       {displayedSources.map((source, index) => (
-                         <SourceItem key={(source.id || source.url) + '-' + index} source={source} />
-                       ))}
-                     </div>
-                   </div>
-                )}
-
-
-                {/* Report Footer (Sans-serif for buttons) */}
-                <div className="flex sm:flex-row flex-col justify-between items-center gap-4 mt-10 pt-6 border-gray-200 dark:border-gray-700/60 border-t">
-                  <button
-                    onClick={() => {
-                      if (report) {
-                        navigator.clipboard.writeText(report)
-                          .then(() => alert('Report copied to clipboard!'))
-                          .catch(err => console.error('Failed to copy report:', err));
-                      }
-                    }}
-                    className="flex items-center gap-1.5 order-2 sm:order-1 bg-blue-100 hover:bg-blue-200 dark:bg-blue-900/60 dark:hover:bg-blue-800/70 shadow-sm px-3 py-1.5 rounded-lg font-sans font-medium text-blue-700 dark:text-blue-300 text-sm transition-colors"
-                  >
-                    <CopyIcon className="w-4 h-4" />
-                    Copy Report
-                  </button>
-                  <button
-                    onClick={() => { setQuery(''); setReport(null); setDisplayedSources([]); setError(null); setElapsedTime(0); setFinalModelUsed(null); setFinalSourceCount(null); setCurrentJobId(null); setSidebarOpen(false); }}
-                    className="flex items-center gap-1.5 order-1 sm:order-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-sm px-3 py-1.5 rounded-lg font-sans font-medium text-gray-700 dark:text-gray-300 text-sm transition-colors"
-                  >
-                    <SearchIcon className="w-4 h-4" />
-                    New Research
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Research Sidebar (Pass relevant props) */}
-        <ResearchSidebar
-          open={sidebarOpen}
-          jobId={currentJobId || undefined}
-          query={query}
-          mode={loadingMode || undefined}
-          onClose={() => setSidebarOpen(false)}
-        />
-      </div>
+            </div> {/* End padding wrapper */}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
